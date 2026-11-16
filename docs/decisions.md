@@ -228,3 +228,13 @@ a second update step). Picked an opt-in component here, with only the short, tes
 check keeps "I'll do it" apart from "you're right", so the owner can still overrule; it only stops the session
 pretending to be persuaded. The hook is merged into `settings.json` by the script's file name, so a rerun never
 adds it twice and other hooks are kept.
+
+## 28. Rigor: claims that matter, where measurements go, and how to turn it off (2026-11-16)
+Three follow-ups to decision 27, picked by the owner after review. Section 1 now labels only claims that a
+decision, action or recommendation rests on: labelling every sentence pulled against a concise output style
+and made replies longer without making them safer. Section 6 now says where a measurement is recorded: where
+the work keeps its decisions, else the project's memory. And leaving Rigor out of `-Components` now turns it
+off: the hook is removed from `settings.json` and Rigor's unchanged files are retired as `*.retired`, because a
+hook that runs on every message should not outlive the choice to drop it. Only Rigor does this; leaving out
+another component still leaves its files, since none of them acts on every message and an explicit partial
+`-Components` run shouldn't quietly switch off rules someone still relies on.

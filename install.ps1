@@ -180,6 +180,20 @@ foreach ($rel in @('rules/bmad.md')) {   # replaced by rules/methods.md (decisio
     Move-Item $old "$old.retired" -Force; $manifest.Remove($rel); Ok "$rel retired (kept as $rel.retired)"
   }
 }
+# Rigor runs on every message, so leaving it out turns it off: its files are retired and its hook removed (below).
+# A file you changed stays where it is, and is named once.
+if ($Components -notcontains 'Rigor') {
+  foreach ($rel in $componentFiles['Rigor']) {
+    if (-not $manifest.ContainsKey($rel)) { continue }
+    $old = Join-Path $claude $rel
+    if ((Test-Path $old) -and (Hash $old) -eq $manifest[$rel].hash) {
+      Move-Item $old "$old.retired" -Force; Done "$rel retired (Rigor not chosen; kept as $rel.retired)"
+    } elseif (Test-Path $old) {
+      Miss "$rel left in place because you changed it, so Rigor is still partly on: delete it to turn Rigor off"
+    }
+    $manifest.Remove($rel)
+  }
+}
 New-Item -ItemType Directory -Force $home_vr | Out-Null
 $sorted = [ordered]@{}
 foreach ($k in $manifest.Keys | Sort-Object) { $sorted[$k] = [ordered]@{ hash = $manifest[$k].hash; source = $manifest[$k].source } }
@@ -225,6 +239,18 @@ if (-not $settingsOk) {
     }
     if (-not $SkipToolCheck -and -not (Get-Command node -ErrorAction SilentlyContinue)) {
       Miss 'Node.js (`node`) not on PATH, so the Rigor hook cannot run: install Node.js, then start a new session'
+    }
+  } elseif ($settings['hooks'] -is [Collections.IDictionary] -and $settings['hooks']['UserPromptSubmit']) {
+    # Rigor not chosen: take out its hook, keep every other one.
+    $isRigor = { "$($_['command'])" -match 'pushback-check\.mjs' }
+    $groups = @($settings['hooks']['UserPromptSubmit'] | Where-Object { $_ })
+    if (@($groups | ForEach-Object { $_['hooks'] } | Where-Object $isRigor).Count) {
+      $kept = @(foreach ($g in $groups) {
+          $g['hooks'] = @($g['hooks'] | Where-Object { -not (& $isRigor) })
+          if ($g['hooks'].Count) { $g }
+        })
+      if ($kept.Count) { $settings['hooks']['UserPromptSubmit'] = $kept } else { $settings['hooks'].Remove('UserPromptSubmit') }
+      $changes += 'removed the Rigor hook (Rigor not chosen)'
     }
   }
   if ($changes.Count) {

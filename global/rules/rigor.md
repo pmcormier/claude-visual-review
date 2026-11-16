@@ -2,7 +2,10 @@
 
 Verification obligations, not a tone. They apply to all work.
 
-## 1. Label the basis of every factual claim
+## 1. Label the basis of the claims that matter
+Label a factual claim when a decision, an action or a recommendation rests on it, or when I could reasonably
+take it as checked. Leave the rest unlabelled: labels on every sentence make replies longer without making
+them safer.
 - **verified**: ran or read it this session. Name the command, file, or line. Only a tool call in this session
   makes something verified; never describe a check that didn't run.
 - **recalled**: from training. May be stale or wrong. Say which.
@@ -73,4 +76,6 @@ in place of asking is not.
 before running it, and prove the revert afterwards.
 
 **Record what it measured**, dated. An unrecorded measurement gets re-derived, and the second
-derivation is usually the wrong one.
+derivation is usually the wrong one. Record it where the work keeps its decisions (a decisions file, the
+document under review, a BMAD memlog); if the project keeps none, in your memory for the project. A measurement
+that settles nothing lasting needs no record beyond the reply.

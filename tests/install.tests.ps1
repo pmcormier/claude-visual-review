@@ -277,6 +277,37 @@ Test 'RigorHookAddedOnceAndOthersKept' {
   Assert-Equal 'stop-hook' $s.hooks.Stop[0].hooks[0].command 'other events kept'
 }
 
+Test 'RigorDroppedRemovesHookAndRetiresFiles' {
+  $h = New-TempDir
+  Set-File "$h/settings.json" '{ "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type": "command", "command": "other-hook" } ] } ] } }'
+  Invoke-Install $h @('-Components', 'Review,Rigor') | Out-Null
+  $r = Invoke-Install $h @('-Components', 'Review')
+  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  Assert-True ($r.Out -match 'removed the Rigor hook') "announced: $($r.Out)"
+  $s = Get-Content -Raw "$h/settings.json" | ConvertFrom-Json -AsHashtable
+  $cmds = @($s.hooks.UserPromptSubmit | ForEach-Object { $_.hooks } | ForEach-Object { $_.command })
+  Assert-Equal 0 @($cmds | Where-Object { $_ -match 'pushback-check\.mjs' }).Count 'Rigor hook gone'
+  Assert-True ($cmds -contains 'other-hook') 'other hook kept'
+  foreach ($f in 'rules/rigor.md', 'rigor/pushback.md', 'hooks/pushback-check.mjs') {
+    Assert-True (-not (Test-Path "$h/$f")) "$f retired"
+    Assert-True (Test-Path "$h/$f.retired") "$f kept as .retired"
+  }
+  $m = Get-Content -Raw "$h/visual-review/installed.json" | ConvertFrom-Json -AsHashtable
+  Assert-True (-not $m.ContainsKey('rules/rigor.md')) 'manifest forgets rigor.md'
+  $r2 = Invoke-Install $h @('-Components', 'Review')
+  Assert-True ($r2.Out -notmatch 'Rigor') "rerun quiet: $($r2.Out)"
+}
+
+Test 'RigorDroppedKeepsEditedRule' {
+  $h = New-TempDir
+  Invoke-Install $h @('-Components', 'Review,Rigor') | Out-Null
+  Add-Content "$h/rules/rigor.md" 'my line'
+  $r = Invoke-Install $h @('-Components', 'Review')
+  Assert-True (Test-Path "$h/rules/rigor.md") 'edited rule left in place'
+  Assert-True ($r.Out -match 'rules/rigor\.md') "named: $($r.Out)"
+  Assert-Equal 3 $r.Code "needs attention ($($r.Out))"
+}
+
 Test 'NoRigorNoHook' {
   $h = New-TempDir
   Invoke-Install $h @('-Components', 'Review,Methods') | Out-Null

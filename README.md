@@ -52,6 +52,10 @@ inherit VS Code's environment from when it started, so a new terminal alone does
 `git pull`, then run `./install.ps1` again: it reuses the components you installed last time (or pass
 `-Components` to change them). Files you didn't change are updated quietly.
 
+To turn Rigor off, run `./install.ps1 -Components` with your other components and without Rigor: it removes the
+hook from `settings.json` and renames Rigor's files to `*.retired` (a file you changed stays, and the Summary
+names it). Leaving out another component leaves its files in place.
+
 ## Make it yours
 
 Put your own preferences in a rule file of your own, such as `~/.claude/rules/my-review-tweaks.md`. Claude
