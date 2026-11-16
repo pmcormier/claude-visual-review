@@ -67,5 +67,6 @@ use; ask before introducing a new one.
 - Follow its flow (brainstorming, writing-plans, then executing-plans or subagent-driven-development) and link
   the plan file from the ticket.
 
-This file and `~/.claude/bmad/*` are installed from claude-visual-review. Edit them in your clone of
-claude-visual-review, then run `./install.ps1`; it asks before replacing a copy in `~/.claude` that you changed.
+This file and `~/.claude/bmad/*` are installed from claude-visual-review. To change how they work for you,
+add a rule file of your own in `~/.claude/rules/`; updates never touch it. Maintainers of the repo edit their
+clone, then run `./install.ps1`, which asks before replacing a copy in `~/.claude` that was changed.

@@ -51,7 +51,7 @@ Test 'NonInteractiveConflictSkips' {
   $h = New-TempDir
   Set-File "$h/rules/methods.md" 'my own methods'
   $r = Invoke-Install $h @('-Components', 'Review,Methods')
-  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  Assert-Equal 3 $r.Code "exit code ($($r.Out))"
   Assert-Equal 'my own methods' (Get-Content -Raw "$h/rules/methods.md") 'methods.md kept'
   Assert-True ($r.Out -match '-Replace rules/methods\.md') "rerun hint: $($r.Out)"
   Assert-True ($r.Out -match 'Methods partly inactive') "partial report: $($r.Out)"
@@ -64,7 +64,7 @@ Test 'ReplaceFlagReplaces' {
   $r = Invoke-Install $h @('-Components', 'Review,Methods', '-Replace', 'rules/methods.md')
   Assert-Equal 0 $r.Code "exit code ($($r.Out))"
   Assert-Equal (Hash "$global/rules/methods.md") (Hash "$h/rules/methods.md") 'methods.md replaced'
-  Assert-Equal 'my own methods' (Get-Content -Raw "$h/rules/methods.md.bak") 'backup kept'
+  Assert-Equal 'my own methods' (Get-Content -Raw (Get-Item "$h/rules/methods.md.bak-*").FullName) 'backup kept'
 }
 
 Test 'RerunIsQuiet' {
@@ -143,7 +143,7 @@ Test 'OwnerBootstrapKeepsBak' {
   $h = New-TempDir
   Set-File "$h/rules/methods.md" 'old local methods'
   Invoke-Install $h @('-Owner') | Out-Null
-  Assert-Equal 'old local methods' (Get-Content -Raw "$h/rules/methods.md.bak") 'bootstrap kept a .bak of a differing file'
+  Assert-Equal 'old local methods' (Get-Content -Raw (Get-Item "$h/rules/methods.md.bak-*").FullName) 'bootstrap kept a .bak of a differing file'
 }
 
 Test 'BootstrapOnlyWithoutManifest' {
@@ -184,9 +184,82 @@ Test 'BmadProjectWithoutUvDoesNotCrash' {
     if (Get-Command uv -ErrorAction SilentlyContinue) { throw 'uv still on PATH; test cannot run' }
     $r = Invoke-Install $h @('-Components', 'Review,Bmad', '-BmadProject', $p)
   } finally { $env:PATH = $saved }
-  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  Assert-Equal 3 $r.Code "exit code ($($r.Out))"
   Assert-True ($r.Out -match 'uv not found') "reported: $($r.Out)"
   Assert-True ($r.Out -match 'Start a new Claude Code session') 'reached Done'
+}
+
+Test 'CleanRunExits0WithSummary' {
+  $r = Invoke-Install (New-TempDir) @('-Components', 'Review')
+  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  Assert-True ($r.Out -match '== Summary') "summary: $($r.Out)"
+  Assert-True ($r.Out -match 'Nothing left to do') "nothing left: $($r.Out)"
+}
+
+Test 'SummaryListsWhatIsLeft' {
+  $h = New-TempDir
+  Set-File "$h/rules/methods.md" 'my own methods'
+  $r = Invoke-Install $h @('-Components', 'Review,Methods')
+  Assert-True ($r.Out -match "== Summary") "summary: $($r.Out)"
+  $summary = ($r.Out -split '== Summary')[-1]
+  Assert-True ($summary -match '-Replace rules/methods\.md') "summary has the rerun command: $summary"
+}
+
+Test 'SettingsInvalidJsonReported' {
+  $h = New-TempDir
+  Set-File "$h/settings.json" '{ not json'
+  $r = Invoke-Install $h @('-Components', 'Review')
+  Assert-Equal 3 $r.Code "exit code ($($r.Out))"
+  Assert-True ($r.Out -match "settings\.json isn't valid JSON") "reported: $($r.Out)"
+  Assert-Equal '{ not json' (Get-Content -Raw "$h/settings.json") 'left as it was'
+  Assert-True (Test-Path "$h/rules/visual-review.md") 'rules still installed'
+}
+
+Test 'SettingsEmptyOrNullEnvHandled' {
+  $h = New-TempDir
+  Set-File "$h/settings.json" ''
+  $r = Invoke-Install $h @('-Components', 'Review')
+  Assert-Equal 0 $r.Code "empty file ($($r.Out))"
+  $h2 = New-TempDir
+  Set-File "$h2/settings.json" '{ "env": null, "model": "opus" }'
+  $r = Invoke-Install $h2 @('-Components', 'Review')
+  Assert-Equal 0 $r.Code "env null ($($r.Out))"
+  $s = Get-Content -Raw "$h2/settings.json" | ConvertFrom-Json -AsHashtable
+  Assert-True ($s.env.PLANNOTATOR_BROWSER -like '*open-in-vscode.exe') 'PLANNOTATOR_BROWSER set'
+  Assert-Equal 'opus' $s.model 'model kept'
+}
+
+Test 'BackupsDoNotOverwriteEachOther' {
+  $h = New-TempDir
+  Set-File "$h/rules/methods.md" 'first'
+  Invoke-Install $h @('-Components', 'Review,Methods', '-Replace', 'rules/methods.md') | Out-Null
+  Start-Sleep -Seconds 1
+  Set-File "$h/rules/methods.md" 'second'
+  Invoke-Install $h @('-Components', 'Review,Methods', '-Replace', 'rules/methods.md') | Out-Null
+  Assert-Equal 2 @(Get-Item "$h/rules/methods.md.bak-*").Count 'two backups'
+}
+
+Test 'MissingToolsAreMissLines' {
+  $h = New-TempDir
+  $keep = foreach ($c in 'pwsh', 'git') { Split-Path (Get-Command $c).Source }
+  $saved = $env:PATH, $env:WINDIR
+  try {
+    $env:PATH = ($keep | Select-Object -Unique) -join ';'
+    $env:WINDIR = New-TempDir   # no C# compiler there
+    $out = pwsh -NonInteractive -NoProfile -File $installer -ClaudeHome $h -Components Review 2>&1
+    $code = $LASTEXITCODE; $out = $out -join "`n"
+  } finally { $env:PATH, $env:WINDIR = $saved }
+  Assert-Equal 3 $code "exit code ($out)"
+  Assert-True ($out -match 'MISS.*C# compiler') "compiler reported: $out"
+  Assert-True ($out -match 'MISS.*Claude Code') "claude reported: $out"
+  Assert-True ($out -match 'MISS.*VS Code') "code reported: $out"
+  Assert-True ($out -match '== Summary') 'reached the summary'
+}
+
+Test 'ComponentListInOrder' {
+  $r = Invoke-Install (New-TempDir)
+  $i = 'Methods', 'Bmad', 'Fable' | ForEach-Object { $r.Out.IndexOf("    $_`:") }
+  Assert-True ($i[0] -ge 0 -and $i[0] -lt $i[1] -and $i[1] -lt $i[2]) "order: $($r.Out)"
 }
 
 exit $script:Failures

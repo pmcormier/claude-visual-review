@@ -36,6 +36,8 @@ Plannotator, the `plannotator` and `visualizer` plugins, the Plannotator WebView
 Board and Steps capabilities are in place (`-InstallTools` installs what's missing), and with
 `-BmadProject <project>` adds the BMAD overrides to your projects.
 
+It's built to be run by an agent: every problem is a one-line `MISS` with its fix, nothing aborts the run,
+and it ends with a **Summary** of what's left to do (exit 0: done; 3: installed, but see the Summary).
 It never replaces a file in `~/.claude` you changed: it shows the difference and asks, or, when nobody can
 answer (an agent running it), keeps yours and prints the command that replaces it (`-Replace <path>`). What
 it wrote is recorded in `~/.claude/visual-review/installed.json`.

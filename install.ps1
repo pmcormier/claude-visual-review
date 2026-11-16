@@ -68,8 +68,16 @@ $interactive = [Environment]::UserInteractive -and -not [Console]::IsInputRedire
 function Step($msg) { Write-Host "`n== $msg" -ForegroundColor Cyan }
 function Ok($msg) { Write-Host "  ok    $msg" -ForegroundColor Green }
 function Done($msg) { Write-Host "  $msg" -ForegroundColor Green }
-function Miss($msg) { Write-Host "  MISS  $msg" -ForegroundColor Yellow }
-function Skip($msg) { Write-Host "  skip  $msg" -ForegroundColor Yellow }
+# Everything left to do is collected for the Summary at the end; an agent running the installer relays it.
+$script:pending = [Collections.Generic.List[string]]::new()
+function Miss($msg) { Write-Host "  MISS  $msg" -ForegroundColor Yellow; $script:pending.Add($msg) }
+function Skip($msg) { Write-Host "  skip  $msg" -ForegroundColor Yellow; $script:pending.Add($msg) }
+# A backup never overwrites an earlier one.
+function Backup([string]$Path) {
+  $bak = "$Path.bak-$(Get-Date -Format yyyyMMdd-HHmmss)"
+  Copy-Item $Path $bak -Force
+  Split-Path $bak -Leaf
+}
 function Hash([string]$Path) { (Get-FileHash $Path -Algorithm SHA256).Hash }
 
 # Every file under global/ belongs to exactly one component (paths relative to global/).
@@ -79,7 +87,7 @@ $componentFiles = [ordered]@{
   Bmad    = @('bmad/interactive-review.md', 'bmad/write_overrides.py')
   Fable   = @('rules/fable.md', 'bmad/fable-final-review.md')
 }
-$about = @{
+$about = [ordered]@{
   Methods = 'how the planning method is picked per task, work tracking, BMAD and superpowers'
   Bmad    = 'the review layer for BMAD workflows'
   Fable   = 'the Fable final review of BMAD planning docs (needs access to the Fable model)'
@@ -132,7 +140,7 @@ foreach ($c in $Components) {
     $bootstrap = $Owner -and -not $hadManifest -and $destHash -and -not $entry
     if ($bootstrap) {
       $entry = @{ hash = $destHash; source = '' }
-      if ($srcRel -notlike '*.cs' -and $destHash -ne $srcHash) { Copy-Item $dest "$dest.bak" -Force; Write-Host "  (previous $rel kept as $rel.bak)" }
+      if ($srcRel -notlike '*.cs' -and $destHash -ne $srcHash) { Write-Host "  (previous $rel kept as $(Backup $dest))" }
     }
     $ours = $entry -and $destHash -eq $entry.hash
     $current = if ($srcRel -like '*.cs') { $ours -and $entry.source -eq $srcHash } else { $destHash -eq $srcHash }
@@ -149,10 +157,11 @@ foreach ($c in $Components) {
         Skip "$rel kept as yours. To replace it: $rerun -Replace $rel"
         $skipped[$c] += @($rel); continue
       }
-      Copy-Item $dest "$dest.bak" -Force
+      Write-Host "  (previous $rel kept as $(Backup $dest))"
     }
     New-Item -ItemType Directory -Force (Split-Path $dest) | Out-Null
     if ($srcRel -like '*.cs') {
+      if (-not (Test-Path $csc)) { Miss "$rel not built: the C# compiler that ships with Windows (.NET Framework 4) wasn't found at $csc"; continue }
       $out = & $csc /nologo /target:winexe /optimize+ "/out:$dest" $src 2>&1
       if ($LASTEXITCODE) { Miss "$rel did not build: $out"; continue }
     } else { Copy-Item $src $dest -Force }
@@ -176,15 +185,27 @@ foreach ($c in $skipped.Keys) { Miss "$c partly inactive: $($skipped[$c] -join '
 
 Step 'Settings (settings.json env)'
 $settingsPath = Join-Path $claude 'settings.json'
-$settings = if (Test-Path $settingsPath) { Get-Content $settingsPath -Raw | ConvertFrom-Json -AsHashtable } else { @{} }
-if (-not $settings.ContainsKey('env')) { $settings['env'] = @{} }
 $opener = Join-Path $home_vr 'bin\open-in-vscode.exe'
-if ($settings['env']['PLANNOTATOR_BROWSER'] -ne $opener) {
-  if (Test-Path $settingsPath) { Copy-Item $settingsPath "$settingsPath.bak" -Force }
-  $settings['env']['PLANNOTATOR_BROWSER'] = $opener
-  $settings | ConvertTo-Json -Depth 50 | Set-Content $settingsPath -Encoding utf8NoBOM
-  Done "set PLANNOTATOR_BROWSER = $opener (other settings kept; backup: settings.json.bak)"
-} else { Ok 'PLANNOTATOR_BROWSER already set' }
+$settings = @{}
+$settingsOk = $true
+if (Test-Path $settingsPath) {
+  $raw = Get-Content $settingsPath -Raw
+  if ($raw -and $raw.Trim()) {
+    try { $settings = $raw | ConvertFrom-Json -AsHashtable } catch { $settingsOk = $false }
+    if ($settingsOk -and $settings -isnot [Collections.IDictionary]) { $settingsOk = $false }
+  }
+}
+if (-not $settingsOk) {
+  Miss "settings.json isn't valid JSON, so PLANNOTATOR_BROWSER wasn't set: fix or remove $settingsPath, then rerun"
+} else {
+  if ($settings['env'] -isnot [Collections.IDictionary]) { $settings['env'] = @{} }
+  if ($settings['env']['PLANNOTATOR_BROWSER'] -ne $opener) {
+    $note = if (Test-Path $settingsPath) { "; backup: $(Backup $settingsPath)" } else { '' }
+    $settings['env']['PLANNOTATOR_BROWSER'] = $opener
+    $settings | ConvertTo-Json -Depth 50 | Set-Content $settingsPath -Encoding utf8NoBOM
+    Done "set PLANNOTATOR_BROWSER = $opener (other settings kept$note)"
+  } else { Ok 'PLANNOTATOR_BROWSER already set' }
+}
 
 $restartVsCode = $false
 if (-not $SkipToolCheck) {
@@ -201,20 +222,26 @@ if (-not $SkipToolCheck) {
   }
   elseif ($InstallTools) { Invoke-RestMethod https://plannotator.ai/install.ps1 | Invoke-Expression; $restartVsCode = $true }
   else { Miss 'Plannotator binary (irm https://plannotator.ai/install.ps1 | iex)' }
-  $plugins = (& claude plugin list 2>$null) -join "`n"
-  foreach ($p in @(
+  $hasClaude = [bool](Get-Command claude -ErrorAction SilentlyContinue)
+  $hasCode = [bool](Get-Command code -ErrorAction SilentlyContinue)
+  if (-not $hasClaude) { Miss 'Claude Code CLI (`claude`) not on PATH, so its plugins were not checked: install Claude Code, then rerun' }
+  if (-not $hasCode) { Miss 'VS Code''s `code` command not on PATH, so the WebView extension was not checked: install VS Code, reopen the terminal, then rerun' }
+  $plugins = if ($hasClaude) { (& claude plugin list 2>$null) -join "`n" }
+  foreach ($p in @(if ($hasClaude) {
       @{ Name = 'plannotator@plannotator'; Market = 'backnotprop/plannotator' },
-      @{ Name = 'visualizer@visualizer';   Market = 'stemado/visualizer-plugin' })) {
+      @{ Name = 'visualizer@visualizer';   Market = 'stemado/visualizer-plugin' } })) {
     if ($plugins -match [regex]::Escape(($p.Name -split '@')[0])) { Ok "plugin $($p.Name)" }
     elseif ($InstallTools) {
       & claude plugin marketplace add $p.Market
       & claude plugin install $p.Name
     } else { Miss "plugin $($p.Name) (claude plugin marketplace add $($p.Market); claude plugin install $($p.Name))" }
   }
-  $ext = (& code --list-extensions 2>$null) -join "`n"
-  if ($ext -match 'backnotprop\.plannotator-webview') { Ok 'VS Code extension backnotprop.plannotator-webview' }
-  elseif ($InstallTools) { & code --install-extension backnotprop.plannotator-webview }
-  else { Miss 'VS Code extension (code --install-extension backnotprop.plannotator-webview)' }
+  if ($hasCode) {
+    $ext = (& code --list-extensions 2>$null) -join "`n"
+    if ($ext -match 'backnotprop\.plannotator-webview') { Ok 'VS Code extension backnotprop.plannotator-webview' }
+    elseif ($InstallTools) { & code --install-extension backnotprop.plannotator-webview }
+    else { Miss 'VS Code extension (code --install-extension backnotprop.plannotator-webview)' }
+  }
   # The rule uses Board cards and thread checklists; both are Inbox capabilities, off by default and kept in
   # Plannotator's own config. Check them here; turning them on stays in the Inbox's Settings.
   $pn = if ($plannotator) { $plannotator } elseif (Test-Path $plannotatorExe) { $plannotatorExe }
@@ -260,6 +287,13 @@ if ($BmadProject.Count) {
   }
 }
 
-Step 'Done'
-if ($restartVsCode) { Write-Host '  Close every VS Code window, reopen VS Code, then start a new Claude Code session in its terminal (a new terminal alone keeps the old PATH).' }
-else { Write-Host '  Start a new Claude Code session (in a VS Code terminal) so the settings and rules load.' }
+# The Summary is what an agent running this relays to the person. Exit 0: done. Exit 3: installed, but
+# something below needs attention.
+Step 'Summary'
+if ($script:pending.Count) {
+  Write-Host "  $($script:pending.Count) thing(s) left to do:"
+  foreach ($m in $script:pending) { Write-Host "    - $m" }
+} else { Write-Host '  Nothing left to do.' }
+if ($restartVsCode) { Write-Host '  Then: close every VS Code window, reopen VS Code, then start a new Claude Code session in its terminal (a new terminal alone keeps the old PATH).' }
+else { Write-Host '  Then: start a new Claude Code session (in a VS Code terminal) so the settings and rules load.' }
+exit ($script:pending.Count ? 3 : 0)

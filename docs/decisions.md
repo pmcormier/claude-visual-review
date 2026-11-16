@@ -198,3 +198,13 @@ plan: `docs/superpowers/`.
 Fable component, that would stop someone's BMAD planning at every final doc. The steps moved, unchanged, into
 `rules/fable.md`, installed only with the Fable component, and `write_overrides.py` adds the Fable line to BMAD
 overrides only when `~/.claude/bmad/fable-final-review.md` is installed.
+
+## 26. The installer is run by agents (2026-11-16)
+The owner: "this will be agent driven ... Nobody is going to just run it." So the installer's output is for an
+agent to read and relay. Every problem it can meet (invalid `settings.json`, a missing `claude`, `code` or C#
+compiler, a skipped file) is a one-line `MISS` with its fix, and the run continues instead of aborting. It ends
+with a Summary of what's left to do and exits 0 when done, 3 when installed but something needs attention, so an
+agent can tell them apart without parsing every line; the setup prompt tells the agent to relay the Summary.
+Backups are timestamped (`.bak-yyyyMMdd-HHmmss`) so a rerun never overwrites an earlier one. In the same change,
+end-of-run reports chart lines changed as horizontal stacked bars in an `html` block (by area, split by kind,
+totals at the end): the owner found that clearer than a Mermaid bar chart.

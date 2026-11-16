@@ -22,11 +22,14 @@ them. Ask before anything that changes my machine beyond what's listed here, and
    from memory. BMAD is set up per project; ask which projects.
 4. **Get the repo.** Ask where to keep it (suggest a folder next to my other projects). If it's already
    there, `git pull` instead.
-5. **Run the installer** from the repo folder:
+5. **Run the installer** from the repo folder. Tell me first that `-InstallTools` runs Plannotator's official
+   install script (`irm https://plannotator.ai/install.ps1 | iex`) if Plannotator is missing, and get my OK:
    `./install.ps1 -InstallTools -Components <my components>`, adding `-BmadProject <project>, ...` for BMAD
-   projects. Read its output:
+   projects. It ends with a **Summary**: exit code 0 means done; 3 means installed, but the Summary lists
+   what's left. Relay the Summary to me, then:
    - For each `skip ... kept as yours` line, show me the difference it printed and ask whether to replace my
-     file. Rerun with `-Replace <path>` for the ones I say yes to; the old file is kept as `.bak`.
+     file. Rerun with `-Replace <path>` for the ones I say yes to; the old file is kept as a timestamped
+     `.bak-…` copy.
    - Any `MISS` line is something to fix; do what it says or tell me what I need to do.
 6. **The steps only I can do.** Tell me, in order: close every VS Code window and reopen VS Code (a new
    terminal isn't enough), then start a new Claude Code session in its terminal; open the Inbox
