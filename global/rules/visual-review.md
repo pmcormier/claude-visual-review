@@ -40,7 +40,7 @@ Use the `plannotator_inbox` tool (`send_message`); without it, `plannotator inbo
   right, what went wrong, what is blocked, steps completed, next steps, and open questions as `:::question`
   blocks. When files changed, add a chart of lines changed by area (from `git diff --numstat`; say that size
   isn't importance): horizontal stacked bars in an `html` block, one bar per area, split by kind (code, tests,
-  docs, plan), with each total at the end of its bar. A guided walkthrough of the diff is optional: send it when the changes are important or
+  docs, plan), each kind's removed lines in a lighter shade of its colour, with each total at the end of its bar. A guided walkthrough of the diff is optional: send it when the changes are important or
   risky; otherwise offer it in one line, and send it whenever I ask.
 - **Files changed, so I can explore.** Any Inbox report on work that changed files, in any project, opens with
   a **Files changed** header: a plain Markdown list grouped by area, naming the two or three files worth opening

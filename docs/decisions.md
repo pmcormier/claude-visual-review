@@ -207,4 +207,4 @@ with a Summary of what's left to do and exits 0 when done, 3 when installed but 
 agent can tell them apart without parsing every line; the setup prompt tells the agent to relay the Summary.
 Backups are timestamped (`.bak-yyyyMMdd-HHmmss`) so a rerun never overwrites an earlier one. In the same change,
 end-of-run reports chart lines changed as horizontal stacked bars in an `html` block (by area, split by kind,
-totals at the end): the owner found that clearer than a Mermaid bar chart.
+removed lines in a lighter shade, totals at the end): the owner found that clearer than a Mermaid bar chart.
