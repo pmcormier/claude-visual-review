@@ -52,9 +52,10 @@ inherit VS Code's environment from when it started, so a new terminal alone does
 `git pull`, then run `./install.ps1` again: it reuses the components you installed last time (or pass
 `-Components` to change them). Files you didn't change are updated quietly.
 
-To turn Rigor off, run `./install.ps1 -Components` with your other components and without Rigor: it removes the
-hook from `settings.json` and renames Rigor's files to `*.retired` (a file you changed stays, and the Summary
-names it). Leaving out another component leaves its files in place.
+To turn Rigor off, run `./install.ps1 -Remove Rigor`: it removes the hook from `settings.json` and renames
+Rigor's files to `*.retired` (a file you changed stays, and the Summary names it). Leaving Rigor out of
+`-Components` doesn't remove it, so copying an example that lists fewer components can't switch the pushback
+check off. Leaving out another component leaves its files in place.
 
 ## Make it yours
 
@@ -65,7 +66,9 @@ loads every file in `rules/`, and the installer never touches yours. Plannotator
 ## Maintaining this repo
 
 - `docs/decisions.md` records why each choice was made; `docs/superpowers/` holds designs and plans.
-- `pwsh -NoProfile -File tests/run.ps1` runs the tests; they never touch the real `~/.claude`.
+- `pwsh -NoProfile -File tests/run.ps1` runs the tests; they never touch the real `~/.claude`, and clean up
+  their temp folders. They don't build the opener unless `CVR_TEST_BUILD=1`, because security tools quarantine
+  new .exe files appearing in `%TEMP%`.
 - `tools/check-personal.ps1` fails on personal data in tracked files (local paths, emails, artifact links, and
   terms from a list kept outside the repo). `./install.ps1 -Owner` installs every component and adds it as a
   pre-commit hook.

@@ -3,9 +3,12 @@
 $installer = Join-Path $RepoRoot 'install.ps1'
 $global = Join-Path $RepoRoot 'global'
 
-# Runs the installer non-interactively against a temp Claude home, without the tool checks.
+# Runs the installer non-interactively against a temp Claude home, without the tool checks. The opener is built
+# only when CVR_TEST_BUILD=1: security tools quarantine new .exe files appearing in %TEMP%.
+$build = $env:CVR_TEST_BUILD -eq '1'
 function Invoke-Install([string]$ClaudeHome, [string[]]$Extra = @()) {
-  $out = pwsh -NonInteractive -NoProfile -File $installer -ClaudeHome $ClaudeHome -SkipToolCheck @Extra 2>&1
+  $skip = @(if (-not $build) { '-SkipBuild' })
+  $out = pwsh -NonInteractive -NoProfile -File $installer -ClaudeHome $ClaudeHome -SkipToolCheck @skip @Extra 2>&1
   @{ Code = $LASTEXITCODE; Out = ($out -join "`n") }
 }
 function Hash([string]$Path) { (Get-FileHash $Path -Algorithm SHA256).Hash }
@@ -22,13 +25,14 @@ Test 'FreshInstallReviewOnly' {
   $r = Invoke-Install $h @('-Components', 'Review')
   Assert-Equal 0 $r.Code "exit code ($($r.Out))"
   Assert-Equal (Hash "$global/rules/visual-review.md") (Hash "$h/rules/visual-review.md") 'visual-review.md installed'
-  Assert-True (Test-Path "$h/visual-review/bin/open-in-vscode.exe") 'opener built'
+  if ($build) { Assert-True (Test-Path "$h/visual-review/bin/open-in-vscode.exe") 'opener built' }
+  else { Assert-True (-not (Test-Path "$h/visual-review/bin/open-in-vscode.exe")) 'opener not built with -SkipBuild' }
   Assert-True (-not (Test-Path "$h/rules/methods.md")) 'methods.md not installed'
   Assert-True (-not (Test-Path "$h/rules/fable.md")) 'fable.md not installed'
   Assert-True (-not (Test-Path "$h/bmad")) 'no BMAD files'
   $m = Read-Manifest $h
   Assert-True ($m.ContainsKey('rules/visual-review.md')) 'manifest lists visual-review.md'
-  Assert-True ($m.ContainsKey('visual-review/bin/open-in-vscode.exe')) 'manifest lists the opener'
+  if ($build) { Assert-True ($m.ContainsKey('visual-review/bin/open-in-vscode.exe')) 'manifest lists the opener' }
 }
 
 Test 'FreshInstallAllCoversEveryGlobalFile' {
@@ -37,6 +41,7 @@ Test 'FreshInstallAllCoversEveryGlobalFile' {
   Assert-Equal 0 $r.Code "exit code ($($r.Out))"
   foreach ($f in Get-ChildItem $global -Recurse -File) {
     $rel = [IO.Path]::GetRelativePath($global, $f.FullName) -replace '\\', '/' -replace '\.cs$', '.exe'
+    if (-not $build -and $rel -like '*.exe') { continue }
     Assert-True (Test-Path "$h/$rel") "$rel installed"
   }
 }
@@ -277,11 +282,11 @@ Test 'RigorHookAddedOnceAndOthersKept' {
   Assert-Equal 'stop-hook' $s.hooks.Stop[0].hooks[0].command 'other events kept'
 }
 
-Test 'RigorDroppedRemovesHookAndRetiresFiles' {
+Test 'RemoveRigorRemovesHookAndRetiresFiles' {
   $h = New-TempDir
   Set-File "$h/settings.json" '{ "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type": "command", "command": "other-hook" } ] } ] } }'
   Invoke-Install $h @('-Components', 'Review,Rigor') | Out-Null
-  $r = Invoke-Install $h @('-Components', 'Review')
+  $r = Invoke-Install $h @('-Components', 'Review', '-Remove', 'Rigor')
   Assert-Equal 0 $r.Code "exit code ($($r.Out))"
   Assert-True ($r.Out -match 'removed the Rigor hook') "announced: $($r.Out)"
   $s = Get-Content -Raw "$h/settings.json" | ConvertFrom-Json -AsHashtable
@@ -298,14 +303,32 @@ Test 'RigorDroppedRemovesHookAndRetiresFiles' {
   Assert-True ($r2.Out -notmatch 'Rigor') "rerun quiet: $($r2.Out)"
 }
 
-Test 'RigorDroppedKeepsEditedRule' {
+Test 'RemoveRigorKeepsEditedRule' {
   $h = New-TempDir
   Invoke-Install $h @('-Components', 'Review,Rigor') | Out-Null
   Add-Content "$h/rules/rigor.md" 'my line'
-  $r = Invoke-Install $h @('-Components', 'Review')
+  $r = Invoke-Install $h @('-Components', 'Review', '-Remove', 'Rigor')
   Assert-True (Test-Path "$h/rules/rigor.md") 'edited rule left in place'
   Assert-True ($r.Out -match 'rules/rigor\.md') "named: $($r.Out)"
   Assert-Equal 3 $r.Code "needs attention ($($r.Out))"
+}
+
+Test 'RigorKeptWhenLeftOut' {
+  $h = New-TempDir
+  Invoke-Install $h @('-Components', 'Review,Rigor') | Out-Null
+  $r = Invoke-Install $h @('-Components', 'Review,Methods')
+  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  Assert-True ($r.Out -match '-Remove Rigor') "says how to remove it: $($r.Out)"
+  foreach ($f in 'rules/rigor.md', 'rigor/pushback.md', 'hooks/pushback-check.mjs') { Assert-True (Test-Path "$h/$f") "$f kept" }
+  $s = Get-Content -Raw "$h/settings.json" | ConvertFrom-Json -AsHashtable
+  $cmds = @($s.hooks.UserPromptSubmit | ForEach-Object { $_.hooks } | ForEach-Object { $_.command })
+  Assert-Equal 1 @($cmds | Where-Object { $_ -match 'pushback-check\.mjs' }).Count 'Rigor hook kept'
+}
+
+Test 'RemoveTakesOnlyRigor' {
+  $r = Invoke-Install (New-TempDir) @('-Components', 'Review,Methods', '-Remove', 'Methods')
+  Assert-True ($r.Code -ne 0) "refused ($($r.Out))"
+  Assert-True ($r.Out -match '-Remove takes only Rigor') "says why: $($r.Out)"
 }
 
 Test 'NoRigorNoHook' {

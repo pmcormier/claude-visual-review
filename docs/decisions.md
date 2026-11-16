@@ -238,3 +238,16 @@ off: the hook is removed from `settings.json` and Rigor's unchanged files are re
 hook that runs on every message should not outlive the choice to drop it. Only Rigor does this; leaving out
 another component still leaves its files, since none of them acts on every message and an explicit partial
 `-Components` run shouldn't quietly switch off rules someone still relies on.
+
+## 29. Rigor is removed only on request; tests don't build the opener (2026-11-16)
+Decision 28 made leaving Rigor out of `-Components` turn it off. But this repo's own examples list fewer
+components (`-Components Review,Methods,Bmad -BmadProject ...` in the setup guide, the `-Replace` examples in
+the installer), and that run printed "retired" and still exited 0, so an agent running it had no reason to say
+anything: copying an example quietly switched off the pushback check. Turning it off now takes
+`-Remove Rigor`; a run that leaves Rigor out of `-Components` keeps it and says how to remove it. Decision 28's
+reason stands for the explicit case: `-Remove Rigor` takes the hook out and retires the files. Considered making
+the silent removal exit 3 so an agent relays it; rejected because it still removes first and asks after.
+
+In the same change the tests stopped compiling the opener (installer `-SkipBuild`, used by the tests unless
+`CVR_TEST_BUILD=1`), and `tests/run.ps1` deletes the temp folders it made: each run had built about 30 copies of
+`open-in-vscode.exe` in `%TEMP%`, which a security tool on the maintainer's machine quarantined one by one.

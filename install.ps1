@@ -44,6 +44,14 @@
 .PARAMETER SkipToolCheck
   Skip the tool checks and the hook. For tests.
 
+.PARAMETER Remove
+  Rigor, to turn it off: its hook is taken out of settings.json and its files retired as *.retired. Leaving
+  Rigor out of -Components never removes it once installed, so a partial -Components run can't switch off the
+  pushback check by accident.
+
+.PARAMETER SkipBuild
+  Don't compile the opener. For tests: security tools quarantine new .exe files appearing in %TEMP%.
+
 .EXAMPLE
   ./install.ps1 -InstallTools -Components Review,Methods
   ./install.ps1 -Components Review,Methods,Bmad -BmadProject <project>, <project>
@@ -57,7 +65,9 @@ param(
   [string[]]$BmadProject = @(),
   [switch]$InstallTools,
   [string]$ClaudeHome = (Join-Path $HOME '.claude'),
-  [switch]$SkipToolCheck
+  [switch]$SkipToolCheck,
+  [string[]]$Remove = @(),
+  [switch]$SkipBuild
 )
 $ErrorActionPreference = 'Stop'
 $repo = $PSScriptRoot
@@ -125,6 +135,16 @@ elseif (-not $Components.Count) {
 }
 foreach ($c in $Components) { if (-not $componentFiles.Contains($c)) { throw "Unknown component '$c'; choose from $($componentFiles.Keys -join ', ')" } }
 $Components = @('Review') + @($Components | Where-Object { $_ -ne 'Review' }) | Select-Object -Unique
+# Rigor acts on every message, so it is removed only on request (decision 29): a partial -Components list copied
+# from an example must not quietly turn the pushback check off.
+$Remove = Split-List $Remove
+foreach ($c in $Remove) { if ($c -ne 'Rigor') { throw "-Remove takes only Rigor; leaving another component out of -Components leaves its files in place" } }
+$rigorInstalled = @($componentFiles['Rigor'] | Where-Object { $manifest.ContainsKey($_) }).Count -gt 0
+if ($Remove -contains 'Rigor') { $Components = @($Components | Where-Object { $_ -ne 'Rigor' }) }
+elseif ($rigorInstalled -and $Components -notcontains 'Rigor') {
+  $Components += 'Rigor'
+  Write-Host '  (Rigor kept: it is installed here, and leaving it out of -Components does not remove it; to turn it off, add -Remove Rigor)'
+}
 Ok ($Components -join ', ')
 
 Step 'Files'
@@ -133,6 +153,7 @@ $skipped = @{}
 $rerun = if ($Owner) { './install.ps1 -Owner' } else { "./install.ps1 -Components $($Components -join ',')" }
 foreach ($c in $Components) {
   foreach ($srcRel in $componentFiles[$c]) {
+    if ($SkipBuild -and $srcRel -like '*.cs') { continue }
     $src = Join-Path $repo "global/$srcRel"
     $rel = $srcRel -replace '\.cs$', '.exe'
     $dest = Join-Path $claude $rel
@@ -180,14 +201,14 @@ foreach ($rel in @('rules/bmad.md')) {   # replaced by rules/methods.md (decisio
     Move-Item $old "$old.retired" -Force; $manifest.Remove($rel); Ok "$rel retired (kept as $rel.retired)"
   }
 }
-# Rigor runs on every message, so leaving it out turns it off: its files are retired and its hook removed (below).
-# A file you changed stays where it is, and is named once.
-if ($Components -notcontains 'Rigor') {
+# -Remove Rigor turns it off: its files are retired and its hook removed (below). A file you changed stays where
+# it is, and is named once.
+if ($Remove -contains 'Rigor') {
   foreach ($rel in $componentFiles['Rigor']) {
     if (-not $manifest.ContainsKey($rel)) { continue }
     $old = Join-Path $claude $rel
     if ((Test-Path $old) -and (Hash $old) -eq $manifest[$rel].hash) {
-      Move-Item $old "$old.retired" -Force; Done "$rel retired (Rigor not chosen; kept as $rel.retired)"
+      Move-Item $old "$old.retired" -Force; Done "$rel retired (-Remove Rigor; kept as $rel.retired)"
     } elseif (Test-Path $old) {
       Miss "$rel left in place because you changed it, so Rigor is still partly on: delete it to turn Rigor off"
     }
@@ -240,8 +261,8 @@ if (-not $settingsOk) {
     if (-not $SkipToolCheck -and -not (Get-Command node -ErrorAction SilentlyContinue)) {
       Miss 'Node.js (`node`) not on PATH, so the Rigor hook cannot run: install Node.js, then start a new session'
     }
-  } elseif ($settings['hooks'] -is [Collections.IDictionary] -and $settings['hooks']['UserPromptSubmit']) {
-    # Rigor not chosen: take out its hook, keep every other one.
+  } elseif ($Remove -contains 'Rigor' -and $settings['hooks'] -is [Collections.IDictionary] -and $settings['hooks']['UserPromptSubmit']) {
+    # -Remove Rigor: take out its hook, keep every other one.
     $isRigor = { "$($_['command'])" -match 'pushback-check\.mjs' }
     $groups = @($settings['hooks']['UserPromptSubmit'] | Where-Object { $_ })
     if (@($groups | ForEach-Object { $_['hooks'] } | Where-Object $isRigor).Count) {
@@ -250,7 +271,7 @@ if (-not $settingsOk) {
           if ($g['hooks'].Count) { $g }
         })
       if ($kept.Count) { $settings['hooks']['UserPromptSubmit'] = $kept } else { $settings['hooks'].Remove('UserPromptSubmit') }
-      $changes += 'removed the Rigor hook (Rigor not chosen)'
+      $changes += 'removed the Rigor hook (-Remove Rigor)'
     }
   }
   if ($changes.Count) {
