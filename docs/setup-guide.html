@@ -1,169 +1,202 @@
 <title>Visual Review Setup</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: one reading column; a numbered checklist down the page, each step a row with its own command block. */
+/* Layout: one reading column. The kick-off prompt is the hero, shown as the terminal pane it gets pasted into;
+   below it, what you need, the steps in order, what the end looks like, and fixes. */
 :root {
-  --bg: #f6f7f4; --surface: #ffffff; --fg: #1d2420; --muted: #5d6862; --rule: #dde2dc;
-  --ink: #1f5c4a; --mark: #f2d34a; --mark-soft: #fbf1c2; --code-bg: #eef1ec; --ok: #2d7a4f;
-  --sans: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --bg: #f3f5fa; --surface: #ffffff; --fg: #18203a; --muted: #5a6382; --rule: #dbe0ec;
+  --accent: #2f4fd0; --accent-soft: #e6ebfc; --approve: #1f7a52; --warn: #a3620a;
+  --term-bg: #141a2e; --term-fg: #dfe5ff; --term-dim: #8c96bf; --term-ok: #7fe0b0; --term-warn: #f3c46b;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Hanken Grotesk", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #141917; --surface: #1b211e; --fg: #e4e9e5; --muted: #9aa69f; --rule: #2c3530;
-  --ink: #7fd0b3; --mark: #e8c63a; --mark-soft: #3a3517; --code-bg: #222a26; --ok: #6fcf97; color-scheme: dark } }
+  --bg: #0f1322; --surface: #171d31; --fg: #e3e7f6; --muted: #98a1c2; --rule: #2a3250;
+  --accent: #8ea4ff; --accent-soft: #212b52; --approve: #6fd3a4; --warn: #f0b85a;
+  --term-bg: #0a0d18; --term-fg: #dfe5ff; --term-dim: #7f89b3; --term-ok: #7fe0b0; --term-warn: #f3c46b;
+  color-scheme: dark } }
 :root[data-theme="dark"] {
-  --bg: #141917; --surface: #1b211e; --fg: #e4e9e5; --muted: #9aa69f; --rule: #2c3530;
-  --ink: #7fd0b3; --mark: #e8c63a; --mark-soft: #3a3517; --code-bg: #222a26; --ok: #6fcf97; color-scheme: dark }
+  --bg: #0f1322; --surface: #171d31; --fg: #e3e7f6; --muted: #98a1c2; --rule: #2a3250;
+  --accent: #8ea4ff; --accent-soft: #212b52; --approve: #6fd3a4; --warn: #f0b85a;
+  --term-bg: #0a0d18; --term-fg: #dfe5ff; --term-dim: #7f89b3; --term-ok: #7fe0b0; --term-warn: #f3c46b;
+  color-scheme: dark }
 
-body { background: var(--bg); color: var(--fg); font: 16px/1.6 var(--sans); }
-.wrap { max-width: 760px; margin: 0 auto; padding-block: 40px 64px;
-  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-h1 { font-size: 2.1rem; line-height: 1.15; margin: 0 0 8px; text-wrap: balance; letter-spacing: -0.01em; }
-h1 mark { background: linear-gradient(transparent 55%, var(--mark) 55%); color: inherit; padding: 0 2px; }
-h2 { font-size: 1.15rem; margin: 40px 0 12px; text-wrap: balance; }
-p { margin: 0 0 12px; max-width: 65ch; }
-.lede { color: var(--muted); font-size: 1.05rem; }
-.eyebrow { font: 500 0.75rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); margin-bottom: 10px; }
-code { font-family: var(--mono); font-size: 0.88em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+body { background: var(--bg); color: var(--fg); font: 16px/1.6 var(--body); }
+.wrap { max-width: 780px; margin: 0 auto; padding-block: 48px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 48px; }
+section { display: grid; gap: 14px; min-width: 0; }
+h1, h2 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(2rem, 5.5vw, 2.9rem); line-height: 1.05; font-weight: 700; }
+h2 { font-size: 1.35rem; font-weight: 700; }
+p { margin: 0; max-width: 65ch; }
+.eyebrow { font: 500 0.75rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.lede { color: var(--muted); font-size: 1.08rem; }
+code { font: 0.86em var(--mono); background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-.flow { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px; margin: 24px 0 8px; overflow-x: auto; }
-.flow svg { display: block; width: 100%; min-width: 560px; height: auto; }
-.flow text { font-family: var(--sans); font-size: 13px; fill: var(--fg); }
-.flow .sub { fill: var(--muted); font-size: 11.5px; }
-.flow .box { fill: var(--bg); stroke: var(--rule); stroke-width: 1.5; }
-.flow .hot { fill: var(--mark-soft); stroke: var(--mark); }
-.flow .arrow { stroke: var(--ink); stroke-width: 1.8; fill: none; }
-.flow .head { fill: var(--ink); }
-.caption { font-size: 0.85rem; color: var(--muted); }
+/* The hero: the prompt, in the terminal it's pasted into. */
+.term { background: var(--term-bg); color: var(--term-fg); border-radius: 12px; overflow: hidden; min-width: 0; }
+.term-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; font: 500 0.78rem var(--mono); color: var(--term-dim); border-bottom: 1px solid rgba(140,150,191,.18); }
+.term-bar .dots { display: flex; gap: 6px; }
+.term-bar .dots i { width: 10px; height: 10px; border-radius: 50%; background: rgba(140,150,191,.35); }
+.term-bar .copy { margin-left: auto; }
+.term pre { margin: 0; padding: 18px 18px 20px; font: 0.95rem/1.65 var(--mono); white-space: pre-wrap; word-break: break-word; }
+.term .caret { color: var(--term-ok); }
+button.copy { font: 500 0.78rem var(--mono); background: transparent; color: var(--term-fg); border: 1px solid rgba(140,150,191,.45); border-radius: 6px; padding: 4px 12px; cursor: pointer; }
+button.copy:hover { border-color: var(--term-ok); color: var(--term-ok); }
 
-.progress { display: flex; align-items: center; gap: 12px; margin: 8px 0 16px; font: 500 0.85rem var(--mono); color: var(--muted); }
+/* What you need: a compact checklist. */
+.needs { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; list-style: none; padding: 0; margin: 0; }
+.needs li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 10px 14px; }
+.tag { font: 500 0.7rem var(--mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+
+/* Steps: a real sequence, so numbered. */
+.progress { display: flex; align-items: center; gap: 12px; font: 500 0.82rem var(--mono); color: var(--muted); }
 .bar { flex: 1; height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
-.bar > i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .25s; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--approve); transition: width .25s; }
 @media (prefers-reduced-motion: reduce) { .bar > i { transition: none; } }
-button.reset { font: inherit; background: none; border: 0; color: var(--ink); cursor: pointer; text-decoration: underline; }
+button.reset { font: inherit; background: none; border: 0; color: var(--accent); cursor: pointer; text-decoration: underline; }
+ol.steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 0; counter-reset: step; border-top: 1px solid var(--rule); }
+.step { display: grid; grid-template-columns: 2.4rem 1fr auto; gap: 4px 14px; padding: 16px 0; border-bottom: 1px solid var(--rule); align-items: start; }
+.step::before { counter-increment: step; content: counter(step); font: 700 1.35rem/1.2 var(--display); color: var(--accent); }
+.step.done::before { content: "✓"; color: var(--approve); }
+.step .body { min-width: 0; display: grid; gap: 4px; }
+.step h3 { margin: 0; font: 600 1.02rem/1.4 var(--body); }
+.step.done h3 { color: var(--muted); }
+.step p { color: var(--muted); font-size: 0.95rem; }
+.step input { width: 20px; height: 20px; margin-top: 3px; accent-color: var(--approve); cursor: pointer; }
 
-ol.steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
-.step { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 18px; display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; }
-.step.done { border-color: var(--ok); }
-.step.done .body > h3 { text-decoration: line-through; text-decoration-color: var(--ok); color: var(--muted); }
-.step input[type=checkbox] { width: 20px; height: 20px; margin-top: 3px; accent-color: var(--ok); cursor: pointer; }
-.body { min-width: 0; }
-.body h3 { font-size: 1rem; margin: 0 0 4px; }
-.body p { font-size: 0.95rem; }
-.opt { font: 500 0.7rem var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--rule); border-radius: 999px; padding: 1px 8px; margin-left: 6px; vertical-align: 2px; }
+/* What the end looks like: an example Summary. */
+.example { display: grid; gap: 8px; }
+.example .note { font: 500 0.75rem var(--mono); color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.term pre .ok { color: var(--term-ok); } .term pre .warn { color: var(--term-warn); } .term pre .dim { color: var(--term-dim); }
+.codes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.code-card { border: 1px solid var(--rule); background: var(--surface); border-radius: 8px; padding: 12px 14px; display: grid; gap: 4px; }
+.code-card b { font: 600 0.9rem var(--mono); }
+.code-card.zero b { color: var(--approve); } .code-card.three b { color: var(--warn); }
+.code-card span { color: var(--muted); font-size: 0.93rem; }
 
-.cmd { position: relative; margin: 8px 0 4px; }
-.cmd pre { margin: 0; background: var(--code-bg); border-radius: 8px; padding: 12px 84px 12px 14px; overflow-x: auto; font: 0.85rem/1.55 var(--mono); white-space: pre; }
-.cmd button { position: absolute; top: 8px; right: 8px; font: 500 0.75rem var(--mono); background: var(--surface); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
-.cmd button:focus-visible, .step input:focus-visible, button.reset:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-
-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+/* Fixes. */
 .tablewrap { overflow-x: auto; }
-th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
-th { font: 500 0.75rem var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-td:first-child { white-space: nowrap; }
-.note { border-left: 3px solid var(--mark); background: var(--mark-soft); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 0.93rem; }
+table { width: 100%; border-collapse: collapse; font-size: 0.93rem; }
+th, td { text-align: left; padding: 10px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 500 0.72rem var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+td:first-child { font-weight: 600; min-width: 11rem; }
+
+details { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 16px; }
+details summary { cursor: pointer; font-weight: 600; }
+details[open] summary { margin-bottom: 10px; }
+details .term { margin: 10px 0; }
+details p + p { margin-top: 8px; }
+.foot { color: var(--muted); font-size: 0.9rem; }
+@media (max-width: 480px) { .step { grid-template-columns: 2rem 1fr auto; } td:first-child { min-width: 8rem; } }
 </style>
 
 <div class="wrap">
-  <div class="eyebrow">claude-visual-review · Windows</div>
-  <h1>Set up <mark>visual review</mark> for Claude Code</h1>
-  <p class="lede">Claude Code sends sign-offs, choices, findings and end-of-run reports to the Plannotator Inbox, where you read, pick options and approve when you can. Reports list the changed files as links that open in VS Code, with the diff attached. Your reply goes straight back to the session that asked. This works everywhere: plain sessions, superpowers and BMAD. Review tabs in VS Code open only when you ask for one.</p>
+  <header style="display:grid;gap:12px">
+    <div class="eyebrow">claude-visual-review · Windows + VS Code</div>
+    <h1>Set up visual review with your agent</h1>
+    <p class="lede">Claude Code brings you decisions, sign-offs and reports in the Plannotator Inbox, where you read them and click Approve or Change. Your answer goes straight back to the session that asked. Your own agent installs it with you; it takes about ten minutes.</p>
+  </header>
 
-  <div class="flow" role="img" aria-label="Claude sends a message to a Plannotator Inbox thread, you answer its questions or approve there, and your reply returns to the same Claude session, which goes on or revises and sends again.">
-    <svg viewBox="0 0 700 170" xmlns="http://www.w3.org/2000/svg">
-      <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="head" d="M0 0L10 5L0 10z"/></marker></defs>
-      <rect class="box" x="10" y="30" width="150" height="62" rx="8"/>
-      <text x="85" y="56" text-anchor="middle">Claude session</text>
-      <text class="sub" x="85" y="76" text-anchor="middle">writes doc, diagram, diff</text>
-      <rect class="box" x="275" y="30" width="150" height="62" rx="8"/>
-      <text x="350" y="56" text-anchor="middle">Plannotator</text>
-      <text class="sub" x="350" y="76" text-anchor="middle">Inbox thread</text>
-      <rect class="box hot" x="540" y="30" width="150" height="62" rx="8"/>
-      <text x="615" y="56" text-anchor="middle">You</text>
-      <text class="sub" x="615" y="76" text-anchor="middle">pick · approve · open files</text>
-      <path class="arrow" d="M160 61H273" marker-end="url(#ah)"/>
-      <path class="arrow" d="M425 61H538" marker-end="url(#ah)"/>
-      <path class="arrow" d="M615 92V138H85V94" marker-end="url(#ah)"/>
-      <text class="sub" x="350" y="156" text-anchor="middle">reply returns to the same session: Approve → go on · Change → revise and send again</text>
-      <text class="sub" x="216" y="52" text-anchor="middle">message</text>
-      <text class="sub" x="482" y="52" text-anchor="middle">notifies</text>
-    </svg>
-  </div>
-  <p class="caption">Seeing a message or opening a review never counts as approval. Only Approve does, or your saying so.</p>
+  <section aria-labelledby="h-prompt">
+    <h2 id="h-prompt">Paste this into Claude Code</h2>
+    <div class="term">
+      <div class="term-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span>Claude Code · VS Code terminal</span><button class="copy" type="button" data-copy="prompt">Copy</button></div>
+      <pre id="prompt"><span class="caret" aria-hidden="true">&gt; </span><span data-text>Set up claude-visual-review for me. Read https://raw.githubusercontent.com/pmcormier/claude-visual-review/main/docs/setup-prompt.md and follow it step by step: it walks you through installing it with me. Ask me before changing anything on my machine, and show me the installer's Summary at the end.</span></pre>
+    </div>
+    <p class="foot">Your agent reads the full instructions from the repo, so you always get the current version. Paste the same prompt again later to update.</p>
+  </section>
 
-  <h2>Before you start</h2>
-  <p>You need Windows with PowerShell 7, VS Code, Claude Code, git and Python. You need <code>uv</code> only for BMAD projects. Use Claude Code from a VS Code terminal; anywhere else, reviews open in the browser instead.</p>
-  <p>Rather have your agent do it? Paste <a href="https://github.com/pmcormier/claude-visual-review/blob/main/docs/setup-prompt.md">the setup prompt</a> into Claude Code and it walks through these steps with you.</p>
+  <section aria-labelledby="h-need">
+    <h2 id="h-need">Before you start</h2>
+    <ul class="needs">
+      <li>Windows <span class="tag">required</span></li>
+      <li>PowerShell 7 (<code>pwsh</code>) <span class="tag">required</span></li>
+      <li>VS Code <span class="tag">required</span></li>
+      <li>Claude Code <span class="tag">required</span></li>
+      <li>git and Python <span class="tag">required</span></li>
+      <li><code>uv</code> <span class="tag">BMAD only</span></li>
+    </ul>
+    <p class="foot">Your agent checks these first and tells you how to get anything missing.</p>
+  </section>
 
-  <h2>Steps</h2>
-  <div class="progress"><span id="count">0 of 7 done</span><div class="bar"><i id="fill"></i></div><button class="reset" id="reset" type="button">Reset</button></div>
-  <ol class="steps" id="steps">
-    <li class="step"><input type="checkbox" id="s1" aria-labelledby="h1s"><div class="body">
-      <h3 id="h1s">Get the project folder</h3>
-      <p>Clone the public repo into a folder of your choice. To update later: <code>git pull</code>, then run the installer again.</p>
-      <div class="cmd"><pre>git clone https://github.com/pmcormier/claude-visual-review
-cd claude-visual-review</pre><button type="button">Copy</button></div>
-    </div></li>
-    <li class="step"><input type="checkbox" id="s2" aria-labelledby="h2s"><div class="body">
-      <h3 id="h2s">Run the installer</h3>
-      <p>It asks which parts you want: <b>Review</b> (always), <b>Methods</b> (how the planning method is picked, BMAD and superpowers), <b>Bmad</b> (the review layer for BMAD workflows) and <b>Fable</b> (a final review of BMAD planning docs; needs access to the Fable model). It installs the rules, the VS Code opener and the <code>PLANNOTATOR_BROWSER</code> setting. <code>-InstallTools</code> also installs whatever is missing: the Plannotator program, the <code>plannotator</code> and <code>visualizer</code> plugins, and the Plannotator WebView extension. It never replaces a file in <code>~/.claude</code> you changed without asking, and it ends with a <b>Summary</b> of anything left to do. It's safe to run again.</p>
-      <div class="cmd"><pre>./install.ps1 -InstallTools</pre><button type="button">Copy</button></div>
-    </div></li>
-    <li class="step"><input type="checkbox" id="s3" aria-labelledby="h3s"><div class="body">
-      <h3 id="h3s">Add BMAD projects <span class="opt">if any</span></h3>
-      <p>Needs the Bmad component. Give it each project root that has a <code>_bmad</code> folder. It writes personal (gitignored) review overrides for 17 workflows, plus the Fable final-review lines if you installed Fable, never overwrites existing ones, and checks them with BMAD's own resolver.</p>
-      <div class="cmd"><pre>./install.ps1 -Components Review,Methods,Bmad -BmadProject &lt;project&gt;, &lt;project&gt;</pre><button type="button">Copy</button></div>
-    </div></li>
-    <li class="step"><input type="checkbox" id="s4" aria-labelledby="h4s"><div class="body">
-      <h3 id="h4s">Start fresh</h3>
-      <p>Close VS Code, open it again and start a new Claude Code session in its terminal. A session started before the install doesn't see the new setting or the new PATH entry.</p>
-    </div></li>
-    <li class="step"><input type="checkbox" id="s7" aria-labelledby="h7s"><div class="body">
-      <h3 id="h7s">Set up the Inbox</h3>
-      <p>Open the Inbox. In Settings &gt; Capabilities, turn on <b>Board</b> and <b>Steps</b>: the rules use Board cards and thread checklists, and both are off by default. Allow notifications when it asks. Leave Settings &gt; Prompts &gt; "Rules for your agents" empty: the rules come from this project. Plannotator adds its own short note to <code>~/.claude/rules/plannotator-inbox.md</code> by itself. Run the installer again with the components you chose to confirm: it reports Board and Steps.</p>
-      <div class="cmd"><pre>plannotator inbox --open
-./install.ps1 -Components Review</pre><button type="button">Copy</button></div>
-    </div></li>
-    <li class="step"><input type="checkbox" id="s5" aria-labelledby="h5s"><div class="body">
-      <h3 id="h5s">Check review tabs open in VS Code</h3>
-      <p>Tabs are only for when you ask for one, but check them once. From the VS Code terminal, this should open a review tab with an Approve button and no "Select an app" dialog. Click Approve and the terminal prints the decision.</p>
-      <div class="cmd"><pre>plannotator annotate README.md --gate --json</pre><button type="button">Copy</button></div>
-    </div></li>
-    <li class="step"><input type="checkbox" id="s6" aria-labelledby="h6s"><div class="body">
-      <h3 id="h6s">Check Claude follows the rule</h3>
-      <p>In the new session, ask for something that needs your sign-off. Claude should send it to the Inbox with Approve and Change, and its file list should use VS Code links. Click one: the browser asks once to open VS Code; tick "Always allow". Answer in the Inbox, and the reply should reach the session without you copying anything.</p>
-      <div class="cmd"><pre>Draft a one-page plan for X in docs/, then report it to me in the Inbox for sign-off.</pre><button type="button">Copy</button></div>
-    </div></li>
-  </ol>
+  <section aria-labelledby="h-steps">
+    <h2 id="h-steps">What happens</h2>
+    <div class="progress"><span id="count">0 of 7 done</span><div class="bar"><i id="fill"></i></div><button class="reset" id="reset" type="button">Reset</button></div>
+    <ol class="steps" id="steps">
+      <li class="step"><div class="body"><h3 id="t1">Start Claude Code in a VS Code terminal and paste the prompt</h3><p>Anywhere else, reviews open in the browser instead of VS Code tabs.</p></div><input type="checkbox" id="s1" aria-labelledby="t1"></li>
+      <li class="step"><div class="body"><h3 id="t2">Answer your agent's questions</h3><p>Which parts you want (the review part is always included), whether you use superpowers or BMAD, whether you have access to the Fable model, and where to keep the repo.</p></div><input type="checkbox" id="s2" aria-labelledby="t2"></li>
+      <li class="step"><div class="body"><h3 id="t3">Say yes to Plannotator's install script</h3><p>If Plannotator is missing, your agent tells you it will run Plannotator's official install script, and waits for your OK.</p></div><input type="checkbox" id="s3" aria-labelledby="t3"></li>
+      <li class="step"><div class="body"><h3 id="t4">Restart VS Code when asked</h3><p>Close every VS Code window, reopen VS Code and start a new Claude Code session. A new terminal isn't enough: it keeps the old PATH.</p></div><input type="checkbox" id="s4" aria-labelledby="t4"></li>
+      <li class="step"><div class="body"><h3 id="t5">Turn on Board and Steps in the Inbox</h3><p>Open the Inbox, go to Settings &gt; Capabilities, and turn both on. Allow notifications when it asks.</p></div><input type="checkbox" id="s5" aria-labelledby="t5"></li>
+      <li class="step"><div class="body"><h3 id="t6">Tick "Always allow" for VS Code links</h3><p>The first time you click a file link in the Inbox, your browser asks to open VS Code.</p></div><input type="checkbox" id="s6" aria-labelledby="t6"></li>
+      <li class="step"><div class="body"><h3 id="t7">Run the two checks with your agent</h3><p>A review tab opens in VS Code, and a sign-off goes to the Inbox with your answer coming back to the session.</p></div><input type="checkbox" id="s7" aria-labelledby="t7"></li>
+    </ol>
+  </section>
 
-  <h2>If something's off</h2>
-  <div class="tablewrap"><table>
-    <thead><tr><th>You see</th><th>Cause and fix</th></tr></thead>
-    <tbody>
-      <tr><td>"Select an app to open 'open-in-vscode'"</td><td>The WebView extension's own opener is in use; Windows can't run it. The session started before the install, or <code>settings.json</code> lost the <code>PLANNOTATOR_BROWSER</code> entry. Run the installer again, then start a new session.</td></tr>
-      <tr><td>Review opens in the browser</td><td>The session isn't in a VS Code terminal, or the WebView extension isn't installed. The opener falls back to the browser on purpose.</td></tr>
-      <tr><td><code>plannotator</code> not found</td><td>Installed after VS Code started. Terminals inherit VS Code's environment from when it started, so a new terminal isn't enough: close every VS Code window and reopen VS Code. It lives in <code>%LOCALAPPDATA%\plannotator</code>.</td></tr>
-      <tr><td>No Board cards or checklists</td><td>Board or Steps is off in the Inbox's Settings &gt; Capabilities. The installer reports both.</td></tr>
-      <tr><td>File links in a report do nothing</td><td>The browser blocked VS Code links: click one again and allow it. Plain paths and links inside folding sections don't open (a Plannotator limit, reported); reports use plain lists for that reason.</td></tr>
-      <tr><td>Replies don't come back</td><td>The session started before Plannotator was installed, so it has no Inbox tool. Start a new session.</td></tr>
-      <tr><td>BMAD ignores it</td><td>The project has no overrides. Run <code>./install.ps1 -BmadProject &lt;root&gt;</code>; the check at the end says whether BMAD reads the policy.</td></tr>
-    </tbody>
-  </table></div>
+  <section aria-labelledby="h-end">
+    <h2 id="h-end">What the end looks like</h2>
+    <p>The installer finishes with a Summary, and your agent shows it to you.</p>
+    <div class="example">
+      <span class="note">Example</span>
+      <div class="term"><pre><span class="dim">== Summary</span>
+  1 thing(s) left to do:
+    - <span class="warn">rules/methods.md kept as yours. To replace it: ./install.ps1 -Components Review,Methods -Replace rules/methods.md</span>
+  Then: close every VS Code window, reopen VS Code, then start a new Claude Code session in its terminal.</pre></div>
+    </div>
+    <div class="codes">
+      <div class="code-card zero"><b>exit 0</b><span>Done. Nothing left to do.</span></div>
+      <div class="code-card three"><b>exit 3</b><span>Installed, but the Summary lists something for you: a file you changed, or a missing tool.</span></div>
+    </div>
+  </section>
 
-  <h2>Changing the rules</h2>
-  <p>Want different behaviour? Put it in a rule file of your own, such as <code>~/.claude/rules/my-review-tweaks.md</code>: Claude loads every file in <code>rules/</code>, and the installer never touches yours, so updates stay a <code>git pull</code> and a rerun. If you edit an installed copy instead, the next install shows the difference and asks before replacing it. Maintaining your own fork? Edit the files in the project folder, run <code>./install.ps1</code> again and start a new session, and record the reason in <code>docs/decisions.md</code>.</p>
-  <div class="note">BMAD has no global settings layer, so each BMAD project needs its own overrides. All of them point at one shared policy file, so one edit reaches every project.</div>
+  <section aria-labelledby="h-off">
+    <h2 id="h-off">If something's off</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>You see</th><th>Cause and fix</th></tr></thead>
+      <tbody>
+        <tr><td>"Select an app to open 'open-in-vscode'"</td><td>The session started before the install, or <code>settings.json</code> lost <code>PLANNOTATOR_BROWSER</code>. Run the installer again, then start a new session.</td></tr>
+        <tr><td>Reviews open in the browser</td><td>The session isn't in a VS Code terminal, or the Plannotator WebView extension isn't installed. That fallback is on purpose.</td></tr>
+        <tr><td><code>plannotator</code> not found</td><td>It was installed after VS Code started. Close every VS Code window and reopen VS Code.</td></tr>
+        <tr><td>No Board cards or checklists</td><td>Board or Steps is off in the Inbox's Settings &gt; Capabilities.</td></tr>
+        <tr><td>File links do nothing</td><td>The browser blocked VS Code links. Click one again and allow it.</td></tr>
+        <tr><td>Replies don't come back</td><td>The session started before Plannotator was installed. Start a new session.</td></tr>
+        <tr><td>Stuck anywhere else</td><td>Send the person who shared this your agent's Summary, or the point where it stopped.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="h-more">
+    <h2 id="h-more">Make it yours</h2>
+    <p>Put your own preferences in a rule file of your own, such as <code>~/.claude/rules/my-review-tweaks.md</code>. Claude loads every file in that folder, and updates never touch yours.</p>
+    <details>
+      <summary>Install by hand, without an agent</summary>
+      <p>Clone the repo, then run the installer. It asks which parts you want, never replaces a file you changed without asking, and ends with the same Summary.</p>
+      <div class="term">
+        <div class="term-bar"><span>PowerShell 7</span><button class="copy" type="button" data-copy="byhand">Copy</button></div>
+        <pre id="byhand"><span data-text>git clone https://github.com/pmcormier/claude-visual-review
+cd claude-visual-review
+./install.ps1 -InstallTools</span></pre>
+      </div>
+      <p>BMAD projects: <code>./install.ps1 -Components Review,Methods,Bmad -BmadProject &lt;project&gt;</code>. To update: <code>git pull</code>, then <code>./install.ps1</code>; it reuses your components.</p>
+      <p>Details: <a href="https://github.com/pmcormier/claude-visual-review">the repo's README</a>.</p>
+    </details>
+  </section>
 </div>
 
 <script>
 (function () {
-  var KEY = 'vr-setup-steps';
+  var KEY = 'vr-setup-steps-v2';
   var boxes = Array.prototype.slice.call(document.querySelectorAll('.step input[type=checkbox]'));
   var saved = {};
-  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { saved = {}; }
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { saved = {}; }
   function render() {
     var n = 0;
     boxes.forEach(function (b) { b.closest('.step').classList.toggle('done', b.checked); if (b.checked) n++; });
@@ -183,15 +216,15 @@ cd claude-visual-review</pre><button type="button">Copy</button></div>
     try { localStorage.removeItem(KEY); } catch (e) {}
     render();
   });
-  document.querySelectorAll('.cmd button').forEach(function (btn) {
+  document.querySelectorAll('button.copy').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      var text = btn.previousElementSibling.textContent;
+      var el = document.getElementById(btn.getAttribute('data-copy')).querySelector('[data-text]');
       var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 1500); };
       var fallback = function () {
-        var r = document.createRange(); r.selectNodeContents(btn.previousElementSibling);
+        var r = document.createRange(); r.selectNodeContents(el);
         var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent = 'Selected';
       };
-      try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
+      try { navigator.clipboard.writeText(el.textContent).then(done, fallback); } catch (e) { fallback(); }
     });
   });
   render();
