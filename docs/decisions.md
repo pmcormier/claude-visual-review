@@ -1,0 +1,200 @@
+# Decisions
+
+Newest last. A reversal is a new entry that names the one it replaces.
+
+## 1. Personal overrides, not team ones (2026-11-06)
+BMAD overrides go in `bmad-<skill>.user.toml` (gitignored), not the committed `bmad-<skill>.toml`.
+Plannotator and Visualizer are tools on the owner's machines; some BMAD repos are or will be public, and
+collaborators shouldn't inherit a dependency they don't have.
+
+## 2. One global policy file, referenced by path (2026-11-06)
+BMAD's resolver reads only the skill's defaults, the project's `.toml` and the project's `.user.toml`, with no
+home-folder layer. Each override points (`persistent_facts = ["file:~/.claude/bmad/interactive-review.md"]`,
+absolute path) at one shared file, so a policy edit reaches every project without touching the 102 overrides.
+
+## 3. Real decision points only (2026-11-06)
+Reviews open for sign-offs, code and findings, choices between alternatives, and diagrams. Quick
+confirmations, progress and debugging stay in the terminal, to avoid a browser tab for every "continue?".
+
+## 4. Plannotator is the gate; Visualizer is for visual options (2026-11-06)
+One tool handles annotate, approve and reject, and its `:::question` blocks handle picking between options.
+Visualizer is kept for picking between visual options (layouts, themes, mockups), where click-to-pick fits.
+
+## 5. Visuals welcome, not required (2026-11-06)
+The owner's review note: "Expected is a bit heavy … Desired when they would be helpful is more accurate."
+
+## 6. A `.cmd` opener for VS Code tabs (2026-11-06)
+The Plannotator WebView extension sets `PLANNOTATOR_BROWSER` to an extensionless shell script. Windows can't
+run it and shows an "open with" dialog instead. `bin/open-in-vscode.cmd` makes the same call to the
+extension's local port, and `PLANNOTATOR_BROWSER` is set to it in Claude Code's settings so it overrides the
+extension's value.
+
+## 7. A global rule plus a thin BMAD layer (2026-11-06)
+The general behaviour lives in `rules/visual-review.md` and applies everywhere. The BMAD file keeps only what is
+specific to BMAD (decision points, where visuals live, approval boundaries, memlog, Fable review), so the two
+can't drift apart.
+
+## 8. Every review names its session (2026-11-06)
+With several Claude windows open, a review tab must say which session is waiting on it. The title is
+`<project> · <subject> · <first 8 of CLAUDE_CODE_SESSION_ID>`, set through Plannotator's `--title`, Visualizer's
+`title`, or the page's `<title>`.
+
+## 9. The installer requires `plannotator` on PATH, not just on disk (2026-11-06)
+The rules call a bare `plannotator`. On one machine the binary was installed while VS Code was running,
+so every terminal VS Code opened kept the old PATH, and the rule's command failed even though the installer
+said "ok" (it fell back to `%LOCALAPPDATA%\plannotator`). The installer now reports that case as a miss and
+says to close every VS Code window and reopen VS Code; a new terminal isn't enough. Adding a full-path
+fallback to the rule was the alternative: it would hide a broken environment that other tools calling
+Plannotator also hit, and lengthen a rule loaded into every session.
+
+## 10. The opener closes the console `start` gives it (2026-11-06)
+On Windows Plannotator launches `PLANNOTATOR_BROWSER` as `cmd.exe /c start "" <opener> <url>`, and `start`
+runs a batch file in a new console under `cmd /K`, so `exit /b` left one terminal window open per review. The
+opener now ends with `exit` when its own name is in `%CMDCMDLINE%`, which is only true in the console `start`
+made for it (or a `cmd /c` call, where exiting is harmless); a direct call from someone's shell keeps the shell
+open. It copies `CMDCMDLINE` into a variable before the substitution: substituting on `CMDCMDLINE` itself edits
+the process's real command line, which made the first version of this check always fail. A console still
+flashes briefly for each review: avoiding it needs a windowless launcher (WSH or a small compiled exe), which is
+more to install and maintain than a sub-second flash is worth for now.
+
+## 11. Code review only when it's due (2026-11-06)
+The owner's note: "I would only review code if I ask to or if the agent thinks it is prudent. It could offer
+though when regular feedback points occur." The rule had listed code changes as review material, so every
+edit opened a gated diff review. Now a diff opens only on request, or when Claude judges it prudent (a risky,
+wide or hard-to-undo change) and says why; otherwise Claude offers it in one line at a natural feedback point.
+Review findings stay a decision point (a list to tick), once per BMAD story: choosing what to fix is a choice,
+not a code review (the owner's answer).
+
+## 12. Workflow config lives here (2026-11-06)
+The Fable final-review rule and its overrides lived only as untracked files in another project, and
+`rules/bmad.md` existed only in `~/.claude`. The owner moved them here: this repo is about how we work. It uses
+a layout a planned config-sync tool could take unchanged (`global/` mirrors `~/.claude`).
+The installer now copies all of `global/` rather than a list, so a new file there needs no installer change.
+
+
+## 13. Say it in one place (2026-11-06)
+The owner's note: "there is also a lot of crossover text or repeated text here in the session window. I end up
+reading both… If it is totally redundant, keep it out of here in the session and let me review in one place
+(plannotator)." When a review opens, the terminal gives only its title, what the owner needs to do, and anything
+not in the review under **Not in the review**. Review content is never restated in the terminal; the review
+files and this record keep the history.
+
+## 14. Menus count when choosing needs context (2026-11-06)
+Two sessions that had the rules loaded never opened a review. At their decision points they asked with
+Claude Code's `AskUserQuestion` menu instead: a `bmad-build` plan approval (where the owner had to ask to see the
+plan first) and a three-way choice whose costs were explained in the terminal. Neither rule file named
+`AskUserQuestion`, and "not as markdown in the terminal" didn't cover a menu. Now a choice that needs context
+goes in a review even where a skill would show a menu, and a pick whose options speak for themselves stays a
+menu. The owner chose this over "every choice": "This is a heavier tool and we only want to utilize it when it
+is efficient to do so."
+
+## 15. Only the session the owner talks to opens reviews (2026-11-06)
+The owner asked whether background agents could open reviews or ask questions. None of 442 subagent and
+teammate transcripts the owner had on hand had done so, but nothing prevented it: teammates load the rules, and
+subagents run BMAD skills whose overrides say to open reviews. Such a review would block the agent, and the
+answer would go to the agent rather than the main session. Subagents, teammates and background agents now hand
+decisions back to the session that started them.
+
+## 16. Review or Inbox (2026-11-11)
+The owner often runs work unattended and wants the end-of-run report in Plannotator, not the terminal, and found
+the Inbox hard to read because information and requests were mixed. A gated review still handles anything
+work can't go on without; the Plannotator Inbox takes what can wait. Unattended or long runs end with one Inbox
+report: what changed (with a chart of lines changed by area), what went right and wrong, what is blocked, steps
+done, next steps, and questions as `:::question` blocks. A guided diff walkthrough is optional: sent when the
+change is important, otherwise offered ("I should always have the option"). Board cards and thread checklists
+carry running updates without notifying. Agents mark `Stopped:` and `Holds up:` only when true, so the Inbox's
+sections separate requests from information. Unattended runs skip blocking reviews but still report. The Inbox
+can't load in the WebView extension (it sends `X-Frame-Options: DENY`), so its link opens in VS Code's built-in
+browser.
+
+## 17. Next steps live in the thread (2026-11-11)
+In another project the owner asked, "Why am I not seeing these next steps in tator?": the session had given next
+steps and waiting items only in the chat. That session proposed a global line. It went into `visual-review.md`
+rather than `plannotator-inbox.md`, which Plannotator rewrites itself. Two changes from the proposal: the chat
+gives a one-line pointer instead of a second copy, which keeps decision 13; and one-off answers don't open a
+thread, only work that has a thread or outlasts the reply.
+
+## 18. A windowless opener (2026-11-11)
+Replaces the `.cmd` in decision 6 and the console-closing in decision 10. Every review still flashed a console,
+because Windows gives a batch file its own console, and Plannotator 0.28.61 still runs whatever
+`PLANNOTATOR_BROWSER` names, with no built-in VS Code tab support. The opener is now `open-in-vscode.exe`, a
+Windows program with no console, built by the installer from `global/visual-review/bin/open-in-vscode.cs` with
+the C# compiler that ships with Windows (`csc.exe`, .NET Framework 4). It behaves the same: extension port first,
+browser otherwise. Tested launched as Plannotator launches it: 0 console windows against 2 for the `.cmd`, link
+intact. A `.vbs` script was the simpler alternative, but Microsoft is phasing VBScript out of Windows. The old
+`.cmd` stays on disk, unused, because sessions started before the change still call it.
+
+## 19. The Inbox by default (2026-11-11)
+Replaces decision 16's "gated review for sign-offs". The owner chose "The Inbox, for everything; a review tab
+only when I ask for one." A sign-off is now an Inbox message with the files attached and an Approve / Change
+question marked `Stopped:`; the session ends its turn and the reply comes back by itself. Code reviews go out
+as guided walkthroughs, choices and findings as `:::question` blocks, visual options as picture choices
+(Visualizer only on request). Plan mode's own review tab stays, since changing it means turning off
+Plannotator's hook. The BMAD override lines that still name `plannotator review` were left; the policy file
+decides how things are shown. Fallback: the Inbox tool, else `plannotator inbox call`, else the terminal. The
+owner approved this in the Inbox, the first sign-off done that way.
+
+## 20. Files changed, so the owner can explore (2026-11-13)
+The owner wants reports to make exploring the codebase easy, to stay familiar with it. Every Inbox report on
+changed files opens with a **Files changed** list grouped by area (two or three files worth opening each, with
+why they changed), `vscode://` links, the diff attached as a `.patch`, and an opt-in guided walkthrough. Tested
+live in the Inbox: `vscode://` links in plain Markdown open VS Code (the
+owner allowed the dialog once); plain paths do nothing; a `.patch` attachment shows as a coloured diff; folding
+trees fold, but their links are blocked (raw HTML is cleaned, and `html` blocks run in a sandbox that cannot
+launch VS Code), so the list is plain for now and a feature request to Plannotator asks for clickable folding
+trees. A Sonnet agent at medium effort writes it, given the main session's note of intent, since a fresh agent
+lacks the why and a fork would run at the parent's cost; the report waits for it rather than following up.
+Lines in Markdown files may not land, because the owner's Markdown plugin opens them.
+
+## 21. The Fable final review is personal (2026-11-16)
+The owner: "Any repo can be shared." The Fable review was enforced by 8 team overrides plus
+`fable-final-review.md`, committed into each project's `_bmad/custom/`, so committing them would switch it on
+for every teammate who runs BMAD there, and one without Fable would be told to stop. It now loads from the
+personal layer: `fable-final-review.md` lives in `~/.claude/bmad/`, and `write_overrides.py` adds it to the
+`.user.toml` of the 8 planning skills, next to the review policy. BMAD appends `persistent_facts` across layers,
+so a project that still commits the team overrides (as older installs did) loads it
+twice, which is harmless; the owner removes those in their own commits when wanted. Recovery is rerunning
+`write_overrides.py`. `bmad-templates/` is removed. Considered keeping team files in repos only the owner uses;
+dropped because any repo may be shared later.
+Follow-up: overrides written before this decision were skipped as existing, so the Fable line
+never reached them. `write_overrides.py` now adds that one line to an existing planning-skill override that
+lacks it, and the installer's check requires the personal path, so a committed team copy no longer passes it.
+Added to every existing override on the owner's machines; all resolve.
+
+## 22. Reports adapt to where the session runs (2026-11-16)
+Claude may run in a plain terminal rather than VS Code (to save memory, for example). Outside VS Code a `vscode://` link still works but starts VS Code, so reports also
+attach the two or three highlighted files, which the Inbox opens as code with line comments; the links stay for
+when the owner wants to explore. Detection is `TERM_PROGRAM=vscode`, which VS Code's terminal sets (confirmed)
+and a plain terminal doesn't. Plannotator covers reading files and diffs, not navigating a codebase, so VS Code
+stays the place to explore.
+
+## 23. One methods rule for every machine (2026-11-16)
+One of the owner's machines had its own `~/.claude/rules/methods.md` and skipped `rules/bmad.md`; another had
+only `bmad.md`. They contradicted each other on two points, and the next install would have put both on the
+first. The owner chose to merge them into `global/rules/methods.md`, installed everywhere: the method is
+picked per task, from a section moved here from that machine's `~/.claude/CLAUDE.md` (so every machine
+chooses the same way); Claude closes a ticket when the final commit is in and its `Verify:` check passed, and
+brings anything doubtful to the owner (replacing "only the user marks a ticket done"; `bmad-build` still stops
+at `built`). Kept from `bmad.md`: the Fable review steps, the default workflow preset, accepting `bmad-spec`'s
+handoff. Kept from `methods.md`: work tracking, `Refs <KEY>` commits, openness to new frameworks. The installer
+renames a leftover `~/.claude/rules/bmad.md` to `bmad.md.retired` so it stops loading.
+
+## 24. A generic, shareable repo (2026-11-16)
+The owner wanted to share this setup and keep others current without maintaining a second repo. Considered:
+giving people access to the repo as it was (exposed the owner's journal: other projects, machines, session
+notes); a generated prompt carrying the files (a second copy that goes stale); a script-published public copy
+(nothing personal leaves, but two repos and a publish step); restructuring this repo to be generic. The owner
+picked the restructure: one repo, `git pull` for updates. The journal moved out to the maintainer's notes;
+`tools/check-personal.ps1` (a pre-commit hook via `install.ps1 -Owner`) keeps it out, with its term list
+outside the repo so the terms are never published. The installer gained opt-in components, a manifest of what
+it wrote, and never replaces a file you changed without asking; an agent running it gets the command to
+rerun instead of a prompt. The rules ship unchanged ("the owner" is whoever installed them); preferences go in
+a rule file of your own. The old history was removed by deleting and recreating the GitHub repo, since
+force-pushed commits can still be fetched by ID; a bundle of it is kept privately. License: MIT. Design and
+plan: `docs/superpowers/`.
+
+## 25. The Fable final review is its own component (2026-11-16)
+`methods.md` held the Fable review steps, including "if Fable is unavailable, stop". Installed without the
+Fable component, that would stop someone's BMAD planning at every final doc. The steps moved, unchanged, into
+`rules/fable.md`, installed only with the Fable component, and `write_overrides.py` adds the Fable line to BMAD
+overrides only when `~/.claude/bmad/fable-final-review.md` is installed.
