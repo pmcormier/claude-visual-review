@@ -33,7 +33,7 @@ Test 'FreshInstallReviewOnly' {
 
 Test 'FreshInstallAllCoversEveryGlobalFile' {
   $h = New-TempDir
-  $r = Invoke-Install $h @('-Components', 'Review,Methods,Bmad,Fable')
+  $r = Invoke-Install $h @('-Components', 'Review,Methods,Bmad,Fable,Rigor')
   Assert-Equal 0 $r.Code "exit code ($($r.Out))"
   foreach ($f in Get-ChildItem $global -Recurse -File) {
     $rel = [IO.Path]::GetRelativePath($global, $f.FullName) -replace '\\', '/' -replace '\.cs$', '.exe'
@@ -258,8 +258,40 @@ Test 'MissingToolsAreMissLines' {
 
 Test 'ComponentListInOrder' {
   $r = Invoke-Install (New-TempDir)
-  $i = 'Methods', 'Bmad', 'Fable' | ForEach-Object { $r.Out.IndexOf("    $_`:") }
-  Assert-True ($i[0] -ge 0 -and $i[0] -lt $i[1] -and $i[1] -lt $i[2]) "order: $($r.Out)"
+  $i = 'Methods', 'Bmad', 'Fable', 'Rigor' | ForEach-Object { $r.Out.IndexOf("    $_`:") }
+  Assert-True ($i[0] -ge 0 -and $i[0] -lt $i[1] -and $i[1] -lt $i[2] -and $i[2] -lt $i[3]) "order: $($r.Out)"
+}
+
+Test 'RigorHookAddedOnceAndOthersKept' {
+  $h = New-TempDir
+  Set-File "$h/settings.json" '{ "hooks": { "UserPromptSubmit": [ { "hooks": [ { "type": "command", "command": "other-hook" } ] } ], "Stop": [ { "hooks": [ { "type": "command", "command": "stop-hook" } ] } ] } }'
+  $r = Invoke-Install $h @('-Components', 'Review,Rigor')
+  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  Assert-True ($r.Out -match 'added the Rigor hook') "announced: $($r.Out)"
+  $r2 = Invoke-Install $h @('-Components', 'Review,Rigor')
+  Assert-True ($r2.Out -match 'Rigor hook \(UserPromptSubmit\) already set') "rerun quiet: $($r2.Out)"
+  $s = Get-Content -Raw "$h/settings.json" | ConvertFrom-Json -AsHashtable
+  $cmds = @($s.hooks.UserPromptSubmit | ForEach-Object { $_.hooks } | ForEach-Object { $_.command })
+  Assert-Equal 1 @($cmds | Where-Object { $_ -match 'pushback-check\.mjs' }).Count 'one Rigor hook'
+  Assert-True ($cmds -contains 'other-hook') 'other UserPromptSubmit hook kept'
+  Assert-Equal 'stop-hook' $s.hooks.Stop[0].hooks[0].command 'other events kept'
+}
+
+Test 'NoRigorNoHook' {
+  $h = New-TempDir
+  Invoke-Install $h @('-Components', 'Review,Methods') | Out-Null
+  $s = Get-Content -Raw "$h/settings.json" | ConvertFrom-Json -AsHashtable
+  Assert-True (-not $s.ContainsKey('hooks')) 'no hooks key without Rigor'
+}
+
+Test 'RigorHookSendsTheCheck' {
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Host '  (node not on PATH; skipped)'; return }
+  $h = New-TempDir
+  Invoke-Install $h @('-Components', 'Review,Rigor') | Out-Null
+  $out = '{}' | node "$h/hooks/pushback-check.mjs"
+  $j = $out | ConvertFrom-Json -AsHashtable
+  Assert-Equal 'UserPromptSubmit' $j.hookSpecificOutput.hookEventName 'event name'
+  Assert-Equal (Get-Content -Raw "$global/rigor/pushback.md").Trim() $j.hookSpecificOutput.additionalContext 'sends pushback.md'
 }
 
 exit $script:Failures

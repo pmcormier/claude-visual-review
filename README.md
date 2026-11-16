@@ -4,8 +4,8 @@ A workflow setup for Claude Code. It makes Claude bring decisions, sign-offs, re
 reports to the [Plannotator](https://plannotator.ai) Inbox, where you read, pick options and approve, instead
 of as markdown in the terminal; your answer goes straight back to the session that asked. Review tabs open in
 VS Code when you ask for one. Optionally it adds rules for picking a planning method per task (BMAD,
-superpowers or plan mode), a review layer for BMAD workflows, and a final review of BMAD planning docs on the
-Fable model.
+superpowers or plan mode), a review layer for BMAD workflows, a final review of BMAD planning docs on the
+Fable model, and rigor rules that keep Claude from giving up a correct answer just because you push back.
 
 The rules are written in the first person: "I", "me" and "the owner" mean whoever installed them.
 
@@ -30,8 +30,10 @@ The installer asks which components you want (or takes `-Components`):
 | Methods | `rules/methods.md` | A design step before code, the planning method picked per task, work tracking, how BMAD and superpowers run. |
 | Bmad | `bmad/interactive-review.md`, `bmad/write_overrides.py` | The review layer for BMAD workflows, and the script that writes personal (gitignored) overrides into a BMAD project. |
 | Fable | `rules/fable.md`, `bmad/fable-final-review.md` | A final review on the Fable model before a BMAD planning doc is final. Needs access to Fable. |
+| Rigor | `rules/rigor.md`, `rigor/pushback.md`, `hooks/pushback-check.mjs` | Verification rules (label claims verified, recalled or inferred; check premises; run the experiment), and a short pushback check that a `UserPromptSubmit` hook sends with every message, so Claude holds a correct position under pushback unless you bring new evidence. Needs Node.js. |
 
-It also sets `PLANNOTATOR_BROWSER` in `~/.claude/settings.json` (other settings are kept), checks that
+It also sets `PLANNOTATOR_BROWSER` in `~/.claude/settings.json`, and with Rigor adds its hook there (other
+settings and hooks are kept), checks that
 Plannotator, the `plannotator` and `visualizer` plugins, the Plannotator WebView extension and the Inbox's
 Board and Steps capabilities are in place (`-InstallTools` installs what's missing), and with
 `-BmadProject <project>` adds the BMAD overrides to your projects.

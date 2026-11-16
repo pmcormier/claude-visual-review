@@ -5,7 +5,8 @@
 
 .DESCRIPTION
   Copies the chosen components from global/ into ~/.claude (building the VS Code opener), points
-  PLANNOTATOR_BROWSER at it in ~/.claude/settings.json, checks the tools the rules rely on, and (optionally)
+  PLANNOTATOR_BROWSER at it in ~/.claude/settings.json (and, with Rigor, adds its UserPromptSubmit hook there),
+  checks the tools the rules rely on, and (optionally)
   adds the BMAD overrides to the projects you name.
 
   It never replaces a file you changed: a file in ~/.claude that differs from both this repo's copy and what
@@ -15,7 +16,8 @@
 
 .PARAMETER Components
   Which parts to install: Review (always), Methods (how the planning method is picked, BMAD and superpowers),
-  Bmad (the BMAD review layer), Fable (the Fable final review for BMAD planning docs; needs Fable access).
+  Bmad (the BMAD review layer), Fable (the Fable final review for BMAD planning docs; needs Fable access),
+  Rigor (verification rules, and a hook that sends a pushback check with every message; needs Node.js).
   Without it, an interactive run asks; a non-interactive run stops and lists them.
 
 .PARAMETER Owner
@@ -86,11 +88,13 @@ $componentFiles = [ordered]@{
   Methods = @('rules/methods.md')
   Bmad    = @('bmad/interactive-review.md', 'bmad/write_overrides.py')
   Fable   = @('rules/fable.md', 'bmad/fable-final-review.md')
+  Rigor   = @('rules/rigor.md', 'rigor/pushback.md', 'hooks/pushback-check.mjs')
 }
 $about = [ordered]@{
   Methods = 'how the planning method is picked per task, work tracking, BMAD and superpowers'
   Bmad    = 'the review layer for BMAD workflows'
   Fable   = 'the Fable final review of BMAD planning docs (needs access to the Fable model)'
+  Rigor   = 'verification rules, and a check sent with every message so Claude holds a correct answer under pushback (needs Node.js)'
 }
 
 Step 'Components'
@@ -115,7 +119,7 @@ elseif (-not $Components.Count) {
     Write-Host '  Example: ./install.ps1 -Components Review,Methods'
     exit 2
   }
-  foreach ($c in 'Methods', 'Bmad', 'Fable') {
+  foreach ($c in $about.Keys) {
     if ((Read-Host "  Install $c ($($about[$c]))? [y/N]") -match '^y') { $Components += $c }
   }
 }
@@ -183,7 +187,7 @@ $json = $sorted | ConvertTo-Json -Depth 5
 if (-not (Test-Path $manifestPath) -or (Get-Content -Raw $manifestPath) -ne $json) { Set-Content $manifestPath $json -NoNewline }
 foreach ($c in $skipped.Keys) { Miss "$c partly inactive: $($skipped[$c] -join ', ') kept as yours" }
 
-Step 'Settings (settings.json env)'
+Step 'Settings (settings.json)'
 $settingsPath = Join-Path $claude 'settings.json'
 $opener = Join-Path $home_vr 'bin\open-in-vscode.exe'
 $settings = @{}
@@ -196,15 +200,38 @@ if (Test-Path $settingsPath) {
   }
 }
 if (-not $settingsOk) {
-  Miss "settings.json isn't valid JSON, so PLANNOTATOR_BROWSER wasn't set: fix or remove $settingsPath, then rerun"
+  Miss "settings.json isn't valid JSON, so PLANNOTATOR_BROWSER$(if ($Components -contains 'Rigor') { ' and the Rigor hook' }) weren't set: fix or remove $settingsPath, then rerun"
 } else {
+  $changes = @()
   if ($settings['env'] -isnot [Collections.IDictionary]) { $settings['env'] = @{} }
   if ($settings['env']['PLANNOTATOR_BROWSER'] -ne $opener) {
-    $note = if (Test-Path $settingsPath) { "; backup: $(Backup $settingsPath)" } else { '' }
     $settings['env']['PLANNOTATOR_BROWSER'] = $opener
-    $settings | ConvertTo-Json -Depth 50 | Set-Content $settingsPath -Encoding utf8NoBOM
-    Done "set PLANNOTATOR_BROWSER = $opener (other settings kept$note)"
+    $changes += "set PLANNOTATOR_BROWSER = $opener"
   } else { Ok 'PLANNOTATOR_BROWSER already set' }
+  if ($Components -contains 'Rigor') {
+    # One UserPromptSubmit entry that runs the pushback check; any other hooks are left as they are. Found again
+    # on a rerun by the script's file name, so it is never added twice.
+    $hookCmd = "node `"$((Join-Path $claude 'hooks/pushback-check.mjs') -replace '\\', '/')`""
+    if ($settings['hooks'] -isnot [Collections.IDictionary]) { $settings['hooks'] = [ordered]@{} }
+    $groups = @($settings['hooks']['UserPromptSubmit'] | Where-Object { $_ })
+    $existing = @($groups | ForEach-Object { $_['hooks'] } | Where-Object { "$($_['command'])" -match 'pushback-check\.mjs' })
+    if ($existing.Count -and $existing[0]['command'] -eq $hookCmd) { Ok 'Rigor hook (UserPromptSubmit) already set' }
+    elseif ($existing.Count) {
+      $existing[0]['command'] = $hookCmd
+      $changes += 'updated the Rigor hook command'
+    } else {
+      $settings['hooks']['UserPromptSubmit'] = @($groups) + @([ordered]@{ hooks = @([ordered]@{ type = 'command'; command = $hookCmd }) })
+      $changes += 'added the Rigor hook (UserPromptSubmit)'
+    }
+    if (-not $SkipToolCheck -and -not (Get-Command node -ErrorAction SilentlyContinue)) {
+      Miss 'Node.js (`node`) not on PATH, so the Rigor hook cannot run: install Node.js, then start a new session'
+    }
+  }
+  if ($changes.Count) {
+    $note = if (Test-Path $settingsPath) { "; backup: $(Backup $settingsPath)" } else { '' }
+    $settings | ConvertTo-Json -Depth 50 | Set-Content $settingsPath -Encoding utf8NoBOM
+    Done "$($changes -join '; ') (other settings kept$note)"
+  }
 }
 
 $restartVsCode = $false

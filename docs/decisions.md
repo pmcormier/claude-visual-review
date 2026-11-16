@@ -208,3 +208,23 @@ agent can tell them apart without parsing every line; the setup prompt tells the
 Backups are timestamped (`.bak-yyyyMMdd-HHmmss`) so a rerun never overwrites an earlier one. In the same change,
 end-of-run reports chart lines changed as horizontal stacked bars in an `html` block (by area, split by kind,
 removed lines in a lighter shade, totals at the end): the owner found that clearer than a Mermaid bar chart.
+
+## 27. Rigor: a pushback check sent with every message (2026-11-16)
+The owner noticed sessions leaning toward whatever they said when they pushed back, and wanted them to seek the
+right answer instead, on every machine. Measured before writing anything (headless `claude -p`, read-only
+tools): fresh short sessions held correct answers under wrong pushback, but forks of a long working session
+(a 39 MB transcript) did not. Pushed twice with a wrong claim the session had already measured as false, today's
+setup gave in fully in 1 of 3 runs and softened in the other 2; the same rule loaded once at session start gave
+in (1 of 1); the sharper check in `rigor/pushback.md`, sent with every message by a `UserPromptSubmit` hook, held
+3 of 3 while still doing what was asked. How the rule arrives mattered more than its wording. Small numbers, one
+scenario: a strong hint, not proof. The opposite risk, a session digging in when the owner is right but has no proof
+to show, was tested too: told truthfully, without proof, that a PR it thought was pending had merged, all 3 runs
+(with and without the hook) took it at once, marked it unverified, and planned to check. The same tests caught sessions with no tools claiming "verified" for checks
+they never ran, so both files now say a claim is verified only when a tool call in this session produced it.
+
+Considered: a line in `CLAUDE.md` (loaded once, the delivery that failed); the whole rigor contract in the hook
+(about six times longer on every message, and untested); a private second repo (can hold personal lines, but
+a second update step). Picked an opt-in component here, with only the short, tested check in the hook. The
+check keeps "I'll do it" apart from "you're right", so the owner can still overrule; it only stops the session
+pretending to be persuaded. The hook is merged into `settings.json` by the script's file name, so a rerun never
+adds it twice and other hooks are kept.
