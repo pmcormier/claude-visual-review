@@ -40,4 +40,4 @@ Test 'ExistingOverrideGainsFableLineOnce' {
   Assert-Equal 1 $n 'Fable lines in bmad-prd'
 }
 
-exit $script:Failures
+Complete-Tests

@@ -1,5 +1,5 @@
 # Shared helpers for tests/*.tests.ps1. Each test file dot-sources this, calls Test for each case, and ends
-# with `exit $script:Failures`.
+# with `Complete-Tests`.
 $ErrorActionPreference = 'Stop'
 $script:Failures = 0
 $script:RepoRoot = Split-Path $PSScriptRoot
@@ -17,10 +17,19 @@ function Assert-Equal($Expected, $Actual, [string]$Message) {
   if ($Expected -ne $Actual) { throw "$Message`: expected <$Expected>, got <$Actual>" }
 }
 
+$script:TempDirs = [Collections.Generic.List[string]]::new()
 function New-TempDir {
   $d = Join-Path ([IO.Path]::GetTempPath()) ('cvr-test-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
   New-Item -ItemType Directory $d | Out-Null
+  $script:TempDirs.Add($d)
   $d
+}
+
+# Ends a test file: deletes the temp folders it made, so running one file alone leaves nothing behind, then
+# exits with the number of failures.
+function Complete-Tests {
+  foreach ($d in $script:TempDirs) { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+  exit $script:Failures
 }
 
 # A temp git repo holding the given files ({ relpath = content }), committed.

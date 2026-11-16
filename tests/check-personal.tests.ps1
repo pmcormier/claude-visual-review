@@ -97,4 +97,4 @@ Test 'FileNameChecked' {
   Assert-Equal 1 $LASTEXITCODE "exit code ($out)"
 }
 
-exit $script:Failures
+Complete-Tests

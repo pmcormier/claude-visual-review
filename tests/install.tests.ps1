@@ -331,6 +331,24 @@ Test 'RemoveTakesOnlyRigor' {
   Assert-True ($r.Out -match '-Remove takes only Rigor') "says why: $($r.Out)"
 }
 
+Test 'RemoveRigorAloneOnAnUpdate' {
+  # The README's form: no -Components, so last time's (Rigor included) are reused; that is not a conflict.
+  $h = New-TempDir
+  Invoke-Install $h @('-Components', 'Review,Rigor') | Out-Null
+  $r = Invoke-Install $h @('-Remove', 'Rigor')
+  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  Assert-True (-not (Test-Path "$h/rules/rigor.md")) 'rigor.md retired'
+}
+
+Test 'RigorInComponentsAndRemoveConflict' {
+  $h = New-TempDir
+  Invoke-Install $h @('-Components', 'Review,Rigor') | Out-Null
+  $r = Invoke-Install $h @('-Components', 'Review,Rigor', '-Remove', 'Rigor')
+  Assert-True ($r.Code -ne 0) "refused ($($r.Out))"
+  Assert-True ($r.Out -match 'both -Components and -Remove') "says why: $($r.Out)"
+  Assert-True (Test-Path "$h/rules/rigor.md") 'nothing removed'
+}
+
 Test 'NoRigorNoHook' {
   $h = New-TempDir
   Invoke-Install $h @('-Components', 'Review,Methods') | Out-Null
@@ -348,4 +366,4 @@ Test 'RigorHookSendsTheCheck' {
   Assert-Equal (Get-Content -Raw "$global/rigor/pushback.md").Trim() $j.hookSpecificOutput.additionalContext 'sends pushback.md'
 }
 
-exit $script:Failures
+Complete-Tests

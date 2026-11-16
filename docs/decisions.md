@@ -251,3 +251,9 @@ the silent removal exit 3 so an agent relays it; rejected because it still remov
 In the same change the tests stopped compiling the opener (installer `-SkipBuild`, used by the tests unless
 `CVR_TEST_BUILD=1`), and `tests/run.ps1` deletes the temp folders it made: each run had built about 30 copies of
 `open-in-vscode.exe` in `%TEMP%`, which a security tool on the maintainer's machine quarantined one by one.
+
+Follow-ups picked by the owner: naming Rigor in both `-Components` and `-Remove` now stops with an error
+instead of letting `-Remove` win silently (a bare `-Remove Rigor` on an update, which reuses last time's
+components, is not a conflict). Each test file now deletes its own temp folders (`Complete-Tests` in
+`tests/lib.ps1`), so running one file alone leaves nothing behind; `tests/run.ps1` still sweeps folders its
+run made, as a backstop for a file that crashes.

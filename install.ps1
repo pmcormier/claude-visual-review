@@ -111,6 +111,7 @@ Step 'Components'
 # Lists may arrive as one comma-separated string (pwsh -File, or an agent's shell).
 function Split-List([string[]]$List) { @($List | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
 $Components = Split-List $Components
+$askedFor = $Components   # as passed, before an update reuses last time's
 $Replace = @(Split-List $Replace | ForEach-Object { $_ -replace '\\', '/' })
 $BmadProject = Split-List $BmadProject
 $hadManifest = Test-Path $manifestPath
@@ -139,6 +140,9 @@ $Components = @('Review') + @($Components | Where-Object { $_ -ne 'Review' }) | 
 # from an example must not quietly turn the pushback check off.
 $Remove = Split-List $Remove
 foreach ($c in $Remove) { if ($c -ne 'Rigor') { throw "-Remove takes only Rigor; leaving another component out of -Components leaves its files in place" } }
+if ($Remove -contains 'Rigor' -and $askedFor -contains 'Rigor' -and -not $Owner) {
+  throw "Rigor is in both -Components and -Remove; drop it from one of them and run again"
+}
 $rigorInstalled = @($componentFiles['Rigor'] | Where-Object { $manifest.ContainsKey($_) }).Count -gt 0
 if ($Remove -contains 'Rigor') { $Components = @($Components | Where-Object { $_ -ne 'Rigor' }) }
 elseif ($rigorInstalled -and $Components -notcontains 'Rigor') {
