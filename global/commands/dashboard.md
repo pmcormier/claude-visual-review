@@ -21,10 +21,14 @@ them are finished:
    the plans from before the dashboard with no `Status:` line, each with `file`, `title`, `ticked`
    (`{done, total}`), `addedMs` and `changedMs`. On `{error}`, say so in one line and stop.
 2. If `plans` is empty, say in one line that there is nothing to catch up, and stop.
-3. Ask the person which plans are still open. Show each plan's title, its ticked count and when it last changed.
-   With more than four plans, ask where there is room to choose (the Plannotator Inbox as a `:::question-multi`
-   with one choice per plan, when it is available), otherwise as a numbered list in the terminal. A plan the
-   person says was abandoned gets `dropped`; every other plan not picked as open gets `done`.
+3. Check each plan against the repo before asking. Read its tasks and look for what each one was meant to leave
+   behind: the files it creates or changes, commits that name the plan or its work, and its ticked boxes. Suggest
+   done, open or dropped for each plan, with one short line of evidence per task (or "no trace found"). With
+   more than ten plans, go in batches of about ten, oldest first, and ask after each batch.
+   Then ask the person which plans are still open. Show each plan's title, your suggestion and its evidence.
+   Ask where there is room to choose (the Plannotator Inbox as a `:::question-multi` with one choice per plan,
+   when it is available), otherwise as a numbered list in the terminal. A plan the person says was abandoned
+   gets `dropped`; every other plan not picked as open gets `done`.
 4. In every listed plan, insert one line after the title (the first `# ` line), with today's date:
    `Status: done — catch-up YYYY-MM-DD`, `Status: dropped — catch-up YYYY-MM-DD`, or, for the plans picked as
    still open, `Status: open — catch-up YYYY-MM-DD` (it keeps them showing as current work). Change nothing else.

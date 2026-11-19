@@ -1,5 +1,7 @@
 # Shareable Repo Implementation Plan
 
+Status: done — catch-up 2026-11-19
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make this repo generic and public, so anyone's agent can clone it and install the setup with opt-in

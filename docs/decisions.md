@@ -381,6 +381,10 @@ How it works:
 - `/dashboard catch-up` lists the candidates, and the person picks the plans still open. Claude writes
   `Status: open` into those and `Status: done` or `Status: dropped` into the rest. It stages only those plan
   files, commits them only after the person's yes, and never pushes.
+- Before asking, Claude checks each plan against the repo (files, commits, ticked boxes) and shows one line of
+  evidence per task, in batches of about ten. The owner asked for this after the first live run: tick counts and
+  dates alone don't show whether a plan was done. It runs once per project, when asked; a plan with a `Status:`
+  line is never listed again.
 - A plan closed by the catch-up dates from its last change before the install, not from the catch-up commit.
   Otherwise every old plan would show as just finished for a week. The whole-branch review found this, along with
   the open plans staying folded. `Status:` must be followed by the word and then the end of the line, a dash or a
@@ -392,3 +396,8 @@ The owner also settled:
 - **A repo's own commit-message format wins** over the rule's "plan name + Task N" subject, because the owner's
   work machine has repos shared with other people.
 - **Seeing teammates' live work** (for example, GitHub Issues assigned to people) is a later build.
+
+Live check on the owner's machine (2026-11-19, the install that wrote `installed.json`): Up next went from 503 to
+82. In the project with 82 plans, 79 folded under "Before the dashboard" and work left went from 432 to 18; its 3
+part-ticked plans stayed shown. In a project with 3 plans, 2 folded and work left went from 15 to 8. Projects
+without superpowers plans were unchanged.
