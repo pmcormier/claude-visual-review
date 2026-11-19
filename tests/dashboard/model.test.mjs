@@ -298,3 +298,23 @@ test('toolCpu: unknown when the sampler has no figure, 0 when the tool started a
   // Created within the 2 s slack before the tool's start still counts.
   assert.equal(toolCpu({ descendants: (pid) => [{ pid, cpuPct: 2, created: ft(t - 1e6) }, { pid: 8, cpuPct: 9, created: ft(t - 1500) }] }, 7, t), 9);
 });
+
+test('counts.next leaves out before-dashboard and dropped plans', async () => {
+  const w = makeWorld();
+  try {
+    const now = Date.now();
+    const root = project(w, 'omicron');
+    const plans = join(root, 'docs', 'superpowers', 'plans');
+    mkdirSync(plans, { recursive: true });
+    writeFileSync(join(plans, 'a.md'), '# A\n\n### Task 1: one\n- [ ] s\n\n### Task 2: two\n- [ ] s\n');
+    writeFileSync(join(plans, 'b.md'), '# B\nStatus: dropped\n\n### Task 1: gone\n- [ ] s\n');
+    transcript(w, root, 'o1', [userAt(now - 60000)]);
+    const { buildModel } = await import('../../global/dashboard/lib/model.mjs');
+    const before = await buildModel(now, { sampler: sampler(() => false) });
+    assert.equal(before.counts.next, 2, 'no install date: the dropped plan alone is left out');
+    mkdirSync(join(w.claude, 'dashboard'), { recursive: true });
+    writeFileSync(join(w.claude, 'dashboard', 'installed.json'), JSON.stringify({ installedAt: new Date(now + 86400000).toISOString() }));
+    const after = await buildModel(now + 5000, { sampler: sampler(() => false) });
+    assert.equal(after.counts.next, 0, 'plans from before the install are left out too');
+  } finally { rmSync(w.base, { recursive: true, force: true }); }
+});

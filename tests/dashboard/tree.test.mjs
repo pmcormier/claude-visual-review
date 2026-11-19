@@ -549,3 +549,91 @@ test('readCommits keeps an unchanged-signature entry for 5 minutes (R27)', async
   t += 61_000;
   assert.equal((await readCommits(root, 0, { now })).length, 2, 'refreshed after 5 min');
 });
+
+// ---- dashboard catch-up: Status line and "before the dashboard"
+
+const DAY = 1440 * MIN;
+const INSTALL = T0 + 5 * DAY;
+const NOW = INSTALL + 2 * DAY;
+const REL = 'docs/superpowers/plans/old.md';
+
+function oldPlan(root, over = {}) {
+  const file = join(root, ...REL.split('/'));
+  const id = `plan:${REL}`;
+  return {
+    id, source: 'plan', title: 'Old plan', file, mtimeMs: T0, birthtimeMs: T0, planStatus: null,
+    tasks: [1, 2].map((n) => ({ id: `${id}#${n}`, n, title: `t${n}`, status: 'next', ticked: { done: 0, total: 2 } })),
+    ...over,
+  };
+}
+const addCommit = (ms = T0) => ({ ms, message: 'add plan', files: [REL], added: [REL] });
+const empty2 = () => ({ worklog: [], bmad: [], inbox: [], events: [], sessions: [], now: NOW });
+const epicOf = (tree) => tree.epics.find((e) => e.id === `plan:${REL}`);
+
+test('Status done makes every task done', async () => {
+  const { root } = setup();
+  const { buildTree } = await mod('tree.mjs');
+  const tree = buildTree(root, { ...empty2(), plans: [oldPlan(root, { planStatus: 'done' })], commits: [addCommit()], installedAtMs: null }, TH);
+  assert.ok(epicOf(tree).tasks.every((t) => t.status === 'done'));
+  assert.equal(tree.left.count, 0);
+});
+
+test('Status dropped leaves work left', async () => {
+  const { root } = setup();
+  const { buildTree } = await mod('tree.mjs');
+  const tree = buildTree(root, { ...empty2(), plans: [oldPlan(root, { planStatus: 'dropped' })], commits: [addCommit()], installedAtMs: null }, TH);
+  assert.equal(epicOf(tree).dropped, true);
+  assert.equal(tree.left.count, 0);
+});
+
+test('a plan added before the install with no ticks and no later change is before the dashboard', async () => {
+  const { root } = setup();
+  const { buildTree } = await mod('tree.mjs');
+  const tree = buildTree(root, { ...empty2(), plans: [oldPlan(root)], commits: [addCommit()], installedAtMs: INSTALL }, TH);
+  assert.equal(epicOf(tree).before, true);
+  assert.equal(tree.left.count, 0);
+});
+
+test('before the dashboard is undone by progress', async () => {
+  const { root } = setup();
+  const { buildTree } = await mod('tree.mjs');
+  const run = (inputs) => epicOf(buildTree(root, { ...empty2(), commits: [addCommit()], installedAtMs: INSTALL, ...inputs }, TH)).before;
+  // (a) some boxes ticked, not all
+  const part = oldPlan(root);
+  part.tasks[0] = { ...part.tasks[0], status: 'doing', ticked: { done: 1, total: 2 } };
+  assert.equal(run({ plans: [part] }), false, 'part-ticked');
+  // (b) a work-log task from it started after the install
+  const wl = [{ id: 'wl-1', title: 'old work', file: join(root, ...REL.split('/')), tasks: [{ id: 'wl-1-1', n: 1, title: 't1', status: 'doing', startedMs: INSTALL + DAY }] }];
+  assert.equal(run({ plans: [oldPlan(root)], worklog: wl }), false, 'work log');
+  // (c) a live session linked to one of its tasks
+  const s = [{ sessionId: 's-1', planRefs: [{ file: join(root, ...REL.split('/')), ms: NOW - MIN }], taskRefs: [{ n: 2, ms: NOW - MIN }], minutes: [], lastWriteMs: NOW - MIN }];
+  assert.equal(run({ plans: [oldPlan(root)], sessions: s }), false, 'linked session');
+  // (d) a commit touching it after the install
+  assert.equal(run({ plans: [oldPlan(root)], commits: [addCommit(), { ms: INSTALL + DAY, message: 'edit plan', files: [REL], added: [] }] }), false, 'later commit');
+});
+
+test('a plan added after the install is never before', async () => {
+  const { root } = setup();
+  const { buildTree } = await mod('tree.mjs');
+  const p = oldPlan(root, { mtimeMs: INSTALL + DAY, birthtimeMs: INSTALL + DAY });
+  const tree = buildTree(root, { ...empty2(), plans: [p], commits: [addCommit(INSTALL + DAY)], installedAtMs: INSTALL }, TH);
+  assert.equal(epicOf(tree).before, false);
+  assert.equal(tree.left.count, 2);
+});
+
+test('no install date folds nothing', async () => {
+  const { root } = setup();
+  const { buildTree } = await mod('tree.mjs');
+  const tree = buildTree(root, { ...empty2(), plans: [oldPlan(root)], commits: [addCommit()], installedAtMs: null }, TH);
+  assert.equal(epicOf(tree).before, false);
+  assert.equal(tree.left.count, 2);
+});
+
+test('an untracked plan dates from its creation time', async () => {
+  const { root } = setup();
+  const { buildTree } = await mod('tree.mjs');
+  const a = buildTree(root, { ...empty2(), plans: [oldPlan(root)], commits: [], installedAtMs: INSTALL }, TH);
+  assert.equal(epicOf(a).before, true);
+  const b = buildTree(root, { ...empty2(), plans: [oldPlan(root, { birthtimeMs: null })], commits: [], installedAtMs: INSTALL }, TH);
+  assert.equal(epicOf(b).before, false);
+});

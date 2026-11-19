@@ -10,6 +10,7 @@
 import { loadConfig } from './config.mjs';
 import {
   MIN, arr, toMs, planIndex, cleanEvents, cleanSessions, cleanCommits, activityBySession, spanMs, matchCommits,
+  planDates,
 } from './tree-match.mjs';
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -24,6 +25,8 @@ function cleanEpics(list, source) {
       id: String(e.id ?? `${source}:${out.length + 1}`), source: e.source ?? source, title: String(e.title ?? ''),
       file: typeof e.file === 'string' && e.file ? e.file : null,
       ...(Number.isFinite(e.mtimeMs) ? { mtimeMs: e.mtimeMs } : {}),
+      ...(Number.isFinite(e.birthtimeMs) ? { birthtimeMs: e.birthtimeMs } : {}),
+      ...(e.planStatus === 'done' || e.planStatus === 'dropped' ? { planStatus: e.planStatus } : {}),
       tasks: arr(e.tasks).filter(isObj).map((t, i) => ({
         id: String(t.id ?? `${e.id}#${i + 1}`), n: Number.isInteger(t.n) ? t.n : null, title: String(t.title ?? ''),
         status: STATUSES.has(t.status) ? t.status : 'next', size: t.size ?? null,
@@ -133,6 +136,8 @@ function median(xs) {
  * @param {{worklog?, plans?, bmad?, inbox?, commits?, sessions?, events?, now?: number}} inputs
  *   sessions: live sessions `{sessionId, planRefs, taskRefs, minutes, lastWriteMs}` (or those under `signals`);
  *   events: events.jsonl lines `{session, file, at}`; now: the moment `minutes` ends (default Date.now()).
+ *   installedAtMs: (optional) the Dashboard install date; plans added before it and untouched since get
+ *   `before: true` and leave work left (decision 32). Plan epics also get `dropped` from a `Status: dropped` line.
  *   liveSessionIds: (optional, Set or array) ids of every live session; when given, a work-log task `doing`
  *   under a session not in it reads `next`.
  * @param {{idleGap: number}} [thresholds] only idleGap is read. When omitted (not an object), buildTree calls
@@ -163,9 +168,19 @@ export function buildTree(root, inputs, thresholds) {
     const live = cleanSessions(inp.sessions);
     const activity = activityBySession(cleanEvents(inp.events), live, index, now);
 
-    const commitDone = matchCommits(root, plans, cleanCommits(inp.commits), activity, idleMs);
+    const commits = cleanCommits(inp.commits);
+    const commitDone = matchCommits(root, plans, commits, activity, idleMs);
     const { listed, override, target } = mergeWorklog(worklog, index);
     applyPlanStatus(plans, override, commitDone);
+    const dates = planDates(root, plans, commits);
+    // A `Status: done` line closes the whole plan; `Status: dropped` takes it out of work left.
+    for (const p of plans) {
+      p.dropped = p.planStatus === 'dropped';
+      if (p.planStatus !== 'done') continue;
+      for (const t of p.tasks) {
+        if (t.status !== 'done') { t.status = 'done'; t.doneMs = dates.get(p)?.changedMs ?? null; }
+      }
+    }
 
     const wlTitles = new Set(listed.map((e) => titleKey(e.title)));
     const keep = (e) => !wlTitles.has(titleKey(e.title));
@@ -185,6 +200,20 @@ export function buildTree(root, inputs, thresholds) {
       if (t.status === 'next') t.status = 'doing';
     }
 
+    // Before the dashboard (decision 32): added before the install date and untouched since, with no progress shown
+    // (no part-ticked plan, no task doing/waiting, linked to a live session or started after the install).
+    const installedAt = Number.isFinite(inp.installedAtMs) ? inp.installedAtMs : null;
+    for (const p of plans) {
+      const d = dates.get(p);
+      const ticks = p.tasks.reduce((a, t) => [a[0] + (t.ticked?.done ?? 0), a[1] + (t.ticked?.total ?? 0)], [0, 0]);
+      const partTicked = ticks[0] > 0 && ticks[0] < ticks[1];
+      const worked = p.tasks.some((t) => t.status === 'doing' || t.status === 'waiting' || t.sessionId
+        || (Number.isFinite(t.startedMs) && t.startedMs > installedAt));
+      p.before = installedAt !== null && p.planStatus !== 'done' && Number.isFinite(d?.addedMs) && d.addedMs < installedAt
+        && !(d.changedMs > installedAt) && !partTicked && !worked;
+    }
+    const counted = (e) => !e.before && !e.dropped;
+
     let total = 0;
     let count = 0;
     const measured = [];
@@ -195,7 +224,7 @@ export function buildTree(root, inputs, thresholds) {
         t.spentMin = spentMin(t, planOf.get(t) ?? null, activity, idleMs);
         delete t._commitMs;
         e.spentMin += t.spentMin;
-        if (t.status !== 'done') count += 1;
+        if (t.status !== 'done') { if (counted(e)) count += 1; }
         else if (t.spentMin > 0) measured.push(t.spentMin);
       }
       total += e.spentMin;

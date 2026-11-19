@@ -30,11 +30,12 @@
 //    last activity, newest first. open = a live session, a task in progress, or a stall (stuck/gone).
 //    quietSince = last activity when nothing in the project is working, else null.
 //  - Counts: stuck = sessions and subagents that look stuck (so the headline agrees with project state);
-//    waiting/working count sessions; next counts unfinished tasks with status 'next' across projects.
+//    waiting/working count sessions; next counts unfinished tasks with status 'next' across projects, leaving out
+//    plans from before the dashboard and dropped plans.
 import { readdirSync, statSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, basename, resolve, sep } from 'node:path';
 import { claudeHome, dashHome, plannotatorHome } from './paths.mjs';
-import { loadConfig } from './config.mjs';
+import { loadConfig, readInstalledAt } from './config.mjs';
 import { readJsonl } from './jsonl.mjs';
 import { readSessions, projectRoot } from './sessions.mjs';
 import { scanTranscript } from './transcripts.mjs';
@@ -333,7 +334,7 @@ async function buildProject(root, sessions, lastSeenMs, events, now, th, liveSes
       worklog: src.readWorklog(root), plans: cached('plans', root, plansSig(root), src.readPlans), bmad,
       inbox: cached('inbox', root, inboxSigNow, src.readInbox), commits,
       sessions: sessions.filter((s) => s.alive).map((s) => ({ sessionId: s.sessionId, signals: s._signals })),
-      events: events.filter((e) => inside(rootKey, e.file)), liveSessionIds, now,
+      events: events.filter((e) => inside(rootKey, e.file)), liveSessionIds, now, installedAtMs: readInstalledAt(),
     }, th));
     for (const s of sessions) {
       const id = tree.links?.[s.sessionId];
@@ -404,7 +405,7 @@ export async function buildModel(now = Date.now(), opts = {}) {
         if (s.state in RANK) model.counts[s.state] += 1;
         model.counts.stuck += s.subagents.filter((a) => a.state === 'stuck').length;
       }
-      for (const e of p.tree?.epics ?? []) model.counts.next += e.tasks.filter((t) => t.status === 'next').length;
+      for (const e of p.tree?.epics ?? []) if (!e.before && !e.dropped) model.counts.next += e.tasks.filter((t) => t.status === 'next').length;
     }
     model.projects = orderProjects(projects);
   } catch (e) {

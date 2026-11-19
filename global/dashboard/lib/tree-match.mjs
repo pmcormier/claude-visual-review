@@ -213,6 +213,33 @@ export function matchCommits(root, plans, commits, activity, idleMs) {
   return done;
 }
 
+/**
+ * Per plan: addedMs = its newest add commit, else the file's creation time (untracked or no history); changedMs =
+ * the newer of the latest commit touching it and the file's mtime (an uncommitted edit is a change). Either may be
+ * null. Commits as cleanCommits returns them.
+ * @returns {Map<object, {addedMs: number|null, changedMs: number|null}>}
+ */
+export function planDates(root, plans, commits) {
+  const out = new Map();
+  const rel = new Map(arr(plans).map((p) => [p, normPath('/', relative(String(root || ''), String(p.file || '')))]));
+  for (const p of arr(plans)) out.set(p, { addedMs: null, changedMs: Number.isFinite(p.mtimeMs) ? p.mtimeMs : null });
+  for (const c of arr(commits)) {
+    const added = new Set(c.added.map((f) => normPath('/', f)));
+    const files = new Set(c.files.map((f) => normPath('/', f)));
+    for (const p of arr(plans)) {
+      const k = rel.get(p);
+      const d = out.get(p);
+      if (added.has(k) && !(d.addedMs >= c.ms)) d.addedMs = c.ms;
+      if ((files.has(k) || added.has(k)) && !(d.changedMs >= c.ms)) d.changedMs = c.ms;
+    }
+  }
+  for (const p of arr(plans)) {
+    const d = out.get(p);
+    if (d.addedMs === null && Number.isFinite(p.birthtimeMs) && p.birthtimeMs > 0) d.addedMs = p.birthtimeMs;
+  }
+  return out;
+}
+
 /** Commits with the fields matching needs; anything else is dropped. */
 export function cleanCommits(commits) {
   const out = [];
