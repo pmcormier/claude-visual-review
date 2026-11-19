@@ -68,3 +68,32 @@ test('outputGrowth tracks idle time since last growth', () => {
     assert.ok(outputGrowth(f).idleMs < 5000);
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
+
+test('sampler restarts a dead child and stop() kills it', async () => {
+  const { EventEmitter } = await import('node:events');
+  const { startCpuSampler } = await import('../../global/dashboard/lib/procs.mjs');
+  if (process.platform !== 'win32') return;
+  const kids = [];
+  const fake = () => {
+    const k = new EventEmitter();
+    k.stdout = new EventEmitter();
+    k.stdout.setEncoding = () => {};
+    k.killed = false;
+    k.kill = () => { k.killed = true; };
+    kids.push(k);
+    return k;
+  };
+  const s = startCpuSampler(1000, { spawnFn: fake, restartMs: 20 });
+  assert.equal(kids.length, 1);
+  kids[0].stdout.emit('data', csv([[os_pid(), 1, 0, 0, '']]) + '#---sample---\r\n');
+  assert.equal(s.alive(os_pid(), undefined), true);
+  kids[0].emit('exit');
+  await new Promise((r) => setTimeout(r, 80));
+  assert.equal(kids.length, 2);
+  s.stop();
+  assert.equal(kids[1].killed, true);
+  kids[1].emit('exit');
+  await new Promise((r) => setTimeout(r, 80));
+  assert.equal(kids.length, 2);
+});
+function os_pid() { return 4242; }

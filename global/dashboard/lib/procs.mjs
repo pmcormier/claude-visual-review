@@ -10,10 +10,17 @@ const START_TOLERANCE = 100000n; // 10 ms in FILETIME units
 const RESTART_MS = 30000;
 
 // CIM CreationDate is rounded to microseconds, hence the tolerance. Fixed text: only the interval varies.
+// Property-restricted WQL and hand-built CSV lines (same header parseProcessTable reads) keep this cheap.
 const psCommand = (ms) =>
-  `while($true){Get-CimInstance Win32_Process|Select-Object ProcessId,ParentProcessId,KernelModeTime,UserModeTime,` +
-  `@{n='Created';e={if($_.CreationDate){$_.CreationDate.ToFileTimeUtc()}}}|ConvertTo-Csv -NoTypeInformation;` +
-  `'${MARK}';[Console]::Out.Flush();Start-Sleep -Milliseconds ${ms}}`;
+  `$q='SELECT ProcessId,ParentProcessId,KernelModeTime,UserModeTime,CreationDate FROM Win32_Process';` +
+  `$h='"ProcessId","ParentProcessId","KernelModeTime","UserModeTime","Created"';` +
+  `while($true){$l=foreach($p in Get-CimInstance -Query $q){$c='';if($p.CreationDate){$c=$p.CreationDate.ToFileTimeUtc()};` +
+  `'"{0}","{1}","{2}","{3}","{4}"' -f $p.ProcessId,$p.ParentProcessId,$p.KernelModeTime,$p.UserModeTime,$c};` +
+  `[Console]::Out.Write($h+"
+"+($l-join"
+")+"
+${MARK}
+");[Console]::Out.Flush();Start-Sleep -Milliseconds ${ms}}`;
 
 function splitCsvLine(line) {
   const out = [];
@@ -105,7 +112,7 @@ function killAlive(pid) {
   try { process.kill(pid, 0); return true; } catch (e) { return e?.code === 'EPERM'; }
 }
 
-export function startCpuSampler(intervalMs = 5000) {
+export function startCpuSampler(intervalMs = 15000, { spawnFn = spawn, restartMs = RESTART_MS } = {}) {
   if (process.platform !== 'win32') {
     return {
       descendants: (pid) => (killAlive(pid) ? [{ pid, cpuPct: null }] : []),
@@ -114,7 +121,7 @@ export function startCpuSampler(intervalMs = 5000) {
     };
   }
   const state = createSamplerState();
-  const ms = Math.max(500, Math.floor(Number(intervalMs)) || 5000);
+  const ms = Math.max(500, Math.floor(Number(intervalMs)) || 15000);
   const here = dirname(fileURLToPath(import.meta.url));
   let child = null;
   let timer = null;
@@ -127,14 +134,14 @@ export function startCpuSampler(intervalMs = 5000) {
   function schedule() {
     if (stopped) return;
     clearTimeout(timer);
-    timer = setTimeout(start, RESTART_MS);
+    timer = setTimeout(start, restartMs);
     timer.unref?.();
   }
   function start() {
     if (stopped) return;
     buf = '';
     try {
-      child = spawn('pwsh', ['-NoProfile', '-NonInteractive', '-Command', psCommand(ms)], {
+      child = spawnFn('pwsh', ['-NoProfile', '-NonInteractive', '-Command', psCommand(ms)], {
         cwd: here,
         env: { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' },
         windowsHide: true,
@@ -142,8 +149,8 @@ export function startCpuSampler(intervalMs = 5000) {
       });
     } catch { child = null; schedule(); return; }
     const mine = child;
-    mine.stdout.setEncoding('utf8');
-    mine.stdout.on('data', (d) => {
+    mine.stdout?.setEncoding?.('utf8');
+    mine.stdout?.on('data', (d) => {
       try {
         buf += d;
         let i;
