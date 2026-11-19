@@ -300,3 +300,34 @@ test('inbox reads project.json as JSONL (latest envelope) and as a single object
   writeFileSync(join(dir, 'project.json'), env(1, 1, 'a', 'project', 'p', { ...base, root }));
   assert.equal(readInbox(root).length, 1);
 });
+
+// ---- plan Status line (dashboard catch-up)
+
+const statusOf = async (root, name, lines) => {
+  writePlan(root, name, lines.join('\n'));
+  const { readPlans } = await mod('plans.mjs');
+  return readPlans(root).find((e) => e.file.endsWith(name)).planStatus;
+};
+
+test('plan Status line: done and dropped are read, case-insensitive, with an optional note', async () => {
+  const { root } = setup();
+  assert.equal(await statusOf(root, 'a.md', ['# A', '', 'Status: done', '', '## Tasks', '### Task 1: x', '- [ ] a']), 'done');
+  assert.equal(await statusOf(root, 'b.md', ['# B', '**Status:** Dropped — 2026-11-19', '### Task 1: x']), 'dropped');
+  assert.equal(await statusOf(root, 'c.md', ['# C', '> Status: done - shipped', '### Task 1: x']), 'done');
+});
+
+test('plan Status look-alikes are ignored', async () => {
+  const { root } = setup();
+  assert.equal(await statusOf(root, 'd.md', ['# D', 'Status: approved', '### Task 1: x']), null);
+  assert.equal(await statusOf(root, 'e.md', ['# E', '```', 'Status: done', '```', '### Task 1: x']), null);
+  assert.equal(await statusOf(root, 'f.md', ['# F', '## Global Constraints', 'Status: done', '### Task 1: x']), null);
+});
+
+test('plan epics carry birthtimeMs', async () => {
+  const { root } = setup();
+  writePlan(root, 'g.md', '# G\n### Task 1: x\n');
+  const { readPlans } = await mod('plans.mjs');
+  const b = readPlans(root)[0].birthtimeMs;
+  assert.equal(typeof b, 'number');
+  assert.ok(b > 0);
+});

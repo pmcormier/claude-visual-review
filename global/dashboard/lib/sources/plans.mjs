@@ -9,6 +9,9 @@ import { join, basename } from 'node:path';
 const TASK = /^###\s+Task\s+(\d+)\s*[:.\u2013-]\s*(.*?)\s*$/i;
 const SIZE = /\s*\[([SML])\]\s*$/;
 const TICK = /^\s*[-*]\s+\[([ xX])\]/;
+// `Status: done` or `Status: dropped` (optionally bold, quoted, or followed by a note), before the first `##`
+// heading and outside code fences: closes a whole plan (dashboard catch-up). Any other value is ignored.
+const STATUS = /^\s*(?:>\s*)?(?:\*\*)?Status:?(?:\*\*)?:?\s*(done|dropped)\b/i;
 
 function parsePlan(text) {
   const lines = String(text).split(/\r?\n/);
@@ -16,10 +19,14 @@ function parsePlan(text) {
   const tasks = [];
   let cur = null;
   let fence = null;
+  let status = null;
+  let preamble = true; // before the first ## heading
   for (const line of lines) {
     const f = /^\s*(```|~~~)/.exec(line);
     if (f) { fence = fence === null ? f[1] : fence === f[1] ? null : fence; continue; }
     if (fence !== null) continue;
+    if (preamble && /^#{2,6}\s/.test(line)) preamble = false;
+    if (preamble && status === null) { const st = STATUS.exec(line); if (st) status = st[1].toLowerCase(); }
     if (/^#{2,3}\s/.test(line)) {
       const m = TASK.exec(line);
       if (m) {
@@ -38,7 +45,7 @@ function parsePlan(text) {
     const k = TICK.exec(line);
     if (k) { cur.total += 1; if (k[1] !== ' ') cur.done += 1; }
   }
-  return { title, tasks };
+  return { title, tasks, status };
 }
 
 /**
@@ -57,12 +64,17 @@ export function readPlans(root) {
   for (const name of names) {
     try {
       const file = join(dir, name);
-      const { title, tasks } = parsePlan(readFileSync(file, 'utf8'));
+      const { title, tasks, status } = parsePlan(readFileSync(file, 'utf8'));
       let mtimeMs = null;
-      try { mtimeMs = statSync(file).mtimeMs; } catch { /* keep null */ }
+      let birthtimeMs = null;
+      try {
+        const st = statSync(file);
+        mtimeMs = st.mtimeMs;
+        birthtimeMs = st.birthtimeMs > 0 ? st.birthtimeMs : null;
+      } catch { /* keep null */ }
       const id = `plan:docs/superpowers/plans/${name}`;
       epics.push({
-        id, source: 'plan', title: title || basename(name, '.md'), file, mtimeMs,
+        id, source: 'plan', title: title || basename(name, '.md'), file, mtimeMs, birthtimeMs, planStatus: status,
         tasks: tasks.map((t) => ({
           id: `${id}#${t.n}`, n: t.n, title: t.title,
           status: t.total > 0 && t.done === t.total ? 'done' : t.done > 0 ? 'doing' : 'next',
