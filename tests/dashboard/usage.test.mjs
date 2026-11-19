@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -9,6 +9,8 @@ import { spawnSync } from 'node:child_process';
 const here = dirname(fileURLToPath(import.meta.url));
 const TAP = join(here, '..', '..', 'global', 'dashboard', 'statusline-tap.mjs');
 const USAGE = join(here, '..', '..', 'global', 'dashboard', 'lib', 'usage.mjs');
+const ENV0 = process.env.CVR_DASH_CLAUDE_HOME;
+after(() => { if (ENV0 === undefined) delete process.env.CVR_DASH_CLAUDE_HOME; else process.env.CVR_DASH_CLAUDE_HOME = ENV0; });
 const q = (s) => JSON.stringify(s);
 const nodeCmd = (js) => `${q(process.execPath)} -e ${q(js)}`;
 
@@ -63,6 +65,7 @@ test('tap with failing usage write still runs original', () => {
   mkdirSync(join(dash, 'usage.json')); // rename onto a directory fails
   const input = '{"rate_limits":{"five_hour":{"used_percentage":1,"resets_at":1}}}';
   const r = runTap(home, input);
+  assert.equal(r.status, 0);
   assert.equal(r.stdout.toString(), input);
   rmSync(home, { recursive: true, force: true });
 });
@@ -72,6 +75,41 @@ test('tap propagates the original exit code', () => {
   const r = runTap(home, '{}');
   assert.equal(r.status, 7);
   assert.equal(r.stdout.toString(), 'out');
+  rmSync(home, { recursive: true, force: true });
+});
+
+test('tap with empty stdin still runs the original', () => {
+  const { home } = setup({ command: nodeCmd('process.stdout.write("ran")') });
+  const r = runTap(home, '');
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout.toString(), 'ran');
+  rmSync(home, { recursive: true, force: true });
+});
+
+test('tap with an original that exits without reading stdin', () => {
+  const { home } = setup({ command: nodeCmd('process.stdout.write("quick")') });
+  const r = runTap(home, 'x'.repeat(2_000_000));
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout.toString(), 'quick');
+  assert.equal(r.stderr.length, 0);
+  rmSync(home, { recursive: true, force: true });
+});
+
+test('tap with a non-existent command exits non-zero, prints nothing, no stack trace', () => {
+  const { home } = setup({ command: q('no-such-cmd-cvr-xyz') });
+  const r = runTap(home, '{}');
+  assert.notEqual(r.status, 0);
+  assert.equal(r.stdout.length, 0);
+  assert.ok(!/at .*\.mjs|node:internal/.test(r.stderr.toString()));
+  rmSync(home, { recursive: true, force: true });
+});
+
+test('empty rate_limits leaves an existing usage.json untouched', () => {
+  const { home, dash } = setup({ command: ECHO });
+  const good = '{"at":1,"five_hour":{"used_percentage":2,"resets_at":3}}';
+  writeFileSync(join(dash, 'usage.json'), good);
+  runTap(home, '{"rate_limits":{}}');
+  assert.equal(readFileSync(join(dash, 'usage.json'), 'utf8'), good);
   rmSync(home, { recursive: true, force: true });
 });
 
