@@ -36,9 +36,12 @@ function ingest(st, e) {
   const hasMs = Number.isFinite(ms);
   if (hasMs) {
     st.minuteSet.add(Math.floor(ms / MIN) * MIN);
-    st.lastEntryMs = ms;
   }
-  st.lastEntryIsApiError = e.isApiErrorMessage === true;
+  // Only conversation entries decide "last entry"; system, queue-operation etc. are written after errors.
+  if (e.type === 'user' || e.type === 'assistant') {
+    if (hasMs) st.lastEntryMs = ms;
+    st.lastEntryIsApiError = e.isApiErrorMessage === true;
+  }
   const msg = isObj(e.message) ? e.message : null;
   const content = msg && Array.isArray(msg.content) ? msg.content : [];
 
@@ -111,7 +114,7 @@ function repeatOf(st, now, windowMin) {
   return best;
 }
 
-export function scanTranscript(path, now = Date.now()) {
+export function scanTranscript(path, now = Date.now(), thresholds = loadConfig().thresholds) {
   let size = null;
   let lastWriteMs = null;
   try { const s = statSync(path); size = s.size; lastWriteMs = s.mtimeMs; } catch { /* missing */ }
@@ -142,7 +145,7 @@ export function scanTranscript(path, now = Date.now()) {
     lastEntryIsApiError: view.lastEntryIsApiError,
     lastEntryMs: view.lastEntryMs,
     tokens: { ...view.tokens },
-    repeat: repeatOf(view, now, loadConfig().thresholds.loopWindow),
+    repeat: repeatOf(view, now, thresholds.loopWindow),
     planRefs: view.planRefs.map((r) => ({ ...r })),
     taskRefs: view.taskRefs.map((r) => ({ ...r })),
   };

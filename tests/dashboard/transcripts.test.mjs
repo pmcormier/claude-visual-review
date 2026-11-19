@@ -10,7 +10,12 @@ const iso = (minAgo) => new Date(NOW - minAgo * 60000).toISOString();
 
 function withDir(fn) {
   const d = mkdtempSync(join(tmpdir(), 'cvr-dash-'));
-  try { return fn(d); } finally { rmSync(d, { recursive: true, force: true }); }
+  const saved = process.env.CVR_DASH_CLAUDE_HOME;
+  process.env.CVR_DASH_CLAUDE_HOME = d;
+  try { return fn(d); } finally {
+    if (saved === undefined) delete process.env.CVR_DASH_CLAUDE_HOME; else process.env.CVR_DASH_CLAUDE_HOME = saved;
+    rmSync(d, { recursive: true, force: true });
+  }
 }
 const lines = (...objs) => objs.map((o) => JSON.stringify(o) + '\n').join('');
 const toolUse = (id, name, input, minAgo = 1, extra = {}) => ({
@@ -122,4 +127,34 @@ test('missing file and non-object lines do not throw', () => withDir((d) => {
   const p = join(d, 'x.jsonl');
   writeFileSync(p, 'null\n42\n"s"\n{"type":"assistant"}\n');
   assert.equal(scanTranscript(p, NOW).pendingTool, null);
+}));
+
+test('metadata records after an API error do not clear the error or move lastEntryMs', () => withDir((d) => {
+  const p = join(d, 't.jsonl');
+  writeFileSync(p, lines(
+    { type: 'assistant', timestamp: iso(5), isApiErrorMessage: true, message: { content: [] } },
+    { type: 'system', timestamp: iso(4) }, { type: 'queue-operation', timestamp: iso(3) },
+    { type: 'queue-operation', timestamp: iso(2) }, { type: 'last-prompt', timestamp: iso(1) },
+  ));
+  const s = scanTranscript(p, NOW);
+  assert.equal(s.lastEntryIsApiError, true);
+  assert.equal(s.lastEntryMs, NOW - 5 * 60000);
+  assert.equal(s.minutes[59 - 1], 1); // metadata still counts as activity
+}));
+
+test('a shrunk and rewritten file does not carry tokens or seen ids over', () => withDir((d) => {
+  const p = join(d, 't.jsonl');
+  const usage = { input_tokens: 5, output_tokens: 7, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+  const a = (req, pad = '') => ({ type: 'assistant', timestamp: iso(1), requestId: req, message: { usage, content: [{ type: 'text', text: 'x' + pad }] } });
+  writeFileSync(p, lines(a('r1', 'y'.repeat(200)), a('r2')));
+  assert.equal(scanTranscript(p, NOW).tokens.input, 10);
+  writeFileSync(p, lines(a('r1')));
+  assert.deepEqual(scanTranscript(p, NOW).tokens, { input: 5, output: 7, cacheRead: 0, cacheCreate: 0 });
+}));
+
+test('explicit thresholds override the config', () => withDir((d) => {
+  const p = join(d, 't.jsonl');
+  writeFileSync(p, lines(...[8, 7].map((m, i) => toolUse('toolu_' + i, 'Bash', { command: 'ls' }, m))));
+  assert.equal(scanTranscript(p, NOW, { loopWindow: 5 }).repeat, null);
+  assert.equal(scanTranscript(p, NOW, { loopWindow: 10 }).repeat.count, 2);
 }));
