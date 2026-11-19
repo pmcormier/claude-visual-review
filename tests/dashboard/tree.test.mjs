@@ -485,3 +485,46 @@ test('git child env drops object-store and config-injection variables (R16d)', a
     for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
   }
 });
+
+// A plan deleted and added again dates from its newest add: a Task 2 commit made for the old file must not
+// tick the new plan.
+test('a re-added plan is not ticked by a commit made before the re-add', async () => {
+  const { matchCommits } = await mod('tree-match.mjs');
+  const root = resolve('/proj');
+  const P = 'docs/superpowers/plans/checkout.md';
+  const plan = { id: 'p', file: join(root, P), tasks: [{ id: 'p#2', n: 2, status: 'next' }] };
+  const commits = [
+    { ms: T0, message: 'Add checkout plan', files: [P], added: [P] },
+    { ms: T0 + 5 * MIN, message: 'Task 2: old work', files: ['src/x'], added: [] },
+    { ms: T0 + 10 * MIN, message: 'Remove old plan', files: [P], added: [] },
+    { ms: T0 + 20 * MIN, message: 'New checkout plan', files: [P], added: [P] },
+  ];
+  assert.deepEqual([...matchCommits(root, [plan], commits, new Map(), 15 * MIN)], []);
+  const later = [...commits, { ms: T0 + 30 * MIN, message: 'Task 2: new work', files: ['src/y'], added: [] }];
+  assert.deepEqual([...matchCommits(root, [plan], later, new Map(), 15 * MIN)], [['p#2', T0 + 30 * MIN]]);
+});
+
+test('plan epics keep the plan file mtime through the merge', async () => {
+  const { buildTree } = await mod('tree.mjs');
+  const root = resolve('/proj');
+  const plans = [{ id: 'plan:a', source: 'plan', title: 'A', file: join(root, 'docs/superpowers/plans/a.md'), mtimeMs: T0, tasks: [{ id: 'plan:a#1', n: 1, title: 'x', status: 'next' }] }];
+  const t = buildTree(root, { ...empty(), plans }, TH);
+  assert.equal(t.epics[0].mtimeMs, T0);
+});
+
+test('a work-log task left doing by a session that is no longer live reads next', async () => {
+  const { buildTree } = await mod('tree.mjs');
+  const worklog = [{
+    id: 'wl:1', source: 'worklog', title: 'Fix login', file: null, tasks: [
+      { id: 'wl:1#1', n: 1, title: 'gone one', status: 'doing', sessionId: 'dead', startedMs: T0 },
+      { id: 'wl:1#2', n: 2, title: 'live one', status: 'doing', sessionId: 'alive', startedMs: T0 },
+      { id: 'wl:1#3', n: 3, title: 'no session', status: 'doing', sessionId: null, startedMs: T0 },
+    ],
+  }];
+  const t = buildTree('/proj', { ...empty(), worklog, liveSessionIds: new Set(['alive']) }, TH);
+  assert.deepEqual(t.epics[0].tasks.map((x) => x.status), ['next', 'doing', 'doing']);
+  assert.equal(t.epics[0].title, 'Fix login'); // the work log's own epic stays listed
+  // Without liveness the work log is taken as written.
+  const raw = buildTree('/proj', { ...empty(), worklog }, TH);
+  assert.deepEqual(raw.epics[0].tasks.map((x) => x.status), ['doing', 'doing', 'doing']);
+});

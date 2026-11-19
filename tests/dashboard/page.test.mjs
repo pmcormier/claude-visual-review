@@ -163,6 +163,21 @@ test('foldEpics folds epics untouched for a week, keeps live and unknown ones', 
   assert.deepEqual(foldEpics(null, NOW, null), { shown: [], earlier: [] });
 });
 
+// R25: a plan whose tasks carry no times is dated by its file's last change, so a long-finished plan with no
+// ticks folds away and leaves Up next and the effort count.
+test('an untimed plan epic folds by its file mtime and leaves Up next and the count', () => {
+  const oldPlan = { id: 'P1', title: 'Old plan', mtimeMs: NOW - 10 * DAY, tasks: [{ id: 'a', status: 'next' }, { id: 'b', status: 'next' }] };
+  const newPlan = { id: 'P2', title: 'New plan', mtimeMs: NOW - DAY, tasks: [{ id: 'c', status: 'next' }] };
+  const { shown, earlier } = foldEpics([oldPlan, newPlan], NOW, new Set());
+  assert.deepEqual(earlier.map((e) => e.id), ['P1']);
+  assert.deepEqual(effortLeft({ left: { count: 3, hours: null } }, shown), { count: 1, hours: null });
+  const model = { projects: [{ root: 'r', name: 'r', sessions: [], tree: { epics: [oldPlan, newPlan], left: { count: 3, hours: null } } }] };
+  assert.deepEqual(triage(model, NOW).next[0].tasks.map((t) => t.id), ['c']);
+  // a task time wins over the file time
+  const timed = { ...oldPlan, tasks: [{ id: 'a', status: 'next', startedMs: NOW - DAY }] };
+  assert.equal(foldEpics([timed], NOW, new Set()).earlier.length, 0);
+});
+
 test('effortLeft counts only the shown epics and scales the estimate', () => {
   const tree = { left: { count: 4, hours: 8 } };
   const shown = [{ tasks: [{ status: 'next' }, { status: 'done' }, { status: 'doing' }] }];

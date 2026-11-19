@@ -104,13 +104,14 @@ export function lifePath(minutes) {
 
 // ---- folding (R14) --------------------------------------------------------------------------------------------
 
-/** Latest known activity of an epic (task doneMs or startedMs), or null when no task carries a time. */
+/** Latest known activity of an epic (task doneMs or startedMs); when no task carries a time, the plan file's
+ *  last change (epic.mtimeMs, R25); else null. */
 export function epicLastActivity(epic) {
   let best = null;
   for (const t of arr(epic?.tasks)) {
     for (const v of [t?.doneMs, t?.startedMs]) if (num(v) && (best === null || v > best)) best = v;
   }
-  return best;
+  return best ?? (num(epic?.mtimeMs) ? epic.mtimeMs : null);
 }
 
 export const epicDone = (epic) => arr(epic?.tasks).length > 0 && arr(epic.tasks).every((t) => t?.status === 'done');

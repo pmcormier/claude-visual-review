@@ -1,8 +1,9 @@
 // Superpowers plans: <root>/docs/superpowers/plans/*.md become epics, `### Task N: <title> [S|M|L]` headings
 // become tasks, and `- [x]` / `- [ ]` lines under a task are its ticked steps.
 // Plan-derived status (the tree merge combines it with the work log and git): all ticked -> done,
-// some ticked -> doing, none ticked or no checkboxes -> next. Never throws.
-import { readdirSync, readFileSync } from 'node:fs';
+// some ticked -> doing, none ticked or no checkboxes -> next. Each epic carries the plan file's mtime
+// (`mtimeMs`), its last-activity time when no task has a timestamp (R25). Never throws.
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, basename } from 'node:path';
 
 const TASK = /^###\s+Task\s+(\d+)\s*[:.\u2013-]\s*(.*?)\s*$/i;
@@ -57,9 +58,11 @@ export function readPlans(root) {
     try {
       const file = join(dir, name);
       const { title, tasks } = parsePlan(readFileSync(file, 'utf8'));
+      let mtimeMs = null;
+      try { mtimeMs = statSync(file).mtimeMs; } catch { /* keep null */ }
       const id = `plan:docs/superpowers/plans/${name}`;
       epics.push({
-        id, source: 'plan', title: title || basename(name, '.md'), file,
+        id, source: 'plan', title: title || basename(name, '.md'), file, mtimeMs,
         tasks: tasks.map((t) => ({
           id: `${id}#${t.n}`, n: t.n, title: t.title,
           status: t.total > 0 && t.done === t.total ? 'done' : t.done > 0 ? 'doing' : 'next',

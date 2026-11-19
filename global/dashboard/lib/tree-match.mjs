@@ -165,8 +165,8 @@ export function segments(spans, idleMs) {
  *  b. sessions active at the commit (inside one of their bridged activity segments, or up to idleGap after its
  *     end) had touched plans before it: exactly one of those plans has Task N;
  *  c. the repo has exactly one plan file in total (now): with no other plan, no other Task N can be meant.
- * In b and c a plan is ticked only when its add commit (the commit where git lists the file with status `A`)
- * was seen and is at or before the commit. An add outside the window (or an uncommitted plan) means never.
+ * In b and c a plan is ticked only when its add commit (the newest commit where git lists the file with status
+ * `A`, so a deleted and re-added plan dates from the re-add) was seen and is at or before the commit. An add outside the window (or an uncommitted plan) means never.
  * (R16: reconstructing "unfinished at commit time" from history leaked through truncated windows, fix-up
  * commits after a plan finished, and partly committed ticks, so c no longer looks at multi-plan repos.)
  * @returns {Map<string, number>} plan task id -> commit ms (the oldest matching commit)
@@ -179,7 +179,7 @@ export function matchCommits(root, plans, commits, activity, idleMs) {
   for (const c of commits) {
     for (const f of c.added) {
       const k = normPath('/', f);
-      for (const p of plans) if (rel.get(p) === k && !(added.get(p) <= c.ms)) added.set(p, c.ms);
+      for (const p of plans) if (rel.get(p) === k && !(added.get(p) >= c.ms)) added.set(p, c.ms); // newest add
     }
   }
   const tickable = (p, ms) => added.has(p) && added.get(p) <= ms;

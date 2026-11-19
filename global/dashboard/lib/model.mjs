@@ -20,9 +20,10 @@
 //    A finished subagent of a gone parent shows idle. Any "stuck" subagent verdict needs the parent to be
 //    waiting on it actively (its pending tool is an Agent/Task call); otherwise the subagent shows idle.
 //  - Finished/idle subagents collapse to the last KEEP_DONE_SUBAGENTS plus a count (subagentsHidden).
-//  - Commits are read for the last `commitDays` (30) days, and events.jsonl lines older than that are ignored:
-//    commit matching clauses b/c (plan birth from a real add, session-linked commits) only see adds and
-//    activity inside that window.
+//  - Commits are read over the whole history (git.mjs caps the count), so a plan task a commit marked done
+//    stays done however old the commit (R25). events.jsonl lines older than `commitDays` (30) are ignored, so
+//    commit matching clause b (session-linked commits) only sees plan touches inside that window.
+//  - A work-log task left `doing` by a session that is no longer live reads `next` (buildTree liveSessionIds).
 //  - Project state: stuck > waiting > working (sessions and their subagents) > gone > idle (a live session,
 //    none working) > quiet (no live session). Order: stuck, waiting, working, then the rest, each group by
 //    last activity, newest first. open = a live session, a task in progress, or a stall (stuck/gone).
@@ -303,7 +304,7 @@ function findTask(tree, id) {
 
 const SOURCES = { readWorklog, readPlans, readBmad, readInbox, readCommits };
 
-async function buildProject(root, sessions, lastSeenMs, events, now, th, sinceMs, inboxSigNow, src) {
+async function buildProject(root, sessions, lastSeenMs, events, now, th, liveSessionIds, inboxSigNow, src) {
   const rootKey = keyOf(root);
   const lastActivityMs = Math.max(lastSeenMs ?? -Infinity, ...sessions.map((s) => s.lastWriteMs ?? -Infinity));
   const state = projectState(sessions);
@@ -314,12 +315,12 @@ async function buildProject(root, sessions, lastSeenMs, events, now, th, sinceMs
   let tree = null;
   let error = null;
   try {
-    const [bmad, commits] = await Promise.all([src.readBmad(root), src.readCommits(root, sinceMs)]);
+    const [bmad, commits] = await Promise.all([src.readBmad(root), src.readCommits(root)]);
     tree = trimTree(buildTree(root, {
       worklog: src.readWorklog(root), plans: cached('plans', root, plansSig(root), src.readPlans), bmad,
       inbox: cached('inbox', root, inboxSigNow, src.readInbox), commits,
       sessions: sessions.filter((s) => s.alive).map((s) => ({ sessionId: s.sessionId, signals: s._signals })),
-      events: events.filter((e) => inside(rootKey, e.file)), now,
+      events: events.filter((e) => inside(rootKey, e.file)), liveSessionIds, now,
     }, th));
     for (const s of sessions) {
       const id = tree.links?.[s.sessionId];
@@ -355,12 +356,13 @@ export async function buildModel(now = Date.now(), opts = {}) {
 
     pruneSubagentCache(now);
     const byRoot = new Map(); // key -> {root, lastMs, sessions}
+    const liveSessionIds = new Set();
     for (const [k, d] of discoverRoots(now, historyDays)) byRoot.set(k, { root: d.root, lastMs: d.lastMs, sessions: [] });
     for (const s of readSessions()) {
       let v;
       try { v = sessionView(s, now, th, sampler); } catch { v = null; }
       if (!v) continue;
-      if (v.alive) model.live += 1;
+      if (v.alive) { model.live += 1; if (v.sessionId) liveSessionIds.add(v.sessionId); }
       if (!s.cwd) continue;
       const root = projectRoot(s.cwd);
       const k = keyOf(root);
@@ -374,7 +376,7 @@ export async function buildModel(now = Date.now(), opts = {}) {
     const projects = await Promise.all([...byRoot.values()].map(async (p) => {
       p.sessions.sort((a, b) => rankOf(a.state) - rankOf(b.state) || (b.lastWriteMs ?? 0) - (a.lastWriteMs ?? 0));
       try {
-        return await buildProject(p.root, p.sessions, p.lastMs, events, now, th, sinceMs, inboxSigNow, src);
+        return await buildProject(p.root, p.sessions, p.lastMs, events, now, th, liveSessionIds, inboxSigNow, src);
       } catch (e) {
         return {
           root: p.root, name: basename(p.root), state: projectState(p.sessions), sessions: p.sessions, tree: null,

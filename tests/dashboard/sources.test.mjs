@@ -55,6 +55,7 @@ test('plan headings become tasks with size', async () => {
   ]);
   assert.deepEqual(e.tasks.map((t) => t.status), ['next', 'next', 'next']);
   assert.equal(e.tasks[2].ticked, null);
+  assert.ok(Number.isFinite(e.mtimeMs)); // R25: the plan file's last change dates an untimed epic
 });
 
 test('ticked steps counted', async () => {

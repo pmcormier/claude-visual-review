@@ -1,4 +1,4 @@
-// Recent commits of a project, read with `git log` (read-only). Never throws; any failure logs one line and
+// A project's commits (its whole history, newest first, up to MAX_COUNT), read with `git log` (read-only). Never throws; any failure logs one line and
 // returns [].
 // Child processes (security ruling R9): cwd is this module's folder, never the project; the project is passed
 // with -C; NoDefaultCurrentDirectoryInExePath=1, windowsHide, 10 s timeout, async so the server never blocks;
@@ -113,7 +113,7 @@ async function fetchCommits(key, sig, sinceMs) {
   try {
     const out = await run([
       '--no-pager', '-c', 'core.fsmonitor=', '-c', 'core.quotepath=off', '-c', 'log.showSignature=false',
-      '-C', key, 'log', `--since=${new Date(sinceMs).toISOString()}`, `--max-count=${MAX_COUNT}`,
+      '-C', key, 'log', ...(sinceMs > 0 ? [`--since=${new Date(sinceMs).toISOString()}`] : []), `--max-count=${MAX_COUNT}`,
       '--no-color', '--name-status', `--format=${RS}%H${US}%ct${US}%B${US}`,
     ]);
     const commits = parseLog(out);
@@ -130,7 +130,7 @@ async function fetchCommits(key, sig, sinceMs) {
 
 /**
  * @param {string} root project root (git top-level)
- * @param {number} sinceMs only commits whose committer time is at or after this
+ * @param {number} [sinceMs] only commits whose committer time is at or after this (default 0: the whole history)
  * @returns {Promise<{sha: string, ms: number, message: string, files: string[], added: string[]}[]>} newest first
  */
 export async function readCommits(root, sinceMs = 0) {

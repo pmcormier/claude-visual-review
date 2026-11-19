@@ -23,6 +23,7 @@ function cleanEpics(list, source) {
     out.push({
       id: String(e.id ?? `${source}:${out.length + 1}`), source: e.source ?? source, title: String(e.title ?? ''),
       file: typeof e.file === 'string' && e.file ? e.file : null,
+      ...(Number.isFinite(e.mtimeMs) ? { mtimeMs: e.mtimeMs } : {}),
       tasks: arr(e.tasks).filter(isObj).map((t, i) => ({
         id: String(t.id ?? `${e.id}#${i + 1}`), n: Number.isInteger(t.n) ? t.n : null, title: String(t.title ?? ''),
         status: STATUSES.has(t.status) ? t.status : 'next', size: t.size ?? null,
@@ -132,6 +133,8 @@ function median(xs) {
  * @param {{worklog?, plans?, bmad?, inbox?, commits?, sessions?, events?, now?: number}} inputs
  *   sessions: live sessions `{sessionId, planRefs, taskRefs, minutes, lastWriteMs}` (or those under `signals`);
  *   events: events.jsonl lines `{session, file, at}`; now: the moment `minutes` ends (default Date.now()).
+ *   liveSessionIds: (optional, Set or array) ids of every live session; when given, a work-log task `doing`
+ *   under a session not in it reads `next`.
  * @param {{idleGap: number}} [thresholds] only idleGap is read. When omitted (not an object), buildTree calls
  *   loadConfig() and so reads <dashHome>/config.json; that is its only I/O. Pass thresholds to keep it pure.
  * @returns {{epics: import('./types.mjs').Epic[], left: {count: number, hours: number|null}, spentMin: number,
@@ -146,6 +149,14 @@ export function buildTree(root, inputs, thresholds) {
 
     const plans = cleanEpics(inp.plans, 'plan').filter((p) => p.file);
     const worklog = cleanEpics(inp.worklog, 'worklog');
+    // A work-log task left `doing` by a session that is no longer live is not being worked on: it reads `next`.
+    // Only when the caller knows which sessions are live (liveSessionIds); a task with no session is left alone.
+    if (inp.liveSessionIds instanceof Set || Array.isArray(inp.liveSessionIds)) {
+      const liveIds = new Set(inp.liveSessionIds);
+      for (const e of worklog) {
+        for (const t of e.tasks) if (t.status === 'doing' && t.sessionId && !liveIds.has(t.sessionId)) t.status = 'next';
+      }
+    }
     const bmad = cleanEpics(inp.bmad, 'bmad');
     let inbox = cleanEpics(inp.inbox, 'inbox');
     const index = planIndex(root, plans);
