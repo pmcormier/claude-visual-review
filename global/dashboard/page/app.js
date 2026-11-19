@@ -6,7 +6,7 @@
 import {
   STATE_LABEL, STATE_CLASS, formatDuration, agoWords, updatedText, shortId, shortDate, lifePath, foldEpics,
   effortLeft, liveIds, usageView, detailText, sessionWhat, nowLine, triage, epicDone, epicLastActivity, sizeSummary,
-  filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText,
+  filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask,
 } from '/render.mjs';
 
 const MIN = 60000;
@@ -181,12 +181,13 @@ function isOpen(p) {
 function sessionBlock(p, s, now) {
   const cls = STATE_CLASS[s.state] ?? 'idle';
   const { what, line } = sessionWhat(s);
-  const link = s.linkedTask?.id ? keyOf(p.root, s.linkedTask.id) : null;
+  const cur = currentTask(s);
+  const link = cur?.id ? keyOf(p.root, cur.id) : null;
   const keys = alertKeys({ sessions: [{ ...s, subagents: [] }] });
   const sub = h('div', { class: 'sub' }, STATE_LABEL[s.state] ?? 'Unknown',
     line ? [' · ', `${line.prefix} `, since(line.from, now), line.suffix ?? ''] : null);
   const onTask = link
-    ? h('div', { class: 'on-task' }, 'Working on ', h('button', { type: 'button', class: 'go', data: { go: link, fk: `go|${s.sessionId}` }, text: s.linkedTask.title || 'a task' }))
+    ? h('div', { class: 'on-task' }, 'Working on ', h('button', { type: 'button', class: 'go', data: { go: link, fk: `go|${s.sessionId}` }, text: cur.title || 'a task' }))
     : h('div', { class: 'on-task none', text: 'Not linked to a task yet' });
   const active = arr(s.subagents).filter((a) => isActiveSub(a) && a.state !== 'stuck');
   const finished = arr(s.subagents).filter((a) => !isActiveSub(a)).length + (s.subagentsHidden ?? 0);
@@ -230,7 +231,7 @@ function epicState(e, byId) {
 }
 
 function taskLi(p, t, byId) {
-  const s = liveSession(byId, t);
+  const s = t.status === 'done' ? null : liveSession(byId, t); // a finished task shows no live session
   const st = taskState(t, s);
   const link = s ? keyOf(p.root, t.id) : null;
   const nowText = s ? nowLine(s) : '';
@@ -369,9 +370,13 @@ function replaceKeepingFocus(old, el) {
 // Panels kept as they were because the pointer was over them (spec rule 10); rebuilt once it leaves.
 const heldPanels = new Set();
 let userRender = false;
-let pointerPanel = null; // the project panel under the mouse, from mouseover (`:hover` goes stale when nodes are swapped)
+let mouse = null; // last mouse position; `:hover` goes stale in Chrome when the node under a still mouse is swapped
+const pointerEl = () => (mouse ? document.elementFromPoint(mouse.x, mouse.y) : null);
+const overTree = (el) => { const t = pointerEl(); return !!t && el.contains(t) && !!t.closest('ul.tree'); };
+const overGrid = () => { const t = pointerEl(); return !!t && !!t.closest('#v-projects .grid'); };
+let orderHeld = false;
 
-function syncKeyed(container, cache, items, hold = null) {
+function syncKeyed(container, cache, items, hold = null, keepOrder = false) {
   const keep = new Set(items.map((it) => it.key));
   for (const [k, rec] of cache) if (!keep.has(k)) { rec.el.remove(); cache.delete(k); }
   const els = items.map((it) => {
@@ -389,13 +394,19 @@ function syncKeyed(container, cache, items, hold = null) {
     }
     return rec.el;
   });
+  if (keepOrder && !userRender) { // existing panels stay where they are; new ones go at the end
+    orderHeld = true;
+    for (const el of els) if (el.parentNode !== container) container.append(el);
+    for (const c of [...container.children]) if (!els.includes(c)) c.remove();
+    return;
+  }
   els.forEach((el, i) => { if (container.children[i] !== el) container.insertBefore(el, container.children[i] ?? null); });
   while (container.children.length > els.length) container.lastElementChild.remove();
 }
 
 function sync(container, cache, list, build, now, kind) {
-  const hold = kind === 'panel' ? (el) => el === pointerPanel : null;
-  syncKeyed(container, cache, list.map((p) => ({ key: p.root, sig: sigOf(p, now, kind), build: () => build(p, now) })), hold);
+  const hold = kind === 'panel' ? overTree : null;
+  syncKeyed(container, cache, list.map((p) => ({ key: p.root, sig: sigOf(p, now, kind), build: () => build(p, now) })), hold, kind === 'panel' && overGrid());
 }
 
 function renderByUser() {
@@ -436,7 +447,7 @@ function sessionRow(p, s, fresh, keys, now) {
       line && s.state !== 'idle' ? h('div', { class: 'muted' }, `${line.prefix} `, since(line.from, now), line.suffix ?? '') : null,
       s.evidence ? h('div', { class: 'evidence', text: s.evidence }) : null,
       s.hint ? h('div', { class: 'hint', text: s.hint }) : null),
-    h('span', { class: `cell${s.linkedTask ? '' : ' muted'}`, text: s.linkedTask?.title || 'Not linked to a task yet' }),
+    h('span', { class: `cell${currentTask(s) ? '' : ' muted'}`, text: currentTask(s)?.title || 'Not linked to a task yet' }),
     life(s.life),
     h('span', { class: 'cell ago' }, Number.isFinite(s.lastWriteMs) ? [since(s.lastWriteMs, now), ' ago'] : ''));
 }
@@ -496,7 +507,7 @@ function triageItem(it, akey, fresh, now) {
       h('b', { text: a ? 'Subagent' : `Session ${shortId(s.sessionId)}` }), h('span', { class: 'where', text: `in ${p.name}` })),
     h('div', null, what, line ? h('span', { class: 'muted' }, ' · ', `${line.prefix} `, since(line.from, now), line.suffix ?? '') : null),
     who.evidence ? h('div', { class: 'evidence', text: who.evidence }) : null,
-    !a ? h('div', { class: `on-task${s.linkedTask ? '' : ' none'}`, text: s.linkedTask ? `Working on ${s.linkedTask.title}` : 'Not linked to a task yet' }) : null);
+    !a ? h('div', { class: `on-task${currentTask(s) ? '' : ' none'}`, text: currentTask(s) ? `Working on ${currentTask(s).title}` : 'Not linked to a task yet' }) : null);
 }
 
 function triageItems(list, now) {
@@ -735,8 +746,6 @@ function setLit(k) {
   }
 }
 document.addEventListener('mouseover', (e) => {
-  pointerPanel = e.target.closest?.('#v-projects .panel') ?? null;
-  if (heldPanels.size && !heldPanels.has(pointerPanel)) { heldPanels.clear(); dirty.projects = true; render(); }
   const k = e.target.closest?.('[data-link]')?.dataset.link ?? null;
   if (k !== litKey) setLit(k);
   const al = e.target.closest?.('[data-alerts]');
@@ -878,9 +887,18 @@ document.addEventListener('mousemove', (e) => {
   }
 });
 document.addEventListener('mouseleave', hideTip);
+function releaseHolds() {
+  if (!heldPanels.size && !orderHeld) return;
+  if ([...heldPanels].some((el) => el.isConnected && overTree(el)) || (orderHeld && overGrid())) return;
+  heldPanels.clear();
+  orderHeld = false;
+  dirty.projects = true;
+  render();
+}
+document.addEventListener('mousemove', (e) => { mouse = { x: e.clientX, y: e.clientY }; if (heldPanels.size || orderHeld) releaseHolds(); }, { passive: true });
 document.documentElement.addEventListener('mouseleave', () => {
-  pointerPanel = null;
-  if (heldPanels.size) { heldPanels.clear(); dirty.projects = true; render(); }
+  mouse = null;
+  releaseHolds();
 });
 document.addEventListener('scroll', hideTip, true);
 

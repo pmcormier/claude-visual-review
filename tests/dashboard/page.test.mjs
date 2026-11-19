@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
-  sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText,
+  sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -310,4 +310,12 @@ test('tipText puts a cut-off label in full above the explanation', () => {
   assert.equal(tipText('Long title', false, 'Explains'), 'Explains');
   assert.equal(tipText('', true, 'Explains'), 'Explains');
   assert.equal(tipText('Long title', true, 'Long title. Not started.'), 'Long title. Not started.');
+});
+
+// Owner's report 2026-11-19: a finished task showed as the session's current work.
+test('currentTask drops a linked task that is already done', () => {
+  assert.deepEqual(currentTask({ linkedTask: { id: 't', title: 'T', status: 'doing' } }), { id: 't', title: 'T', status: 'doing' });
+  assert.equal(currentTask({ linkedTask: { id: 't', title: 'T', status: 'done' } }), null);
+  assert.equal(currentTask({ linkedTask: null }), null);
+  assert.equal(currentTask(null), null);
 });

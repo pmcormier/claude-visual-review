@@ -191,6 +191,9 @@ export function groupEpics(epics, now, liveSessionIds, stateOf) {
   return out;
 }
 
+/** The task a session is working on now: its linked task, unless that task is already done. */
+export const currentTask = (session) => (session?.linkedTask && session.linkedTask.status !== 'done' ? session.linkedTask : null);
+
 /** The hover pop-up's text: a row label that is cut off on screen comes first, in full, unless the text already starts with it. */
 export const tipText = (fullLabel, cutOff, text) =>
   (cutOff && fullLabel && !String(text).startsWith(fullLabel) ? `${fullLabel}\n\n${text}` : text);
@@ -291,7 +294,7 @@ function sessionText({ session, project }) {
     `A Claude Code window in ${project?.name ?? 'this project'}, ${SESSION_PHRASE[s.state] ?? 'state unknown'}`,
     s.evidence, s.hint,
     `${plural(running, 'helper')} running, ${finished} finished`,
-    s.linkedTask?.title ? `Linked to ${s.linkedTask.title}` : '',
+    currentTask(s)?.title ? `Linked to ${currentTask(s).title}` : '',
     tin || tk.output ? `${formatTokens(tin)} tokens in and ${formatTokens(tk.output ?? 0)} out so far in this session` : '',
   );
 }
