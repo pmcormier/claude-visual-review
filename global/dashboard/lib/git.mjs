@@ -25,11 +25,19 @@ function log(msg) {
   } catch { /* logging must never throw */ }
 }
 
-// A repo-location variable inherited from the server's environment would point git at another repo.
-const DROP_ENV = new Set(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_CEILING_DIRECTORIES', 'GIT_COMMON_DIR']);
+// Variables inherited from the server's environment that would point git at another repo, object store or
+// namespace, or inject config, are dropped.
+const DROP_ENV = new Set([
+  'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_CEILING_DIRECTORIES', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY',
+  'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT',
+]);
+const DROP_PREFIX = /^GIT_CONFIG_(KEY|VALUE)_/;
 function childEnv() {
   const env = {};
-  for (const [k, v] of Object.entries(process.env)) if (!DROP_ENV.has(k.toUpperCase())) env[k] = v;
+  for (const [k, v] of Object.entries(process.env)) {
+    const K = k.toUpperCase();
+    if (!DROP_ENV.has(K) && !DROP_PREFIX.test(K)) env[k] = v;
+  }
   return { ...env, NoDefaultCurrentDirectoryInExePath: '1', GIT_TERMINAL_PROMPT: '0' };
 }
 
@@ -42,7 +50,11 @@ function run(args) {
   });
 }
 
-/** Parses `git log --format=%x1e%H%x1f%ct%x1f%B%x1f --name-only` output. Exported for tests. */
+/**
+ * Parses `git log --format=%x1e%H%x1f%ct%x1f%B%x1f --name-status` output. Exported for tests.
+ * files: every path a commit lists (both sides of a rename or copy). added: paths whose status is `A`, a real
+ * add, which is what dates a plan's birth.
+ */
 export function parseLog(out) {
   const commits = [];
   for (const rec of String(out).split(RS)) {
@@ -52,8 +64,16 @@ export function parseLog(out) {
     const ct = Number(parts[1]);
     if (!/^[0-9a-f]{7,64}$/i.test(sha) || !Number.isFinite(ct)) continue;
     const message = parts.slice(2, -1).join(US).replace(/\s+$/, '');
-    const files = parts[parts.length - 1].split(/\r?\n/).map((f) => f.trim()).filter(Boolean);
-    commits.push({ sha, ms: ct * 1000, message, files });
+    const files = [];
+    const added = [];
+    for (const line of parts[parts.length - 1].split(/\r?\n/)) {
+      const cols = line.split('\t');
+      if (cols.length < 2 || !/^[A-Z]/.test(cols[0])) continue;
+      const paths = cols.slice(1).map((f) => f.trim()).filter(Boolean);
+      files.push(...paths);
+      if (cols[0] === 'A' && paths.length) added.push(paths[0]);
+    }
+    commits.push({ sha, ms: ct * 1000, message, files, added });
   }
   return commits;
 }
@@ -87,14 +107,14 @@ function fail(key, msg) {
   if (lastLogged.get(key) !== msg) { lastLogged.set(key, msg); log(msg); }
 }
 
-const copy = (list, sinceMs) => list.filter((c) => c.ms >= sinceMs).map((c) => ({ ...c, files: [...c.files] }));
+const copy = (list, sinceMs) => list.filter((c) => c.ms >= sinceMs).map((c) => ({ ...c, files: [...c.files], added: [...c.added] }));
 
 async function fetchCommits(key, sig, sinceMs) {
   try {
     const out = await run([
       '--no-pager', '-c', 'core.fsmonitor=', '-c', 'core.quotepath=off', '-c', 'log.showSignature=false',
       '-C', key, 'log', `--since=${new Date(sinceMs).toISOString()}`, `--max-count=${MAX_COUNT}`,
-      '--no-color', '--name-only', `--format=${RS}%H${US}%ct${US}%B${US}`,
+      '--no-color', '--name-status', `--format=${RS}%H${US}%ct${US}%B${US}`,
     ]);
     const commits = parseLog(out);
     cache.set(key, { sig, at: Date.now(), since: sinceMs, commits });
@@ -111,7 +131,7 @@ async function fetchCommits(key, sig, sinceMs) {
 /**
  * @param {string} root project root (git top-level)
  * @param {number} sinceMs only commits whose committer time is at or after this
- * @returns {Promise<{sha: string, ms: number, message: string, files: string[]}[]>} newest first
+ * @returns {Promise<{sha: string, ms: number, message: string, files: string[], added: string[]}[]>} newest first
  */
 export async function readCommits(root, sinceMs = 0) {
   try {

@@ -146,7 +146,6 @@ function namesPlan(message, plan) {
 }
 
 const taskN = (plan, n) => plan.tasks.find((t) => t.n === n) ?? null;
-const unfinished = (plan) => plan.tasks.some((t) => t.status !== 'done');
 
 /** Bridged activity segments: spans joined across gaps up to idleMs, longer (idle) gaps left open. */
 export function segments(spans, idleMs) {
@@ -165,38 +164,25 @@ export function segments(spans, idleMs) {
  *  a. the subject names plans (file stem, with or without its YYYY-MM-DD- prefix): exactly one of them has Task N;
  *  b. sessions active at the commit (inside one of their bridged activity segments, or up to idleGap after its
  *     end) had touched plans before it: exactly one of those plans has Task N;
- *  c. exactly one plan exists and is unfinished at the commit, and it has Task N.
- * Plan history comes from the commits seen: firstCommit = oldest commit listing the plan file, lastCommit =
- * newest. A plan exists at C when firstCommit <= C, or when firstCommit is unknown (uncommitted, or older than
- * the window). It is unfinished at C unless it is fully ticked now and its lastCommit (taken as when it was
- * finished) is before C. A finished plan listed by fewer than two commits (never committed, or only added, so
- * its ticks were never committed) has an unknown finish and counts as unfinished. In b and c a plan with
- * an unknown firstCommit is never ticked, but in c it still counts, so it blocks ticking another plan.
+ *  c. the repo has exactly one plan file in total (now): with no other plan, no other Task N can be meant.
+ * In b and c a plan is ticked only when its add commit (the commit where git lists the file with status `A`)
+ * was seen and is at or before the commit. An add outside the window (or an uncommitted plan) means never.
+ * (R16: reconstructing "unfinished at commit time" from history leaked through truncated windows, fix-up
+ * commits after a plan finished, and partly committed ticks, so c no longer looks at multi-plan repos.)
  * @returns {Map<string, number>} plan task id -> commit ms (the oldest matching commit)
  */
 export function matchCommits(root, plans, commits, activity, idleMs) {
   const done = new Map();
   if (!plans.length) return done;
   const rel = new Map(plans.map((p) => [p, normPath('/', relative(String(root || ''), String(p.file || '')))]));
-  const first = new Map();
-  const last = new Map();
-  const touches = new Map(); // plan -> number of commits listing its file
+  const added = new Map(); // plan -> ms of its add commit
   for (const c of commits) {
-    for (const f of c.files) {
+    for (const f of c.added) {
       const k = normPath('/', f);
-      for (const p of plans) {
-        if (rel.get(p) !== k) continue;
-        if (!(first.get(p) <= c.ms)) first.set(p, c.ms);
-        if (!(last.get(p) >= c.ms)) last.set(p, c.ms);
-        touches.set(p, (touches.get(p) ?? 0) + 1);
-      }
+      for (const p of plans) if (rel.get(p) === k && !(added.get(p) <= c.ms)) added.set(p, c.ms);
     }
   }
-  const existsAt = (p, ms) => !first.has(p) || first.get(p) <= ms;
-  const tickable = (p, ms) => first.has(p) && first.get(p) <= ms;
-  // A plan is added with its boxes unticked, so a commit that only added it is not its finish: a plan touched
-  // by a single commit has an unknown finish and counts as open.
-  const openAt = (p, ms) => unfinished(p) || (touches.get(p) ?? 0) < 2 || last.get(p) >= ms;
+  const tickable = (p, ms) => added.has(p) && added.get(p) <= ms;
   const segs = [...activity.values()].map((a) => ({ segs: segments(a.spans, idleMs), touches: a.touches }));
 
   for (const c of [...commits].sort((x, y) => x.ms - y.ms)) {
@@ -215,10 +201,7 @@ export function matchCommits(root, plans, commits, activity, idleMs) {
         for (const t of a.touches) if (t.ms <= c.ms) { touched = true; if (tickable(t.plan, c.ms)) linked.add(t.plan); }
       }
       if (touched) pool = [...linked];
-      else {
-        const open = plans.filter((p) => existsAt(p, c.ms) && openAt(p, c.ms));
-        pool = open.length === 1 && tickable(open[0], c.ms) ? open : [];
-      }
+      else pool = plans.length === 1 && tickable(plans[0], c.ms) ? plans : [];
     }
     for (const n of ns) {
       const hits = pool.filter((p) => taskN(p, n));
@@ -235,7 +218,8 @@ export function cleanCommits(commits) {
   const out = [];
   for (const c of arr(commits)) {
     if (!isObj(c) || typeof c.message !== 'string' || !Number.isFinite(c.ms)) continue;
-    out.push({ ms: c.ms, message: c.message, files: arr(c.files).filter((f) => typeof f === 'string') });
+    const paths = (v) => arr(v).filter((f) => typeof f === 'string');
+    out.push({ ms: c.ms, message: c.message, files: paths(c.files), added: paths(c.added) });
   }
   return out;
 }

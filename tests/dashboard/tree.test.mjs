@@ -104,11 +104,11 @@ test('only one unfinished plan makes Task N unambiguous', async () => {
   const { root } = setup();
   const { readPlans } = await mod('sources/plans.mjs');
   const { buildTree } = await mod('tree.mjs');
-  writePlan(root, 'checkout.md', [{ n: 1, title: 'Cart', steps: [1] }]); // finished
+  // R16: "only one unfinished plan" now means the repo has a single plan file, added at or before the commit.
   writePlan(root, 'billing-api.md', [{ n: 1, title: 'Invoices', steps: [0] }, { n: 2, title: 'Refunds', steps: [0] }]);
   const commits = [
-    { sha: 'p', ms: T0 - 60 * MIN, message: 'Plans', files: ['docs/superpowers/plans/checkout.md', 'docs/superpowers/plans/billing-api.md'] },
-    { sha: 'f', ms: T0 - 30 * MIN, message: 'Tick checkout', files: ['docs/superpowers/plans/checkout.md'] },
+    { sha: 'p', ms: T0 - 60 * MIN, message: 'Plan', added: ['docs/superpowers/plans/billing-api.md'] },
+    { sha: 'f', ms: T0 - 30 * MIN, message: 'Tweak plan', files: ['docs/superpowers/plans/billing-api.md'] },
     { sha: 'a1', ms: T0, message: 'Task 2: refunds', files: ['src/refunds.js'] },
   ];
   const tree = buildTree(root, { ...empty(), plans: readPlans(root), commits }, TH);
@@ -230,7 +230,7 @@ test('commit by a session linked to the plan ticks that task', async () => {
   const a = writePlan(root, 'checkout.md', [{ n: 1, title: 'Cart', steps: [0] }]);
   writePlan(root, 'billing-api.md', [{ n: 1, title: 'Invoices', steps: [0] }]);
   const events = [{ session: 's-1', file: a, at: T0 }, { session: 's-1', file: 'src/cart.js', at: T0 + 20 * MIN }];
-  const added = { sha: 'p', ms: T0 - 60 * MIN, message: 'Plans', files: ['docs/superpowers/plans/checkout.md', 'docs/superpowers/plans/billing-api.md'] };
+  const added = { sha: 'p', ms: T0 - 60 * MIN, message: 'Plans', added: ['docs/superpowers/plans/checkout.md', 'docs/superpowers/plans/billing-api.md'] };
   const commits = [added, { sha: 'a', ms: T0 + 25 * MIN, message: 'Task 1 done', files: [] }];
   const tree = buildTree(root, { ...empty(), plans: readPlans(root), commits, events }, TH);
   assert.equal(taskOf(tree, planId('checkout.md'), 1).status, 'done');
@@ -269,7 +269,7 @@ test('a commit older than the plan does not tick it, and inputs are not mutated'
   const before = JSON.stringify(plans);
   const commits = [
     { sha: 'old', ms: T0, message: 'Task 1 of an earlier plan', files: ['src/a.js'] },
-    { sha: 'add', ms: T0 + 60 * MIN, message: 'Add plan', files: ['docs/superpowers/plans/billing-api.md'] },
+    { sha: 'add', ms: T0 + 60 * MIN, message: 'Add plan', added: ['docs/superpowers/plans/billing-api.md'] },
   ];
   const tree = buildTree(root, { ...empty(), plans, commits }, TH);
   assert.equal(taskOf(tree, planId('billing-api.md'), 1).status, 'next');
@@ -293,32 +293,79 @@ test('two unfinished plans keep Task N ambiguous even when only one has it', asy
 
 const PLANS = 'docs/superpowers/plans/';
 
-test("a finished plan's old Task N commits do not tick the plan left open (R15a)", async () => {
+// R16: with two or more plan files, an unnamed `Task N` never ticks through clause c.
+async function twoPlans() {
   const { root } = setup();
   const { readPlans } = await mod('sources/plans.mjs');
   const { buildTree } = await mod('tree.mjs');
-  writePlan(root, 'checkout.md', [{ n: 1, title: 'Cart', steps: [1] }, { n: 2, title: 'Pay', steps: [1] }]);
+  writePlan(root, 'checkout.md', [{ n: 1, title: 'Cart', steps: [1] }, { n: 2, title: 'Pay', steps: [1] }]); // finished
   writePlan(root, 'billing-api.md', [{ n: 1, title: 'Invoices', steps: [0] }, { n: 2, title: 'Refunds', steps: [0] }]);
-  const commits = [
-    { sha: 'p', ms: T0, message: 'Plans', files: [PLANS + 'billing-api.md', PLANS + 'checkout.md'] },
-    { sha: 'a', ms: T0 + 10 * MIN, message: 'Task 1', files: ['src/cart.js'] },
-    { sha: 'b', ms: T0 + 20 * MIN, message: 'Task 2', files: ['src/pay.js'] },
+  const run = (commits) => buildTree(root, { ...empty(), plans: readPlans(root), commits }, TH);
+  return { run, st: (tree) => [1, 2].map((n) => taskOf(tree, planId('billing-api.md'), n).status).join(' ') };
+}
+
+test('two plans (one finished) with an unnamed Task N tick nothing (R16a)', async () => {
+  const { run, st } = await twoPlans();
+  assert.equal(st(run([
+    { sha: 'p', ms: T0, message: 'Plans', added: [PLANS + 'billing-api.md', PLANS + 'checkout.md'] },
     { sha: 't', ms: T0 + 30 * MIN, message: 'Tick checkout', files: [PLANS + 'checkout.md'] },
-  ];
-  const tree = buildTree(root, { ...empty(), plans: readPlans(root), commits }, TH);
+    { sha: 'c', ms: T0 + 40 * MIN, message: 'Task 2', files: [] }])), 'next next');
+});
+
+test('Q1: a truncated window does not make an older plan look newborn (R16b)', async () => {
+  const { run, st } = await twoPlans();
+  // checkout's add is outside the window; only a later tick of it is seen
+  assert.equal(st(run([
+    { sha: 'b', ms: T0 + 1 * MIN, message: 'Add billing-api plan', added: [PLANS + 'billing-api.md'] },
+    { sha: 'w', ms: T0 + 3 * MIN, message: 'Task 2: work', files: ['src/a.js'] },
+    { sha: 't', ms: T0 + 5 * MIN, message: 'Tick checkout', files: [PLANS + 'checkout.md'] }])), 'next next');
+});
+
+test('Q3: a fix-up commit after a plan finished does not tick another plan (R16a)', async () => {
+  const { run, st } = await twoPlans();
+  assert.equal(st(run([
+    { sha: 'p', ms: T0, message: 'Plans', added: [PLANS + 'billing-api.md', PLANS + 'checkout.md'] },
+    { sha: 'a', ms: T0 + 5 * MIN, message: 'Task 1', files: [PLANS + 'checkout.md'] },
+    { sha: 'b', ms: T0 + 9 * MIN, message: 'Task 2', files: [PLANS + 'checkout.md'] },
+    { sha: 'f', ms: T0 + 20 * MIN, message: 'Task 2: review fix', files: ['src/a.js'] }])), 'next next');
+});
+
+test('partly committed ticks do not make a plan look finished early (R16a)', async () => {
+  const { run, st } = await twoPlans();
+  // checkout's Task 1 ticks were committed, its Task 2 ticks are only in the working copy
+  assert.equal(st(run([
+    { sha: 'p', ms: T0, message: 'Plans', added: [PLANS + 'billing-api.md', PLANS + 'checkout.md'] },
+    { sha: 'a', ms: T0 + 5 * MIN, message: 'Task 1', files: [PLANS + 'checkout.md'] },
+    { sha: 'b', ms: T0 + 9 * MIN, message: 'Task 2', files: ['src/pay.js'] }])), 'next next');
+});
+
+test('clause a still ticks in a multi-plan repo, and a modify is not an add (R16)', async () => {
+  const { run, st } = await twoPlans();
+  assert.equal(st(run([{ sha: 'n', ms: T0, message: 'billing-api: Task 2 done', files: [] }])), 'next done');
+  // single plan, but only modified (never added) in the window: unknown add, no tick
+  const { root } = setup();
+  const { readPlans } = await mod('sources/plans.mjs');
+  const { buildTree } = await mod('tree.mjs');
+  writePlan(root, 'billing-api.md', [{ n: 1, title: 'Invoices', steps: [0] }]);
+  const tree = buildTree(root, { ...empty(), plans: readPlans(root), commits: [
+    { sha: 'm', ms: T0, message: 'Tweak plan', files: [PLANS + 'billing-api.md'] },
+    { sha: 'c', ms: T0 + MIN, message: 'Task 1', files: [] }] }, TH);
   assert.equal(taskOf(tree, planId('billing-api.md'), 1).status, 'next');
-  assert.equal(taskOf(tree, planId('billing-api.md'), 2).status, 'next');
-  // after checkout was finished, billing-api is the only open plan
-  const later = buildTree(root, { ...empty(), plans: readPlans(root), commits: [...commits, { sha: 'c', ms: T0 + 40 * MIN, message: 'Task 2', files: [] }] }, TH);
-  assert.equal(taskOf(later, planId('billing-api.md'), 2).status, 'done');
-  // a finished plan whose finishing commit is unknown still counts as open
-  const unknown = buildTree(root, { ...empty(), plans: readPlans(root), commits: [
-    { ...commits[0], files: [PLANS + 'billing-api.md'] }, { sha: 'c', ms: T0 + 40 * MIN, message: 'Task 2', files: [] }] }, TH);
-  assert.equal(taskOf(unknown, planId('billing-api.md'), 2).status, 'next');
-  // ...and so does one whose only commit added it (its ticks were never committed)
-  const addOnly = buildTree(root, { ...empty(), plans: readPlans(root), commits: commits.slice(0, 3) }, TH);
-  assert.equal(taskOf(addOnly, planId('billing-api.md'), 1).status, 'next');
-  assert.equal(taskOf(addOnly, planId('billing-api.md'), 2).status, 'next');
+});
+
+test('readCommits reports real adds separately from other changes', async () => {
+  const { root } = setup();
+  const { readCommits } = await mod('git.mjs');
+  initRepo(root);
+  writePlan(root, 'billing-api.md', [{ n: 1, title: 'Invoices', steps: [0] }]);
+  commit(root, 'Add plan', T0);
+  writePlan(root, 'billing-api.md', [{ n: 1, title: 'Invoices', steps: [1] }]);
+  commit(root, 'Tick plan', T0 + MIN);
+  const got = await readCommits(root, T0 - MIN);
+  const byMsg = Object.fromEntries(got.map((c) => [c.message, c]));
+  assert.deepEqual(byMsg['Add plan'].added.sort(), [PLANS + 'billing-api.md', 'notes.txt']);
+  assert.deepEqual(byMsg['Tick plan'].added, []);
+  assert.deepEqual(byMsg['Tick plan'].files.sort(), [PLANS + 'billing-api.md', 'notes.txt']);
 });
 
 test('an uncommitted plan is never ticked through b or c and blocks c (R15b)', async () => {
@@ -336,7 +383,7 @@ test('an uncommitted plan is never ticked through b or c and blocks c (R15b)', a
   assert.equal(taskOf(tree, planId('billing-api.md'), 1).status, 'done', 'a: naming the plan still ticks');
   writePlan(root, 'checkout.md', [{ n: 1, title: 'Cart', steps: [0] }]);
   tree = buildTree(root, { ...empty(), plans: readPlans(root), commits: [
-    { sha: 'p', ms: T0 - 60 * MIN, message: 'Plan', files: [PLANS + 'checkout.md'] }, task1] }, TH);
+    { sha: 'p', ms: T0 - 60 * MIN, message: 'Plan', added: [PLANS + 'checkout.md'] }, task1] }, TH);
   assert.equal(taskOf(tree, planId('checkout.md'), 1).status, 'next', 'the uncommitted plan makes c ambiguous');
 });
 
@@ -350,7 +397,7 @@ test("another project's plan of the same name is not a touch of ours (R15c)", as
   const now = T0 + 60 * MIN;
   const events = [{ session: 's-1', file: other, at: now - 5 * MIN }];
   const commits = [
-    { sha: 'p', ms: T0, message: 'Plans', files: [PLANS + 'checkout.md', PLANS + 'billing-api.md'] },
+    { sha: 'p', ms: T0, message: 'Plans', added: [PLANS + 'checkout.md', PLANS + 'billing-api.md'] },
     { sha: 'a', ms: now - 2 * MIN, message: 'Task 1', files: [] },
   ];
   const sessions = [{ sessionId: 's-2', planRefs: [{ file: other, ms: now - 4 * MIN }], taskRefs: [{ n: 1, ms: now - 3 * MIN }], minutes: [], lastWriteMs: now }];
@@ -389,7 +436,7 @@ test('a session idle at the commit does not attribute it, and waiting work-log t
   // active T0..T0+5, idle, active again at T0+100: a commit at T0+60 falls in the idle gap
   const events = [{ session: 's-1', file: a, at: T0 }, { session: 's-1', file: 'x', at: T0 + 5 * MIN }, { session: 's-1', file: 'x', at: T0 + 100 * MIN }];
   const commits = [
-    { sha: 'p', ms: T0 - 60 * MIN, message: 'Plans', files: [PLANS + 'checkout.md', PLANS + 'billing-api.md'] },
+    { sha: 'p', ms: T0 - 60 * MIN, message: 'Plans', added: [PLANS + 'checkout.md', PLANS + 'billing-api.md'] },
     { sha: 'c', ms: T0 + 60 * MIN, message: 'Task 1', files: [] },
   ];
   const tree = buildTree(root, { ...empty(), plans: readPlans(root), events, commits }, TH);
@@ -417,5 +464,24 @@ test('git child env drops repo-location variables', async () => {
     assert.deepEqual(got.map((c) => c.message), ['Task 1 one']);
   } finally {
     if (saved === undefined) delete process.env.GIT_DIR; else process.env.GIT_DIR = saved;
+  }
+});
+
+test('git child env drops object-store and config-injection variables (R16d)', async () => {
+  const { root } = setup();
+  const { readCommits } = await mod('git.mjs');
+  initRepo(root);
+  commit(root, 'Task 1 one', T0);
+  const empty = mkdtempSync(join(tmpdir(), 'cvr-tree-objects-'));
+  const vars = {
+    GIT_OBJECT_DIRECTORY: empty, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.fsmonitor', GIT_CONFIG_VALUE_0: 'nonexistent-helper',
+  };
+  const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  Object.assign(process.env, vars);
+  try {
+    const got = await readCommits(root, T0 - MIN);
+    assert.deepEqual(got.map((c) => c.message), ['Task 1 one']);
+  } finally {
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
   }
 });
