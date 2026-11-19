@@ -160,7 +160,7 @@ test('foldEpics folds epics untouched for a week, keeps live and unknown ones', 
   assert.deepEqual(shown.map((e) => e.id), ['recent', 'unknown', 'oldButDoing', 'oldButLinked', 'oldButWaiting', 'empty']);
   // exactly 7 days is not older than 7 days
   assert.equal(foldEpics([ep('edge', [{ id: '9', status: 'done', doneMs: NOW - 7 * DAY }])], NOW, new Set()).earlier.length, 0);
-  assert.deepEqual(foldEpics(null, NOW, null), { shown: [], earlier: [] });
+  assert.deepEqual(foldEpics(null, NOW, null), { shown: [], earlier: [], before: [], dropped: [] });
 });
 
 // R25: a plan whose tasks carry no times is dated by its file's last change, so a long-finished plan with no
@@ -228,4 +228,35 @@ test('triage sorts sessions into needs a look, moving and up next', () => {
   assert.equal(t.next.length, 1);
   assert.equal(t.next[0].tasks.length, 1);
   assert.equal(t.next[0].tasks[0].id, 't1');
+});
+
+// Decision 32: plans from before the dashboard and dropped plans get their own groups, outside shown and earlier.
+test('foldEpics puts before-dashboard and dropped epics in their own groups', () => {
+  const before = { id: 'B', title: 'Before', before: true, mtimeMs: NOW - 30 * DAY, tasks: [{ id: 'b', status: 'next' }] };
+  const dropped = { id: 'D', title: 'Dropped', dropped: true, mtimeMs: NOW - DAY, tasks: [{ id: 'd', status: 'next' }] };
+  const current = { id: 'C', title: 'Current', mtimeMs: NOW - DAY, tasks: [{ id: 'c', status: 'next' }] };
+  const r = foldEpics([before, dropped, current], NOW, new Set());
+  assert.deepEqual(r.shown.map((e) => e.id), ['C']);
+  assert.deepEqual(r.earlier.map((e) => e.id), []);
+  assert.deepEqual(r.before.map((e) => e.id), ['B']);
+  assert.deepEqual(r.dropped.map((e) => e.id), ['D']);
+});
+
+test('effortLeft ignores before-dashboard and dropped epics', () => {
+  const epics = [
+    { id: 'B', before: true, tasks: [{ id: 'b', status: 'next' }] },
+    { id: 'D', dropped: true, tasks: [{ id: 'd', status: 'next' }] },
+    { id: 'C', mtimeMs: NOW - DAY, tasks: [{ id: 'c', status: 'next' }] },
+  ];
+  assert.deepEqual(effortLeft({ left: { count: 1, hours: null } }, foldEpics(epics, NOW, new Set()).shown), { count: 1, hours: null });
+});
+
+test('Up next and triage leave out before-dashboard and dropped epics', () => {
+  const epics = [
+    { id: 'B', title: 'B', before: true, tasks: [{ id: 'b', status: 'next' }] },
+    { id: 'D', title: 'D', dropped: true, tasks: [{ id: 'd', status: 'next' }] },
+    { id: 'C', title: 'C', mtimeMs: NOW - DAY, tasks: [{ id: 'c', status: 'next' }] },
+  ];
+  const model = { projects: [{ root: 'r', name: 'r', sessions: [], tree: { epics, left: { count: 1, hours: null } } }] };
+  assert.deepEqual(triage(model, NOW).next[0].tasks.map((t) => t.id), ['c']);
 });

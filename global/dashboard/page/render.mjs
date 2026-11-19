@@ -119,20 +119,26 @@ export const epicDone = (epic) => arr(epic?.tasks).length > 0 && arr(epic.tasks)
 /**
  * R14 (provisional): an epic folds into "Done earlier" when no task is doing or waiting, no task is linked to a
  * live session, and its latest activity is known and more than 7 days old. Unknown activity never folds.
- * @returns {{shown: object[], earlier: object[]}} both in the input order
+ * Decision 32: plans from before the dashboard (`before`) and dropped plans (`dropped`) go to their own groups
+ * first, outside both.
+ * @returns {{shown: object[], earlier: object[], before: object[], dropped: object[]}} each in the input order
  */
 export function foldEpics(epics, now, liveSessionIds) {
   const live = liveSessionIds instanceof Set ? liveSessionIds : new Set();
   const shown = [];
   const earlier = [];
+  const before = [];
+  const dropped = [];
   for (const e of arr(epics)) {
+    if (e?.dropped === true) { dropped.push(e); continue; }
+    if (e?.before === true) { before.push(e); continue; }
     const tasks = arr(e?.tasks);
     const touched = tasks.some((t) => t?.status === 'doing' || t?.status === 'waiting' || (t?.sessionId && live.has(t.sessionId)));
     const last = epicLastActivity(e);
     if (!touched && last !== null && now - last > EARLIER_AFTER_MS) earlier.push(e);
     else shown.push(e);
   }
-  return { shown, earlier };
+  return { shown, earlier, before, dropped };
 }
 
 /** Unfinished tasks in the shown epics, with the model's hours estimate scaled to that count. */

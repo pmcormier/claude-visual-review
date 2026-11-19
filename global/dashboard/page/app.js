@@ -262,26 +262,34 @@ function epicLi(p, e, byId) {
     tasks.length ? h('ul', { class: 'tree', hidden: !open }, tasks.map((t) => taskLi(p, t, byId))) : null);
 }
 
-function treeOf(p, shown, earlier) {
-  if (!shown.length && !earlier.length) return h('p', { class: 'noplan', text: 'No plan found' });
+// One history row per epic, shown only with "Show all history" on; `note` (e.g. 'dropped') ends its line.
+function histRows(p, epics, note = '') {
+  return h('li', { class: 'histrow', hidden: !showHistory }, epics.map((e) => {
+    const spent = e.spentMin > 0 ? formatDuration(e.spentMin * MIN) : '';
+    const text = [e.title || 'Untitled', shortDate(epicLastActivity(e)), spent, note].filter(Boolean).join(' · ');
+    const st = epicDone(e) ? 'done' : 'idle';
+    return h('div', { class: `node s-${st}`, data: { dk: keyOf('e', p.root, e.id) } },
+      h('span'), h('span', { class: 'name' }, icon(st), h('span', { class: 'label done-label', text })), h('span'));
+  }));
+}
+
+const histHint = (text) => h('li', { class: 'histhint', hidden: showHistory },
+  h('div', { class: 'node' }, h('span'), h('span', { class: 'name', text }), h('span')));
+
+function treeOf(p, { shown, earlier, before, dropped }) {
+  if (!shown.length && !earlier.length && !before.length && !dropped.length) return h('p', { class: 'noplan', text: 'No plan found' });
   const byId = new Map(arr(p.sessions).map((s) => [s.sessionId, s]));
   const ul = h('ul', { class: 'tree' }, shown.map((e) => epicLi(p, e, byId)));
-  if (earlier.length) {
-    ul.append(h('li', { class: 'histrow', hidden: !showHistory }, earlier.map((e) => {
-      const spent = e.spentMin > 0 ? formatDuration(e.spentMin * MIN) : '';
-      const text = [e.title || 'Untitled', shortDate(epicLastActivity(e)), spent].filter(Boolean).join(' · ');
-      const st = epicDone(e) ? 'done' : 'idle';
-      return h('div', { class: `node s-${st}`, data: { dk: keyOf('e', p.root, e.id) } },
-        h('span'), h('span', { class: 'name' }, icon(st), h('span', { class: 'label done-label', text })), h('span'));
-    })));
-    ul.append(h('li', { class: 'histhint', hidden: showHistory },
-      h('div', { class: 'node' }, h('span'), h('span', { class: 'name', text: `Done earlier (${earlier.length})` }), h('span'))));
-  }
+  if (earlier.length) ul.append(histRows(p, earlier), histHint(`Done earlier (${earlier.length})`));
+  // Plans from before the dashboard (decision 32): folded until they show progress; dropped plans only in history.
+  if (before.length) ul.append(histRows(p, before, 'before the dashboard'), histHint(`Before the dashboard (${before.length})`));
+  if (dropped.length) ul.append(histRows(p, dropped, 'dropped'));
   return ul;
 }
 
 function panelFor(p, now) {
-  const { shown, earlier } = foldEpics(p.tree?.epics, now, liveIds(p));
+  const groups = foldEpics(p.tree?.epics, now, liveIds(p));
+  const { shown } = groups;
   const keys = alertKeys(p);
   const fresh = unseenOf(keys).length > 0;
   const cls = STATE_CLASS[p.state] ?? 'idle';
@@ -297,7 +305,7 @@ function panelFor(p, now) {
     p.error ? h('div', { class: 'err', text: p.error }) : null,
     sessions.flatMap((s) => [sessionBlock(p, s, now),
       ...arr(s.subagents).filter((a) => a.state === 'stuck').map((a) => stuckSubBlock(p, s, a, now))]),
-    treeOf(p, shown, earlier));
+    treeOf(p, groups));
 }
 
 function quietRow(p, now) {
