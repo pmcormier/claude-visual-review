@@ -512,6 +512,80 @@ Test 'DashboardInBothComponentsAndRemoveErrors' {
   Assert-True (Test-Path "$h/dashboard/launcher.mjs") 'nothing removed'
 }
 
+Test 'DashboardRemoveIsIdempotent' {
+  # A status line of the person's own is what a second removal must not mistake for a rewrite.
+  $h = New-TempDir
+  Set-File "$h/settings.json" '{ "statusLine": { "type": "command", "command": "my-line" } }'
+  Invoke-Install $h @('-Components', 'Review,Dashboard') | Out-Null
+  $r = Invoke-Install $h @('-Remove', 'Dashboard')
+  Assert-Equal 0 $r.Code "first remove ($($r.Out))"
+  $r2 = Invoke-Install $h @('-Remove', 'Dashboard')
+  Assert-Equal 0 $r2.Code "second remove ($($r2.Out))"
+  Assert-True ($r2.Out -notmatch 'MISS') "no Miss on the second remove: $($r2.Out)"
+  Assert-Equal 'my-line' (Read-Settings $h).statusLine.command 'status line untouched'
+  # A home that never had the Dashboard: removal is a no-op.
+  $h3 = New-TempDir
+  Set-File "$h3/settings.json" '{ "statusLine": { "type": "command", "command": "my-line" } }'
+  $r3 = Invoke-Install $h3 @('-Components', 'Review', '-Remove', 'Dashboard')
+  Assert-Equal 0 $r3.Code "never installed ($($r3.Out))"
+  Assert-True ($r3.Out -notmatch 'MISS') "no Miss when never installed: $($r3.Out)"
+}
+
+Test 'DashboardMatcherDriftLeavesOthersGroup' {
+  $h = New-TempDir
+  $plan = "node \`"$("$h/dashboard/plan-hook.mjs" -replace '\\', '/')\`""
+  Set-File "$h/settings.json" "{ `"hooks`": { `"PostToolUse`": [ { `"matcher`": `"Bash`", `"hooks`": [ { `"type`": `"command`", `"command`": `"other-post`" }, { `"type`": `"command`", `"command`": `"$plan`" } ] } ] } }"
+  $r = Invoke-Install $h @('-Components', 'Review,Dashboard')
+  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  $s = Read-Settings $h
+  $bash = @($s.hooks.PostToolUse | Where-Object { $_.matcher -eq 'Bash' })
+  Assert-Equal 1 $bash.Count 'the Bash group is still there'
+  Assert-Equal 'other-post' (@($bash[0].hooks | ForEach-Object { $_.command }) -join ',') 'the Bash group keeps only the other hook'
+  $ours = @($s.hooks.PostToolUse | Where-Object { $_.matcher -eq 'Read|Edit|Write' })
+  Assert-Equal 1 $ours.Count 'our own group'
+  Assert-Equal 1 @(Get-HookCommands $s 'PostToolUse' | Where-Object { $_ -match 'plan-hook\.mjs' }).Count 'one plan hook'
+}
+
+Test 'DashboardRemoveWithoutSavedOriginalWritesSettings' {
+  $h = New-TempDir
+  Invoke-Install $h @('-Components', 'Review,Dashboard') | Out-Null
+  Remove-Item "$h/dashboard/statusline-original.json"
+  $s = Read-Settings $h
+  $s.Remove('hooks')   # so the status line is the only change
+  $s | ConvertTo-Json -Depth 20 | Set-Content "$h/settings.json"
+  $r = Invoke-Install $h @('-Remove', 'Dashboard')
+  Assert-Equal 3 $r.Code "exit code ($($r.Out))"
+  Assert-True ($r.Out -match 'MISS.*missing or unreadable') "named: $($r.Out)"
+  Assert-True (-not (Read-Settings $h).ContainsKey('statusLine')) 'the tap is really gone from settings.json'
+}
+
+Test 'DashboardLookalikeHooksSurvive' {
+  $h = New-TempDir
+  Set-File "$h/settings.json" '{ "hooks": { "SessionStart": [ { "hooks": [ { "type": "command", "command": "node \"/opt/my-dashboard/launcher.mjs\"" } ] } ] } }'
+  Invoke-Install $h @('-Components', 'Review,Dashboard') | Out-Null
+  $start = Get-HookCommands (Read-Settings $h) 'SessionStart'
+  Assert-True ($start -contains 'node "/opt/my-dashboard/launcher.mjs"') "lookalike kept on install: $start"
+  Assert-Equal 2 @($start | Where-Object { $_ -match 'launcher\.mjs' }).Count 'ours added beside it'
+  Invoke-Install $h @('-Remove', 'Dashboard') | Out-Null
+  $start = Get-HookCommands (Read-Settings $h) 'SessionStart'
+  Assert-Equal 'node "/opt/my-dashboard/launcher.mjs"' ($start -join ',') 'lookalike kept on removal, ours gone'
+}
+
+Test 'DashboardRemoveAfterStatusLineDeleted' {
+  $h = New-TempDir
+  Set-File "$h/settings.json" '{ "statusLine": { "type": "command", "command": "my-line" } }'
+  Invoke-Install $h @('-Components', 'Review,Dashboard') | Out-Null
+  $s = Read-Settings $h
+  $s.Remove('statusLine')
+  $s | ConvertTo-Json -Depth 20 | Set-Content "$h/settings.json"
+  $r = Invoke-Install $h @('-Remove', 'Dashboard')
+  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  Assert-True ($r.Out -match 'statusLine was already removed') "reported: $($r.Out)"
+  Assert-True (-not (Test-Path "$h/dashboard/statusline-original.json")) 'saved original retired'
+  Assert-True (Test-Path "$h/dashboard/statusline-original.json.retired") 'kept as .retired'
+  Assert-True (-not (Read-Settings $h).ContainsKey('statusLine')) 'nothing restored'
+}
+
 Test 'DashboardShortcutMadeAndRemoved' {
   if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Host '  (node not on PATH; skipped)'; return }
   $h = New-TempDir

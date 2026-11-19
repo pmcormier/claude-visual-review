@@ -256,32 +256,47 @@ if (Test-Path $settingsPath) {
   }
 }
 # The hooks each component adds. Each is found again on a rerun by its script's file name (Dashboard's with its
-# folder, since launcher.mjs is a common name), so it is never added twice; any other hooks are left as they are.
+# whole folder name, since launcher.mjs is a common name and my-dashboard/ is not ours), so it is never added
+# twice; any other hooks are left as they are.
+$dashFind = { param($File) "(^|[\\/`"\s])dashboard[\\/]$([regex]::Escape($File))" }
 $hookSpecs = @(
   @{ Component = 'Rigor'; Event = 'UserPromptSubmit'; Script = 'hooks/pushback-check.mjs'; Find = 'pushback-check\.mjs' }
-  @{ Component = 'Dashboard'; Event = 'SessionStart'; Script = 'dashboard/launcher.mjs'; Find = 'dashboard[\\/]launcher\.mjs' }
-  @{ Component = 'Dashboard'; Event = 'PostToolUse'; Script = 'dashboard/plan-hook.mjs'; Find = 'dashboard[\\/]plan-hook\.mjs'; Matcher = 'Read|Edit|Write' }
+  @{ Component = 'Dashboard'; Event = 'SessionStart'; Script = 'dashboard/launcher.mjs'; Find = (& $dashFind 'launcher.mjs') }
+  @{ Component = 'Dashboard'; Event = 'PostToolUse'; Script = 'dashboard/plan-hook.mjs'; Find = (& $dashFind 'plan-hook.mjs'); Matcher = 'Read|Edit|Write' }
 )
 # Adds or updates one hook; returns what changed, or nothing when it was already set.
 function Set-Hook($Spec) {
   $label = "$($Spec.Component) hook ($($Spec.Event))"
   $cmd = "node `"$((Join-Path $claude $Spec.Script) -replace '\\', '/')`""
   if ($settings['hooks'] -isnot [Collections.IDictionary]) { $settings['hooks'] = [ordered]@{} }
+  $isOurs = { $_ -is [Collections.IDictionary] -and "$($_['command'])" -match $Spec.Find }
   $groups = @($settings['hooks'][$Spec.Event] | Where-Object { $_ })
+  # Ours in a group with another matcher (often shared with another tool's hooks): changing that group's matcher
+  # would change when the other hooks run, so ours moves out to a group of its own instead.
+  $moved = $false
+  if ($Spec.Matcher) {
+    foreach ($g in $groups) {
+      if ($g['matcher'] -eq $Spec.Matcher -or -not @($g['hooks'] | Where-Object $isOurs).Count) { continue }
+      $g['hooks'] = @($g['hooks'] | Where-Object { -not (& $isOurs) })
+      $moved = $true
+    }
+    if ($moved) { $groups = @($groups | Where-Object { @($_['hooks']).Count }); $settings['hooks'][$Spec.Event] = $groups }
+  }
   foreach ($g in $groups) {
-    $hk = @($g['hooks'] | Where-Object { $_ -is [Collections.IDictionary] -and "$($_['command'])" -match $Spec.Find })
+    $hk = @($g['hooks'] | Where-Object $isOurs)
     if (-not $hk.Count) { continue }
-    $matcherOk = -not $Spec.Matcher -or $g['matcher'] -eq $Spec.Matcher
-    if ($hk[0]['command'] -eq $cmd -and $matcherOk) { Ok "$label already set"; return }
+    if ($hk[0]['command'] -eq $cmd) {
+      if ($moved) { return "moved the $label out of a group with another matcher" }
+      Ok "$label already set"; return
+    }
     $hk[0]['command'] = $cmd
-    if (-not $matcherOk) { $g['matcher'] = $Spec.Matcher }
     return "updated the $label command"
   }
   $entry = [ordered]@{}
   if ($Spec.Matcher) { $entry['matcher'] = $Spec.Matcher }
   $entry['hooks'] = @([ordered]@{ type = 'command'; command = $cmd })
   $settings['hooks'][$Spec.Event] = @($groups) + @($entry)
-  "added the $label"
+  if ($moved) { "moved the $label into its own group (matcher $($Spec.Matcher))" } else { "added the $label" }
 }
 # Takes one hook out, keeping every other one; returns what changed, or nothing.
 function Remove-Hook($Spec) {
@@ -305,7 +320,8 @@ function Remove-Hook($Spec) {
 $tapCmd = "node `"$((Join-Path $claude 'dashboard/statusline-tap.mjs') -replace '\\', '/')`""
 $originalPath = Join-Path $claude 'dashboard/statusline-original.json'
 $retireOriginal = $false
-function Test-Tap($Value) { $Value -is [Collections.IDictionary] -and "$($Value['command'])" -match 'statusline-tap\.mjs' }
+$tapFind = & $dashFind 'statusline-tap.mjs'
+function Test-Tap($Value) { $Value -is [Collections.IDictionary] -and "$($Value['command'])" -match $tapFind }
 
 if (-not $settingsOk) {
   $what = @('PLANNOTATOR_BROWSER')
@@ -348,12 +364,20 @@ if (-not $settingsOk) {
       $known = Test-Path $originalPath
       if ($known) { try { $original = Get-Content -Raw $originalPath | ConvertFrom-Json -AsHashtable } catch { $known = $false } }
       if ($null -eq $original) { $settings.Remove('statusLine') } else { $settings['statusLine'] = $original }
-      if (-not $known) { Miss "statusLine was the Dashboard tap, but the original saved in $originalPath is missing or unreadable, so the tap was removed and no status line restored" }
-      elseif ($null -eq $original) { $changes += 'removed the Dashboard tap from the status line (there was none before)' }
+      if (-not $known) {
+        Miss "statusLine was the Dashboard tap, but the original saved in $originalPath is missing or unreadable, so the tap was removed and no status line restored"
+        $changes += 'removed the Dashboard tap from the status line'
+      } elseif ($null -eq $original) { $changes += 'removed the Dashboard tap from the status line (there was none before)' }
       else { $changes += 'restored the original status line' }
       $retireOriginal = $known
+    } elseif (-not ($installedBefore['Dashboard'] -or (Test-Path $originalPath))) {
+      Ok 'status line not wrapped by the Dashboard (nothing to restore)'
     } elseif ($null -ne $current) {
       Miss "statusLine was changed after the Dashboard wrapped it, so it was left as it is (the status line from before the Dashboard is in $originalPath)"
+    } elseif (Test-Path $originalPath) {
+      # Someone deleted the setting since; restoring the old one would undo that.
+      Done "statusLine was already removed, so the one from before the Dashboard was not restored (kept in $originalPath.retired)"
+      $retireOriginal = $true
     }
   }
   if ($changes.Count) {
@@ -397,7 +421,7 @@ if ($scDir -and ($Components -contains 'Dashboard' -or $Remove -contains 'Dashbo
     }
   } elseif (Test-Path $lnk) {
     # Only ours: one whose arguments run the dashboard launcher.
-    if ($wsh.CreateShortcut($lnk).Arguments -match 'dashboard[\\/]launcher\.mjs') {
+    if ($wsh.CreateShortcut($lnk).Arguments -match (& $dashFind 'launcher.mjs')) {
       Remove-Item $lnk -Force; Done 'deleted  Claude Dashboard.lnk (-Remove Dashboard)'
     } else { Miss "$lnk was left in place: it doesn't run the dashboard launcher, so it isn't this installer's" }
   }
