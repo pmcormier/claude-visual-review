@@ -401,3 +401,35 @@ Live check on the owner's machine (2026-11-19, the install that wrote `installed
 82. In the project with 82 plans, 79 folded under "Before the dashboard" and work left went from 432 to 18; its 3
 part-ticked plans stayed shown. In a project with 3 plans, 2 folded and work left went from 15 to 8. Projects
 without superpowers plans were unchanged.
+
+## 33. The Projects view groups each tree by state and opens only running work (2026-11-19)
+On a large project the page scrolled on and on: every unfinished epic started open, and epics came in file-name
+order (oldest plan first), so the running work could sit halfway down. The owner asked for the running work first
+and everything else one click away.
+
+Considered:
+- **Sorting on the server.** The Sessions and Triage views read the same model and don't want project grouping,
+  and the server would have to know how each person has the page folded. Not built.
+- **A flat list with running work first.** Loses the plan → task structure that shows what is left. Not built.
+- **A sort menu.** The owner floated it; the fixed order comes first, and a menu waits to see if it is missed.
+- **Chosen:** grouping in the page (`groupEpics` in `render.mjs`), from the task states the page already shows.
+
+How it works:
+- Groups, in order: Running, Waiting on you, Next, Done; under "Show all history": Quiet for a week, Done earlier,
+  Before the dashboard, dropped. An epic goes to the first that applies: any task working, stuck or gone →
+  Running; any waiting → Waiting on you; unfinished → Next; else Done. Running wins over Waiting because both open
+  by default and running work is the one that gets missed. Inside a group, the most recently touched comes first.
+- "Done earlier" used to hold unfinished epics quiet for a week too, which called unfinished work done. Those now
+  have their own row, "Quiet for a week". Work left is unchanged.
+- Fold state stays in this browser (`dash-open`). A stored key means "the person set this"; anything else follows
+  the default (Running and Waiting open, the rest folded). Expand all and Collapse all set keys for the project;
+  Focus deletes them. Going to a task opens its group and epic.
+- A panel under the mouse is not rebuilt while the mouse stays on it, so rows never move while being read; it
+  catches up when the mouse leaves. The panel is tracked from mouse events, not `:hover`, which goes stale in Chrome
+  once the node under a still mouse is swapped (measured: 9 rebuilds while "hovered"). Renders the person causes
+  (the fold buttons) apply at once.
+- Hovering a session lights its task and every folded parent. A Key in the header explains the symbols; the hover
+  pop-up starts with a cut-off label in full when its text doesn't already.
+
+Live check on the owner's machine (2026-11-19): in the largest active project, the default view shows 79 rows
+and Expand all shows 361. Collapse all leaves 6 group headers.
