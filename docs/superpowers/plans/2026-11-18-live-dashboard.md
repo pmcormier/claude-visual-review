@@ -51,11 +51,11 @@
   a final line without `\n` is not consumed (its bytes are not included in `endByte`).
 - Produces: `loadConfig(): {port:number, thresholds:{...}}`; reads `<dashHome>/config.json`, merges over defaults.
 
-- [ ] **Step 1: Write failing tests**: `readJsonl skips a broken middle line`, `readJsonl leaves a partial last line for next read` (append the rest, read from `endByte`, get the record), `readJsonl on a missing file returns empty`, `loadConfig merges a partial thresholds object over defaults` (asserts `quiet` overridden to 30, `apiError` still 5).
-- [ ] **Step 2:** `tests/dashboard.tests.ps1` dot-sources `lib.ps1` and runs `node --test tests/dashboard/` as one `Test 'DashboardNodeTests'`, failing on non-zero exit. Run `pwsh -NoProfile -File tests/run.ps1` → FAIL (modules missing).
-- [ ] **Step 3: Implement** the three modules.
-- [ ] **Step 4: Run** `node --test tests/dashboard/` → PASS; `pwsh -NoProfile -File tests/run.ps1` → `0 failed`.
-- [ ] **Step 5: Commit** "Dashboard: paths, tolerant JSONL reader, config, test wiring".
+- [x] **Step 1: Write failing tests**: `readJsonl skips a broken middle line`, `readJsonl leaves a partial last line for next read` (append the rest, read from `endByte`, get the record), `readJsonl on a missing file returns empty`, `loadConfig merges a partial thresholds object over defaults` (asserts `quiet` overridden to 30, `apiError` still 5).
+- [x] **Step 2:** `tests/dashboard.tests.ps1` dot-sources `lib.ps1` and runs `node --test tests/dashboard/` as one `Test 'DashboardNodeTests'`, failing on non-zero exit. Run `pwsh -NoProfile -File tests/run.ps1` → FAIL (modules missing).
+- [x] **Step 3: Implement** the three modules.
+- [x] **Step 4: Run** `node --test tests/dashboard/` → PASS; `pwsh -NoProfile -File tests/run.ps1` → `0 failed`.
+- [x] **Step 5: Commit** "Dashboard: paths, tolerant JSONL reader, config, test wiring".
 
 ### Task 2: Sessions registry and liveness
 
@@ -67,9 +67,9 @@
 - Produces: `projectRoot(cwd): string`: `git rev-parse --show-toplevel` from `cwd` (cached), else `cwd`.
 - Produces: `transcriptPathFor(cwd, sessionId)`: `<claudeHome>/projects/<encoded cwd>/<sessionId>.jsonl`, where the encoding replaces every char not `[A-Za-z0-9]` with `-` (verify against a real folder name under `~/.claude/projects/` on the build machine).
 
-- [ ] **Step 1: Failing tests**: `reads busy/idle/waiting from registry files`, `unknown status value becomes 'unknown'`, `missing fields do not throw`, `transcriptPathFor encodes a cwd of drive X, folder work, folder web-shop as X--work-web-shop`.
-- [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** → PASS.
-- [ ] **Step 5: Commit** "Dashboard: session registry reader".
+- [x] **Step 1: Failing tests**: `reads busy/idle/waiting from registry files`, `unknown status value becomes 'unknown'`, `missing fields do not throw`, `transcriptPathFor encodes a cwd of drive X, folder work, folder web-shop as X--work-web-shop`.
+- [x] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** → PASS.
+- [x] **Step 5: Commit** "Dashboard: session registry reader".
 
 ### Task 3: Transcript signals
 
@@ -82,9 +82,9 @@
   `{lastWriteMs, minutes:number[60] /* 1 = activity in that minute, index 59 = now */, pendingTool:{name, command, startedMs, outputFile:string|null}|null, lastEntryIsApiError:boolean, lastEntryMs, tokens:{input, output, cacheRead, cacheCreate}, repeat:{command, count}|null, planRefs:{file, ms}[], taskRefs:{n:number, ms}[]}`.
 - `pendingTool` = a `tool_use` with no matching `tool_result` id. `outputFile` = the `.output` path a background Bash result names. API error = an entry with `"isApiErrorMessage":true`. Repeats = identical Bash `command` or identical Edit `file_path`+`old_string` within `loopWindow` minutes. `planRefs` = Read/Edit/Write `file_path` matching `docs/superpowers/plans/*.md` or a BMAD ticket file. `taskRefs` = `/\bTask (\d+)\b/` in assistant text or tool inputs.
 
-- [ ] **Step 1: Failing tests**: `pending tool detected until its result arrives`, `api error as last entry`, `tokens summed from message.usage`, `six identical commands in ten minutes gives repeat count 6`, `plan file read recorded in planRefs`, `partial last line ignored then picked up`.
-- [ ] **Step 2–4:** run (FAIL), implement, run (PASS).
-- [ ] **Step 5: Commit** "Dashboard: transcript signals".
+- [x] **Step 1: Failing tests**: `pending tool detected until its result arrives`, `api error as last entry`, `tokens summed from message.usage`, `six identical commands in ten minutes gives repeat count 6`, `plan file read recorded in planRefs`, `partial last line ignored then picked up`.
+- [x] **Step 2–4:** run (FAIL), implement, run (PASS).
+- [x] **Step 5: Commit** "Dashboard: transcript signals".
 
 ### Task 4: Subagents
 
@@ -94,7 +94,7 @@
 - Produces: `readSubagents(transcriptPath, now): SubagentInfo[]` from `<transcript dir>/<sessionId>/subagents/agent-<id>.{jsonl,meta.json}`:
   `{agentId, description, model, effort, finished:boolean|null, lastWriteMs, minutes:number[60], signals:TranscriptSignals}`.
 
-- [ ] Steps: failing tests `reads description/model/finished from meta`, `missing meta gives description 'Subagent'`, `minutes from the subagent's own transcript` → implement → pass → commit "Dashboard: subagents".
+- [x] Steps: failing tests `reads description/model/finished from meta`, `missing meta gives description 'Subagent'`, `minutes from the subagent's own transcript` → implement → pass → commit "Dashboard: subagents".
 
 ### Task 5: Process CPU and output growth (Windows)
 
@@ -105,7 +105,7 @@
 - Produces: `startCpuSampler(intervalMs=5000): {descendants(pid): {pid, cpuPct}[], alive(pid, procStart): boolean, stop()}`. One long-lived `pwsh -NoProfile -Command` child loops `Get-CimInstance Win32_Process | Select ProcessId,ParentProcessId,KernelModeTime,UserModeTime | ConvertTo-Csv` every interval; CPU % from deltas. Off Windows, `alive` uses `process.kill(pid, 0)` and CPU is `null`.
 - Produces: `outputGrowth(path): {idleMs:number|null}` (time since the file last grew).
 
-- [ ] Steps: failing tests `parseProcessTable reads CSV`, `cpu percent from two samples`, `descendants walks the ppid tree` → implement → pass. **Measure** the sampler's own CPU over 2 minutes on this PC (target < 1% of one core) and write the figure in the commit message → commit "Dashboard: process sampler".
+- [x] Steps: failing tests `parseProcessTable reads CSV`, `cpu percent from two samples`, `descendants walks the ppid tree` → implement → pass. **Measure** the sampler's own CPU over 2 minutes on this PC (target < 1% of one core) and write the figure in the commit message → commit "Dashboard: process sampler".
 
 ### Task 6: Stall classifier
 
@@ -116,8 +116,8 @@
   where `input = {kind:'session'|'subagent', status, alive, signals:TranscriptSignals, cpuPct:number|null, outputIdleMs:number|null, finished:boolean|null, now}`.
 - Rules as the spec's stall table. Evidence strings use this exact shape: `<command or tool> running <N> min · <cpu>% CPU · no output for <M> min`; `Last reply was an API error <N> min ago`; `Permission prompt open for <N> min in a terminal`; `Not marked finished · transcript unchanged for <N> min`; `No activity for <N> min while busy`. Loop hint: `Repeated <command> <count>× in <window> min`.
 
-- [ ] **Step 1: Failing tests**: `busy build with CPU and no output for 60 min is working` (Review Focus 1), `tool pending, 0% CPU, no output 31 min is stuck with evidence 'pytest running 52 min · 0% CPU · no output for 31 min'`, `api error last entry 6 min ago is stuck`, `waiting 10 min is waiting with permission evidence`, `subagent not finished and stale 48 min is stuck`, `dead pid with pending tool is gone`, `idle status is idle`, `loop gives hint but stays working`.
-- [ ] Steps 2–5: run (FAIL), implement, run (PASS), commit "Dashboard: stall classifier".
+- [x] **Step 1: Failing tests**: `busy build with CPU and no output for 60 min is working` (Review Focus 1), `tool pending, 0% CPU, no output 31 min is stuck with evidence 'pytest running 52 min · 0% CPU · no output for 31 min'`, `api error last entry 6 min ago is stuck`, `waiting 10 min is waiting with permission evidence`, `subagent not finished and stale 48 min is stuck`, `dead pid with pending tool is gone`, `idle status is idle`, `loop gives hint but stays working`.
+- [x] Steps 2–5: run (FAIL), implement, run (PASS), commit "Dashboard: stall classifier".
 
 ### Task 7: Work log helper and reader
 
@@ -127,7 +127,7 @@
 - CLI: `node <dashHome>/note.mjs <verb> [args]` with verbs `start "<task>" [--plan <file> --task <n>] [--steps "a|b|c"]`, `step <n> <todo|doing|done|waiting|dropped>`, `done`, `drop "<reason>"`. Session id from `CLAUDE_CODE_SESSION_ID`; project from `projectRoot(cwd)`. Appends one JSON line `{v:1, at, session, verb, ...}` to `<dashHome>/worklog/<project-slug>.jsonl`, where `project-slug` is the root path with non-`[A-Za-z0-9]` → `-`. Prints nothing; exit 0 even on error (errors to `<dashHome>/note.log`).
 - Produces: `readWorklog(projectRoot): Epic[]` (one epic per `start`; steps as tasks; a task with no steps is a single-task epic).
 
-- [ ] Steps: failing tests `start then steps then done yields a done epic with three done tasks`, `step status changes keep latest`, `missing session id still writes with session null`, `cli never exits non-zero` → implement → pass → commit "Dashboard: work log".
+- [x] Steps: failing tests `start then steps then done yields a done epic with three done tasks`, `step status changes keep latest`, `missing session id still writes with session null`, `cli never exits non-zero` → implement → pass → commit "Dashboard: work log".
 
 ### Task 8: Tree sources: plans, BMAD, Inbox checklists
 
@@ -139,7 +139,7 @@
 - `readBmad(root): Epic[]`: only when `<root>/_bmad/` exists. Runs `python <claudeHome>/skills/bmad-ticket/scripts/tickets.py --project-root <root> status` (fallback `uv run …`), parses its JSON; map `state` planned/backlog → next, in-progress → doing, in-review → doing, done → done, dropped → hidden. Cache by mtime of `_bmad/` and the output folder; timeout 10 s; on any failure return `[]` and log. Capture a real output once (run it on the skill's own `scripts/tests` fixture tree) as `tests/dashboard/fixtures/bmad-status.json` and parse that in the test.
 - `readInbox(root): Epic[]`: find the Plannotator project whose `project.json` root equals `root`; read `steps.jsonl` (latest record per `thread_id`+`agent.session`) and thread subjects from `messages.jsonl`. Step status `waiting` → `waiting`, `dropped` → hidden, `doing` → doing, `done` → done, `todo` → next; `sessionId` from `agent.session`.
 
-- [ ] Steps: failing tests `plan headings become tasks with size`, `ticked steps counted`, `bmad fixture maps states`, `bmad missing python returns []`, `inbox latest checklist per thread wins`, `inbox dropped steps hidden` → implement → pass → commit "Dashboard: plan, BMAD and Inbox sources".
+- [x] Steps: failing tests `plan headings become tasks with size`, `ticked steps counted`, `bmad fixture maps states`, `bmad missing python returns []`, `inbox latest checklist per thread wins`, `inbox dropped steps hidden` → implement → pass → commit "Dashboard: plan, BMAD and Inbox sources".
 
 ### Task 9: Status, git matching, links, time and effort
 
@@ -153,7 +153,7 @@
 - Link order: work-log entry → Inbox checklist session → `events.jsonl` plan touch + latest `taskRefs` → none.
 - Time spent: sum of linked activity minutes, idle gaps over `idleGap` excluded. Effort hours: median spent of ≥ 3 finished tasks × unfinished count, else `null`.
 
-- [ ] Steps: failing tests `'Task 1 done' with two plans each having Task 1 ticks neither` (Review Focus 4), `commit naming plan stem ticks that task`, `only one unfinished plan makes Task N unambiguous`, `work log overrides plan status`, `effort hours null under three finished tasks`, `idle gaps excluded from time` → implement → pass → commit "Dashboard: task status and links".
+- [x] Steps: failing tests `'Task 1 done' with two plans each having Task 1 ticks neither` (Review Focus 4), `commit naming plan stem ticks that task`, `only one unfinished plan makes Task N unambiguous`, `work log overrides plan status`, `effort hours null under three finished tasks`, `idle gaps excluded from time` → implement → pass → commit "Dashboard: task status and links".
 
 ### Task 10: Status-line tap and usage
 
@@ -163,7 +163,7 @@
 - Tap: reads all stdin; if it has `rate_limits`, writes `{at, five_hour, seven_day}` to `<dashHome>/usage.json` (atomic: write temp, rename); then reads `<dashHome>/statusline-original.json` (`{command, ...}` or `null`) and, if a command exists, runs it through the shell with the same stdin, printing its stdout unchanged and exiting with its code. No original → print nothing, exit 0. Any tap error still runs the original.
 - `readUsage(now): {fiveHour:{pct, resetsAt}|null, week:{pct, resetsAt}|null, stale:boolean}`; a window whose `resets_at` has passed is `null`.
 
-- [ ] Steps: failing tests `tap passes stdin to original and echoes its output byte-for-byte`, `tap with no original prints nothing`, `tap writes usage only when rate_limits present`, `tap with failing usage write still runs original`, `expired window reads null` → implement → pass → commit "Dashboard: status-line tap and usage".
+- [x] Steps: failing tests `tap passes stdin to original and echoes its output byte-for-byte`, `tap with no original prints nothing`, `tap writes usage only when rate_limits present`, `tap with failing usage write still runs original`, `expired window reads null` → implement → pass → commit "Dashboard: status-line tap and usage".
 
 ### Task 11: Model, server, launcher, plan hook
 
@@ -175,8 +175,8 @@
 - Launcher (`SessionStart` hook): connect to the port; if refused, spawn `node server.mjs` detached with `windowsHide`, `stdio:'ignore'`, `unref()`. Total time capped at 300 ms; prints nothing; always exit 0.
 - Plan hook (`PostToolUse`, matcher `Read|Edit|Write`): reads hook JSON on stdin; when `tool_input.file_path` is a plan or BMAD ticket file, appends `{session, file, at}` to `<dashHome>/events.jsonl`. Prints nothing; always exit 0.
 
-- [ ] **Step 1: Failing tests**: `second server on same port exits 0 without binding`, `stop without token is 403`, `stop with token ends the process`, `events stream sends model on connect`, `launcher exits 0 within 300 ms when server cannot start` (Review Focus 5: point it at a bad server path), `plan hook ignores non-plan files`.
-- [ ] Steps 2–5: run (FAIL), implement, run (PASS), commit "Dashboard: model, server, launcher, plan hook".
+- [x] **Step 1: Failing tests**: `second server on same port exits 0 without binding`, `stop without token is 403`, `stop with token ends the process`, `events stream sends model on connect`, `launcher exits 0 within 300 ms when server cannot start` (Review Focus 5: point it at a bad server path), `plan hook ignores non-plan files`.
+- [x] Steps 2–5: run (FAIL), implement, run (PASS), commit "Dashboard: model, server, launcher, plan hook".
 
 ### Task 12: The page
 
@@ -189,7 +189,7 @@
 - `detailText` templates, one plain paragraph each: task (`<title>. <who is on it and for how long | Not started | Done in <time>>. <state reason if stuck/waiting>`), session (`A Claude Code window in <project>, <state phrase>. <evidence if any>. <n> helpers running, <m> finished. <tokens today>`), subagent, epic (`<n> of <m> tasks done, <time> spent.`), project.
 - Fonts: download the woff2 files and licences from the fonts' official repositories; no network use at runtime.
 
-- [ ] Steps: failing tests `formatDuration`, `lifePath flat when all zero`, `detailText for a stuck task includes its evidence` → implement page → pass. **Then verify in a browser** (Playwright against a server started on a fixtures home): light, dark, each tab, tour, hover, Stop. Commit "Dashboard: page".
+- [x] Steps: failing tests `formatDuration`, `lifePath flat when all zero`, `detailText for a stuck task includes its evidence` → implement page → pass. **Then verify in a browser** (Playwright against a server started on a fixtures home): light, dark, each tab, tour, hover, Stop. Commit "Dashboard: page".
 
 ### Task 13: Installer component
 
@@ -207,18 +207,18 @@
 - `/dashboard` command text: starts the server via the launcher with `--open` and replies with the URL.
 - **Rule file text needs the owner's sign-off before it is installed anywhere:** draft `global/rules/dashboard.md` (record every task with `note.mjs` — start, steps, status changes, done; mirror any Inbox checklist there; tick plan tasks you finish), send it to the owner in the Inbox thread, and wait for Approve.
 
-- [ ] **Step 1: Failing tests**: `DashboardInstallAddsHooksOnce`, `DashboardWrapsNoStatusLine` (no original → saved `null`, tap set), `DashboardWrapsObjectStatusLineKeepsPadding`, `DashboardRemoveRestoresOriginalStatusLine` (Review Focus 3), `DashboardRemoveLeavesChangedStatusLine` (exit 3, `Miss` mentions statusLine), `DashboardRerunReportsRewrittenStatusLine`, `DashboardInBothComponentsAndRemoveErrors`, `FreshInstallAllCoversEveryGlobalFile` still passes with Dashboard in the list.
-- [ ] Steps 2–4: run (FAIL), implement, run `pwsh -NoProfile -File tests/run.ps1` → `0 failed`.
-- [ ] **Step 5:** owner sign-off on `rules/dashboard.md` (Inbox). **Step 6: Commit** "Installer: Dashboard component".
+- [x] **Step 1: Failing tests**: `DashboardInstallAddsHooksOnce`, `DashboardWrapsNoStatusLine` (no original → saved `null`, tap set), `DashboardWrapsObjectStatusLineKeepsPadding`, `DashboardRemoveRestoresOriginalStatusLine` (Review Focus 3), `DashboardRemoveLeavesChangedStatusLine` (exit 3, `Miss` mentions statusLine), `DashboardRerunReportsRewrittenStatusLine`, `DashboardInBothComponentsAndRemoveErrors`, `FreshInstallAllCoversEveryGlobalFile` still passes with Dashboard in the list.
+- [x] Steps 2–4: run (FAIL), implement, run `pwsh -NoProfile -File tests/run.ps1` → `0 failed`.
+- [x] **Step 5:** owner sign-off on `rules/dashboard.md` (Inbox). **Step 6: Commit** "Installer: Dashboard component".
 
 ### Task 14: Docs and decision
 
 **Files:** Modify `README.md` (component table row, `-Remove` text), `docs/setup-guide.html`, `docs/setup-prompt.md`, `docs/decisions.md` (entry 31: what shipped, any deviations from the design and why).
 
-- [ ] Steps: write → `pwsh -NoProfile -File tools/check-personal.ps1` exit 0 → `pwsh -NoProfile -File tests/run.ps1` → `0 failed` → commit "Docs: Dashboard component".
+- [x] Steps: write → `pwsh -NoProfile -File tools/check-personal.ps1` exit 0 → `pwsh -NoProfile -File tests/run.ps1` → `0 failed` → commit "Docs: Dashboard component".
 
 ### Task 15: Live check on this machine
 
-- [ ] **Step 1:** `./install.ps1 -Owner` (owner's machine), start a new Claude Code session, confirm the server started (`<claude>/dashboard/server.json`) and the page loads.
-- [ ] **Step 2:** Check against reality: every open session listed with the right state; this repo's plan shows as an epic; a `sleep`-style long command stays Working; usage meters show numbers after a reply; status line looks exactly as before.
-- [ ] **Step 3:** Record what was measured (sampler CPU, page update latency) in `docs/decisions.md` entry 31, then send the end-of-run report to the Inbox thread.
+- [x] **Step 1:** `./install.ps1 -Owner` (owner's machine), start a new Claude Code session, confirm the server started (`<claude>/dashboard/server.json`) and the page loads.
+- [x] **Step 2:** Check against reality: every open session listed with the right state; this repo's plan shows as an epic; a `sleep`-style long command stays Working; usage meters show numbers after a reply; status line looks exactly as before.
+- [x] **Step 3:** Record what was measured (sampler CPU, page update latency) in `docs/decisions.md` entry 31, then send the end-of-run report to the Inbox thread.
