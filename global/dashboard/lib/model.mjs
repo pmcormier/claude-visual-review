@@ -2,7 +2,8 @@
 // each project's work tree, plus usage and headline counts. Read-only; never throws (a failing project carries
 // an `error` note and the others still render).
 //
-// buildModel(now, {sampler, config, historyDays, commitDays}) -> Model (async: BMAD and git are async)
+// buildModel(now, {sampler, config, historyDays, commitDays, sources}) -> Model (async: BMAD and git are async)
+//   sources: test seam, overrides any of {readWorklog, readPlans, readBmad, readInbox, readCommits}.
 //   sampler: {alive(pid, procStart), descendants(pid)} from procs.mjs startCpuSampler (default: kill(0)
 //            liveness, CPU unknown). config: loadConfig() result, read once per rebuild by the caller.
 //
@@ -23,11 +24,11 @@
 //    none working) > quiet (no live session). Order: stuck, waiting, working, then the rest, each group by
 //    last activity, newest first. open = a live session, a task in progress, or a stall (stuck/gone).
 //    quietSince = last activity when nothing in the project is working, else null.
-//  - Counts: stuck/waiting/working count sessions (not subagents); next counts unfinished tasks with status
-//    'next' across projects.
+//  - Counts: stuck = sessions and subagents that look stuck (so the headline agrees with project state);
+//    waiting/working count sessions; next counts unfinished tasks with status 'next' across projects.
 import { readdirSync, statSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, basename, resolve, sep } from 'node:path';
-import { claudeHome, dashHome } from './paths.mjs';
+import { claudeHome, dashHome, plannotatorHome } from './paths.mjs';
 import { loadConfig } from './config.mjs';
 import { readJsonl } from './jsonl.mjs';
 import { readSessions, projectRoot } from './sessions.mjs';
@@ -139,6 +140,41 @@ function inside(rootKey, file) {
   try { const k = keyOf(file); return k.startsWith(rootKey.endsWith(sep) ? rootKey : rootKey + sep); } catch { return false; }
 }
 
+// ---- plan and Inbox reads, reused while their files are unchanged -----------------------------------------
+// Re-parsing every plan and Inbox file on each rebuild was ~85 of 91 ms of a warm build (measured 2026-11-19).
+// A signature of the files each reader opens (name, mtime, size) decides reuse; buildTree copies its inputs, so
+// the cached arrays are never mutated.
+
+function statSig(path) {
+  try { const st = statSync(path); return `${st.mtimeMs}:${st.size}`; } catch { return '-'; }
+}
+
+function plansSig(root) {
+  const dir = join(root, 'docs', 'superpowers', 'plans');
+  let names;
+  try { names = readdirSync(dir).filter((n) => n.toLowerCase().endsWith('.md')).sort(); } catch { return '-'; }
+  return names.map((n) => `${n}=${statSig(join(dir, n))}`).join('|');
+}
+
+// One signature for the whole Inbox: every project folder's project.json, steps.jsonl and messages.jsonl.
+function inboxSig() {
+  const base = join(plannotatorHome(), 'inbox', 'projects');
+  let keys;
+  try { keys = readdirSync(base).sort(); } catch { return '-'; }
+  return keys.map((k) => ['project.json', 'steps.jsonl', 'messages.jsonl']
+    .map((f) => statSig(join(base, k, f))).join(',') + `@${k}`).join('|');
+}
+
+const sourceCache = new Map(); // kind + NUL + root key -> {sig, value}
+function cached(kind, root, sig, read) {
+  const k = `${kind}\u0000${keyOf(root)}`;
+  const hit = sourceCache.get(k);
+  if (hit && hit.sig === sig && sig !== '-') return hit.value;
+  const value = read(root);
+  sourceCache.set(k, { sig, value });
+  return value;
+}
+
 // ---- sessions ------------------------------------------------------------------------------------------------
 
 function cpuOf(sampler, pid) {
@@ -156,6 +192,12 @@ function cpuOf(sampler, pid) {
 function aliveOf(sampler, s) {
   if (!Number.isInteger(s.pid)) return false;
   try { return !!sampler.alive(s.pid, s.procStart); } catch { return killAlive(s.pid); }
+}
+
+// Dormant subagents, reused across rebuilds (see subagents.mjs). Entries unused for 10 min are pruned.
+const subagentCache = new Map();
+function pruneSubagentCache(now) {
+  for (const [k, v] of subagentCache) if (now - v.checkedAt > 10 * 60000 || v.checkedAt > now) subagentCache.delete(k);
 }
 
 const toolView = (t) => (t ? { name: t.name, command: clip(t.command), startedMs: t.startedMs ?? null, background: !!t.outputFile } : null);
@@ -194,7 +236,7 @@ function sessionView(s, now, th, sampler) {
   }, th);
   const parent = { alive, cpuPct, waitsOnAgent: !!tool && (tool.name === 'Agent' || tool.name === 'Task') };
   let subs = [];
-  try { subs = s.transcriptPath ? readSubagents(s.transcriptPath, now, th) : []; } catch { subs = []; }
+  try { subs = s.transcriptPath ? readSubagents(s.transcriptPath, now, th, { cache: subagentCache }) : []; } catch { subs = []; }
   const views = subs.map((a) => subagentView(a, parent, now, th)); // newest first (readSubagents order)
   const active = views.filter((a) => a.finished !== true && a.state !== 'idle');
   const rest = views.filter((a) => !active.includes(a));
@@ -239,7 +281,9 @@ function findTask(tree, id) {
   return null;
 }
 
-async function buildProject(root, sessions, lastSeenMs, events, now, th, sinceMs) {
+const SOURCES = { readWorklog, readPlans, readBmad, readInbox, readCommits };
+
+async function buildProject(root, sessions, lastSeenMs, events, now, th, sinceMs, inboxSigNow, src) {
   const rootKey = keyOf(root);
   const lastActivityMs = Math.max(lastSeenMs ?? -Infinity, ...sessions.map((s) => s.lastWriteMs ?? -Infinity));
   const state = projectState(sessions);
@@ -250,9 +294,10 @@ async function buildProject(root, sessions, lastSeenMs, events, now, th, sinceMs
   let tree = null;
   let error = null;
   try {
-    const [bmad, commits] = await Promise.all([readBmad(root), readCommits(root, sinceMs)]);
+    const [bmad, commits] = await Promise.all([src.readBmad(root), src.readCommits(root, sinceMs)]);
     tree = trimTree(buildTree(root, {
-      worklog: readWorklog(root), plans: readPlans(root), bmad, inbox: readInbox(root), commits,
+      worklog: src.readWorklog(root), plans: cached('plans', root, plansSig(root), src.readPlans), bmad,
+      inbox: cached('inbox', root, inboxSigNow, src.readInbox), commits,
       sessions: sessions.filter((s) => s.alive).map((s) => ({ sessionId: s.sessionId, signals: s._signals })),
       events: events.filter((e) => inside(rootKey, e.file)), now,
     }, th));
@@ -284,6 +329,7 @@ export async function buildModel(now = Date.now(), opts = {}) {
     const historyDays = Number.isFinite(opts.historyDays) ? opts.historyDays : HISTORY_DAYS;
     const sinceMs = now - (Number.isFinite(opts.commitDays) ? opts.commitDays : COMMIT_DAYS) * DAY;
 
+    pruneSubagentCache(now);
     const byRoot = new Map(); // key -> {root, lastMs, sessions}
     for (const [k, d] of discoverRoots(now, historyDays)) byRoot.set(k, { root: d.root, lastMs: d.lastMs, sessions: [] });
     for (const s of readSessions()) {
@@ -299,10 +345,12 @@ export async function buildModel(now = Date.now(), opts = {}) {
     }
 
     const events = readEvents(sinceMs);
+    const inboxSigNow = inboxSig();
+    const src = { ...SOURCES, ...(isObj(opts.sources) ? opts.sources : {}) };
     const projects = await Promise.all([...byRoot.values()].map(async (p) => {
       p.sessions.sort((a, b) => rankOf(a.state) - rankOf(b.state) || (b.lastWriteMs ?? 0) - (a.lastWriteMs ?? 0));
       try {
-        return await buildProject(p.root, p.sessions, p.lastMs, events, now, th, sinceMs);
+        return await buildProject(p.root, p.sessions, p.lastMs, events, now, th, sinceMs, inboxSigNow, src);
       } catch (e) {
         return {
           root: p.root, name: basename(p.root), state: projectState(p.sessions), sessions: p.sessions, tree: null,
@@ -315,6 +363,7 @@ export async function buildModel(now = Date.now(), opts = {}) {
       for (const s of p.sessions) {
         delete s._signals;
         if (s.state in RANK) model.counts[s.state] += 1;
+        model.counts.stuck += s.subagents.filter((a) => a.state === 'stuck').length;
       }
       for (const e of p.tree?.epics ?? []) model.counts.next += e.tasks.filter((t) => t.status === 'next').length;
     }

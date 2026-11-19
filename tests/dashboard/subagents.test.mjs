@@ -86,3 +86,30 @@ test('missing folder gives empty list; orphan meta kept; newest first', () => wi
   assert.equal(list[2].description, 'No transcript yet');
   assert.equal(list[2].minutes.length, 60);
 }));
+
+test('cache reuses a dormant subagent for a minute and always re-reads an active one', () => {
+  const d = mkdtempSync(join(tmpdir(), 'cvr-dash-'));
+  try {
+    const t = Date.now();
+    const parent = join(d, 'sess.jsonl');
+    const dir = join(d, 'sess', 'subagents');
+    mkdirSync(dir, { recursive: true });
+    const write = (id, minAgo, desc) => {
+      const f = join(dir, `agent-${id}.jsonl`);
+      writeFileSync(f, JSON.stringify({ type: 'user', timestamp: new Date(t - minAgo * 60000).toISOString(), message: { content: 'x' } }) + '\n');
+      utimesSync(f, new Date(t - minAgo * 60000), new Date(t - minAgo * 60000));
+      writeFileSync(join(dir, `agent-${id}.meta.json`), JSON.stringify({ description: desc }));
+    };
+    write('old', 120, 'old v1');
+    write('new', 1, 'new v1');
+    const cache = new Map();
+    const th = { loopWindow: 10 };
+    readSubagents(parent, t, th, { cache });
+    write('old', 120, 'old v2');
+    write('new', 1, 'new v2');
+    const desc = (list) => Object.fromEntries(list.map((a) => [a.agentId, a.description]));
+    assert.deepEqual(desc(readSubagents(parent, t + 30000, th, { cache })), { old: 'old v1', new: 'new v2' });
+    assert.deepEqual(desc(readSubagents(parent, t + 61000, th, { cache })), { old: 'old v2', new: 'new v2' });
+    assert.deepEqual(desc(readSubagents(parent, t + 30000, th)), { old: 'old v2', new: 'new v2' }); // no cache: always read
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});

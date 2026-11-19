@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, copyFileSync } from 'node:fs';
 import { createServer, request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -119,4 +119,25 @@ test('plan hook records plan and BMAD ticket files', async () => {
     assert.deepEqual(lines.map((l) => [l.session, l.file]), files.map((f) => ['s7', f]));
     for (const l of lines) assert.ok(Number.isFinite(Date.parse(l.at)) && /T.*Z$/.test(l.at));
   } finally { rmSync(h.base, { recursive: true, force: true }); }
+});
+
+test('launcher copied without its lib folder still exits 0 silently', async () => {
+  const h = await makeHome();
+  const alone = mkdtempSync(join(tmpdir(), 'cvr-launch-alone-'));
+  try {
+    copyFileSync(join(DASH, 'launcher.mjs'), join(alone, 'launcher.mjs'));
+    const r = await new Promise((res) => {
+      const c = spawn(process.execPath, [join(alone, 'launcher.mjs')], { env: h.env, windowsHide: true });
+      let out = '';
+      c.stdout.on('data', (d) => { out += d; });
+      c.stderr.on('data', (d) => { out += d; });
+      c.on('exit', (code) => res({ code, out }));
+      c.stdin.end();
+    });
+    assert.equal(r.code, 0);
+    assert.equal(r.out, '');
+  } finally {
+    rmSync(alone, { recursive: true, force: true });
+    rmSync(h.base, { recursive: true, force: true });
+  }
 });

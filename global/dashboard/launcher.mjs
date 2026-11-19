@@ -9,7 +9,6 @@ import { connect } from 'node:net';
 import { spawn } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from './lib/config.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CAP_MS = 250; // leaves room for Node's own start inside the 300 ms budget
@@ -37,7 +36,8 @@ function startServer() {
 }
 
 try {
-  const port = envPort() ?? loadConfig().port;
+  // Imported here, not statically, so a broken or missing lib/ still ends in a silent exit 0.
+  const port = envPort() ?? (await import('./lib/config.mjs')).loadConfig().port;
   const sock = connect({ host: '127.0.0.1', port });
   sock.once('connect', () => { sock.destroy(); done(); });
   sock.once('error', (e) => {

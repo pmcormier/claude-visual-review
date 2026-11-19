@@ -18,7 +18,7 @@ function freePort() {
 }
 
 // A fake home with config.json on a free port and a stub page folder (the real page arrives in Task 12).
-async function makeHome() {
+async function makeHome(config = {}) {
   const base = mkdtempSync(join(tmpdir(), 'cvr-server-'));
   const claude = join(base, 'claude');
   const dash = join(claude, 'dashboard');
@@ -32,7 +32,7 @@ async function makeHome() {
   writeFileSync(join(page, 'fonts', 'Inter.woff2'), 'font');
   writeFileSync(join(base, 'secret.txt'), 'nope');
   const port = await freePort();
-  writeFileSync(join(dash, 'config.json'), JSON.stringify({ port }));
+  writeFileSync(join(dash, 'config.json'), JSON.stringify({ port, ...config }));
   const env = {
     ...process.env, CVR_DASH_CLAUDE_HOME: claude, CVR_DASH_PLANNOTATOR_HOME: join(base, 'plannotator'),
     CVR_DASH_PAGE_DIR: page, CVR_DASH_SAMPLER: 'off',
@@ -175,4 +175,26 @@ test('static files come only from the allow-list and Host must be local', async 
     assert.equal((await http(home.port, { headers: { Host: 'attacker.example' } })).status, 403);
     assert.equal((await http(home.port, { headers: { Host: `localhost:${home.port}` } })).status, 200);
   });
+});
+
+test('/events accepts GET only', async () => {
+  await withServer(async (home) => {
+    const r = await http(home.port, { method: 'POST', path: '/events' });
+    assert.equal(r.status, 405);
+  });
+});
+
+test('auto-stop with a fractional autoStop ends the server with no live session', async () => {
+  const home = await makeHome({ thresholds: { autoStop: 0.01 } }); // 0.6 s
+  const s = startServer(home);
+  try {
+    await waitFor(() => existsSync(join(home.dash, 'server.json')));
+    const code = await Promise.race([s.exited, new Promise((r) => setTimeout(() => r('timeout'), 12000))]);
+    assert.equal(code, 0);
+    assert.equal(existsSync(join(home.dash, 'server.json')), false);
+    assert.match(readFileSync(join(home.dash, 'server.log'), 'utf8'), /stopping: auto-stop: no live session/);
+  } finally {
+    try { s.child.kill(); } catch { /* gone */ }
+    rmSync(home.base, { recursive: true, force: true });
+  }
 });

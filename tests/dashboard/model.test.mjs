@@ -150,6 +150,7 @@ test('subagent never-reports rule needs the parent to be waiting on it', async (
     assert.equal(by.s3.state, 'gone');
     assert.equal(by.s3.subagents[0].state, 'idle');
     assert.equal(m.projects[0].state, 'stuck');
+    assert.equal(m.counts.stuck, 1); // the stuck subagent counts, so the headline agrees with the project
     assert.equal(m.live, 2);
   } finally { rmSync(w.base, { recursive: true, force: true }); }
 });
@@ -174,4 +175,48 @@ test('orderProjects ranks by state, then last activity', async () => {
   const out = orderProjects([p('a', 'idle', 9), p('b', 'working', 1), p('c', 'stuck', 1), p('d', 'quiet', 10),
     p('e', 'waiting', 1), p('f', 'working', 5), p('g', 'gone', 3)]);
   assert.deepEqual(out.map((x) => x.name), ['c', 'e', 'f', 'b', 'd', 'a', 'g']);
+});
+
+test('a failing project shows an error note while the others still render', async () => {
+  const w = makeWorld();
+  try {
+    const now = Date.now();
+    const good = project(w, 'good');
+    const broken = project(w, 'broken');
+    transcript(w, good, 'g1', [userAt(now - MIN)]);
+    session(w, 401, good, 'g1', 'busy');
+    transcript(w, broken, 'b1', [userAt(now - MIN)]);
+    session(w, 402, broken, 'b1', 'busy');
+    const { buildModel } = await import('../../global/dashboard/lib/model.mjs');
+    const { readPlans } = await import('../../global/dashboard/lib/sources/plans.mjs');
+    const sources = { readPlans: (root) => { if (root.endsWith('broken')) throw new Error('plan exploded'); return readPlans(root); } };
+    const m = await buildModel(now, { sampler: sampler(), sources });
+    const by = Object.fromEntries(m.projects.map((p) => [p.name, p]));
+    assert.match(by.broken.error, /Could not read this project: plan exploded/);
+    assert.equal(by.broken.tree, null);
+    assert.equal(by.broken.sessions.length, 1); // its sessions still show
+    assert.equal(by.good.error, null);
+    assert.ok(by.good.tree);
+    assert.equal(m.error, null);
+    assert.equal(m.counts.working, 2);
+  } finally { rmSync(w.base, { recursive: true, force: true }); }
+});
+
+test('a cached plan is read again once it changes', async () => {
+  const w = makeWorld();
+  try {
+    const now = Date.now();
+    const root = project(w, 'mu');
+    mkdirSync(join(root, 'docs', 'superpowers', 'plans'), { recursive: true });
+    const plan = join(root, 'docs', 'superpowers', 'plans', 'p.md');
+    writeFileSync(plan, ['# P', '', '### Task 1: One', ''].join('\n'));
+    transcript(w, root, 'm1', [userAt(now - MIN)]);
+    session(w, 501, root, 'm1', 'idle');
+    const { buildModel } = await import('../../global/dashboard/lib/model.mjs');
+    const titles = (m) => m.projects[0].tree.epics.flatMap((e) => e.tasks.map((t) => t.title));
+    assert.deepEqual(titles(await buildModel(now, { sampler: sampler() })), ['One']);
+    assert.deepEqual(titles(await buildModel(now, { sampler: sampler() })), ['One']);
+    writeFileSync(plan, ['# P', '', '### Task 1: One', '', '### Task 2: Two', ''].join('\n'));
+    assert.deepEqual(titles(await buildModel(now, { sampler: sampler() })), ['One', 'Two']);
+  } finally { rmSync(w.base, { recursive: true, force: true }); }
 });

@@ -8,8 +8,9 @@
 //   GET /app.js, /app.css, /fonts/<name>.woff2   fixed allow-list under page/ (matched on the raw path)
 //   GET /events       SSE: the full model on connect, then on change (at most once a second), heartbeat 25 s
 //   POST /stop        needs X-Dash-Token (per-start random token) and Origin http://<that Host>; else 403
-// Rebuilds: fs.watch (recursive) on <claudeHome>/sessions, <claudeHome>/projects and <dashHome>, throttled to
-// one rebuild per 500 ms of events, plus a 5 s tick. Auto-stops after `autoStop` minutes with no live session.
+// Rebuilds: fs.watch (recursive) on <claudeHome>/sessions, <claudeHome>/projects, <dashHome> and
+// <plannotatorHome>/inbox (when present), throttled: a rebuild starts 500 ms after the first event and at least
+// 2 s after the previous rebuild started; plus a 5 s tick. SSE clients more than 4 MB behind are dropped. Auto-stops after `autoStop` minutes with no live session.
 // Files (all under <dashHome>): server.json {pid, port, startedAt} while running; server.log, rotated to
 // server.log.1 at 1 MB.
 // Env: CVR_DASH_PORT overrides the port; CVR_DASH_PAGE_DIR the page folder (tests); CVR_DASH_SAMPLER=off
@@ -21,7 +22,7 @@ import {
 } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { claudeHome, dashHome } from './lib/paths.mjs';
+import { claudeHome, dashHome, plannotatorHome } from './lib/paths.mjs';
 import { loadConfig } from './lib/config.mjs';
 import { buildModel } from './lib/model.mjs';
 import { startCpuSampler } from './lib/procs.mjs';
@@ -30,6 +31,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const PAGE_DIR = process.env.CVR_DASH_PAGE_DIR || join(HERE, 'page');
 const TICK_MS = 5000;
 const WATCH_THROTTLE_MS = 500;
+// Watch-triggered rebuilds start at least this far apart: active sessions write transcripts continuously, and
+// back-to-back rebuilds cost ~29% of a core (measured 2026-11-19, see the task 11 fix report).
+const WATCH_MIN_GAP_MS = 2000;
+const MAX_BUFFERED = 4 * 1024 * 1024; // an SSE client this far behind is dropped
 const PUSH_MIN_MS = 1000;
 const HEARTBEAT_MS = 25000;
 const LOG_MAX = 1024 * 1024;
@@ -73,6 +78,7 @@ let building = false;
 let queued = false;
 let stopping = false;
 let lastLiveAt = startedAt;
+let lastBuildStart = 0;
 let tick = null;
 let heartbeat = null;
 let watchTimer = null;
@@ -82,7 +88,10 @@ const watchers = new Map();
 // ---- model and push -------------------------------------------------------------------------------------------
 
 function send(res, text) {
-  try { res.write(text); } catch { drop(res); }
+  try {
+    res.write(text);
+    if (res.writableLength > MAX_BUFFERED) drop(res); // not reading: stop buffering models for it
+  } catch { drop(res); }
 }
 function drop(res) {
   clients.delete(res);
@@ -113,6 +122,7 @@ async function rebuild() {
   building = true;
   try {
     const t0 = Date.now();
+    lastBuildStart = t0;
     const config = loadConfig();
     const m = await buildModel(t0, { sampler, config });
     const ms = Date.now() - t0;
@@ -143,11 +153,13 @@ async function rebuild() {
 function onWatch(dir, name) {
   if (dir === home && name && SELF_FILES.test(basename(String(name)))) return;
   if (watchTimer || stopping) return;
-  watchTimer = setTimeout(() => { watchTimer = null; rebuild(); }, WATCH_THROTTLE_MS);
+  const wait = Math.max(WATCH_THROTTLE_MS, lastBuildStart + WATCH_MIN_GAP_MS - Date.now());
+  watchTimer = setTimeout(() => { watchTimer = null; rebuild(); }, wait);
 }
 
 function ensureWatchers() {
-  for (const dir of [join(claudeHome(), 'sessions'), join(claudeHome(), 'projects'), home]) {
+  const dirs = [join(claudeHome(), 'sessions'), join(claudeHome(), 'projects'), home, join(plannotatorHome(), 'inbox')];
+  for (const dir of dirs) {
     if (watchers.has(dir)) continue;
     let w = null;
     for (const recursive of [true, false]) {
@@ -220,7 +232,11 @@ function handle(req, res) {
     const path = String(req.url || '').split('?')[0]; // raw path: no decoding, no dot-segment folding
     if (req.method === 'POST' && path === '/stop') { onStop(req, res, host); return; }
     if (req.method !== 'GET' && req.method !== 'HEAD') { reply(res, 405, 'Method not allowed', undefined, { Allow: 'GET, HEAD' }); return; }
-    if (path === '/events') { onEvents(req, res); return; }
+    if (path === '/events') {
+      if (req.method !== 'GET') { reply(res, 405, 'Method not allowed', undefined, { Allow: 'GET' }); return; }
+      onEvents(req, res);
+      return;
+    }
     if (path === '/' || path === '/index.html') {
       serveFile(res, 'index.html', 'text/html; charset=utf-8',
         (html) => html.replace('<!--DASH_TOKEN-->', `<meta name="dash-token" content="${token}">`));
