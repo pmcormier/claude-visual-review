@@ -339,6 +339,10 @@ Measurements, this PC, 2026-11-18/19 (one core = 100%):
 - Reading a project's BMAD status takes 0.3 to 0.9 s.
 - One API reply is often several transcript entries repeating the same usage (239 distinct requests over 505
   entries), so tokens are summed once per request.
+- Live check after installing (2026-11-19): the server's first build took 3.4 to 3.8 s for 6 to 7 projects and 3 to
+  4 live sessions. Started by the `SessionStart` hook of a headless `claude -p` session, it still answered after that
+  session exited. The status line printed the same text through the tap, and plan usage was captured on its first
+  refresh.
 
 The owner approved the rule text and chose both ways for finished plans nobody marked: commits name the plan and
 task, and a plan untouched for 7 days with no live session folds into "Done earlier". Folding is worked out on
