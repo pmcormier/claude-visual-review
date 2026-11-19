@@ -97,3 +97,36 @@ test('sampler restarts a dead child and stop() kills it', async () => {
   assert.equal(kids.length, 2);
 });
 function os_pid() { return 4242; }
+
+test('stale sampler sample falls back to kill(0) and unknown CPU', async () => {
+  const { EventEmitter } = await import('node:events');
+  const { spawnSync } = await import('node:child_process');
+  const { startCpuSampler } = await import('../../global/dashboard/lib/procs.mjs');
+  if (process.platform !== 'win32') return;
+  // A pid that has exited: the sample still lists it, kill(0) does not.
+  const dead = spawnSync(process.execPath, ['-e', ''], { windowsHide: true }).pid;
+  const kids = [];
+  const fake = () => {
+    const k = new EventEmitter();
+    k.stdout = new EventEmitter();
+    k.stdout.setEncoding = () => {};
+    k.kill = () => {};
+    kids.push(k);
+    return k;
+  };
+  let t = 1_000_000;
+  const s = startCpuSampler(1000, { spawnFn: fake, restartMs: 60000, now: () => t });
+  try {
+    const me = process.pid;
+    kids[0].stdout.emit('data', csv([[me, 1, 0, 0, ''], [dead, 1, 0, 0, '']]) + '#---sample---\r\n');
+    t += 1000;
+    kids[0].stdout.emit('data', csv([[me, 1, 10000000, 0, ''], [dead, 1, 0, 0, '']]) + '#---sample---\r\n');
+    assert.equal(s.alive(dead, undefined), true); // fresh sample is trusted
+    assert.equal(s.descendants(me)[0].cpuPct, 100);
+    t += 3001; // older than 3 intervals: the child hung
+    assert.equal(s.alive(dead, undefined), false);
+    assert.equal(s.alive(me, undefined), true);
+    assert.deepEqual(s.descendants(me), [{ pid: me, cpuPct: null }]);
+    assert.deepEqual(s.descendants(dead), []);
+  } finally { s.stop(); }
+});

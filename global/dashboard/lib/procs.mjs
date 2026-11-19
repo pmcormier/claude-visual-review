@@ -9,12 +9,14 @@ const MARK = '#---sample---';
 const START_TOLERANCE = 100000n; // 10 ms in FILETIME units
 const RESTART_MS = 30000;
 
-// CIM CreationDate is rounded to microseconds, hence the tolerance. Fixed text: only the interval varies.
-// Property-restricted WQL and hand-built CSV lines (same header parseProcessTable reads) keep this cheap.
-const psCommand = (ms) =>
-  `$q='SELECT ProcessId,ParentProcessId,KernelModeTime,UserModeTime,CreationDate FROM Win32_Process';` +
+// CIM CreationDate is rounded to microseconds, hence the tolerance. Fixed text: only the interval and the
+// parent pid (both integers) vary. Property-restricted WQL and hand-built CSV lines (same header
+// parseProcessTable reads) keep this cheap. The loop exits when its parent is gone: .NET ignores writes to a
+// broken pipe, so without the check a killed server would leave pwsh sampling forever (measured 2026-11-19).
+const psCommand = (ms, parentPid) =>
+  `$pp=${parentPid};$q='SELECT ProcessId,ParentProcessId,KernelModeTime,UserModeTime,CreationDate FROM Win32_Process';` +
   `$h='"ProcessId","ParentProcessId","KernelModeTime","UserModeTime","Created"';` +
-  `while($true){$l=foreach($p in Get-CimInstance -Query $q){$c='';if($p.CreationDate){$c=$p.CreationDate.ToFileTimeUtc()};` +
+  `while($true){if(-not(Get-Process -Id $pp -ErrorAction Ignore)){exit};$l=foreach($p in Get-CimInstance -Query $q){$c='';if($p.CreationDate){$c=$p.CreationDate.ToFileTimeUtc()};` +
   `'"{0}","{1}","{2}","{3}","{4}"' -f $p.ProcessId,$p.ParentProcessId,$p.KernelModeTime,$p.UserModeTime,$c};` +
   `[Console]::Out.Write($h+"
 "+($l-join"
@@ -72,6 +74,7 @@ export function createSamplerState() {
       cur = { at: nowMs, rows, byPid: new Map(rows.map((r) => [r.pid, r])) };
     },
     hasSample: () => cur !== null,
+    lastAt: () => (cur ? cur.at : null),
     descendants(pid) {
       if (!cur) return [];
       const root = cur.byPid.get(pid);
@@ -112,7 +115,12 @@ function killAlive(pid) {
   try { process.kill(pid, 0); return true; } catch (e) { return e?.code === 'EPERM'; }
 }
 
-export function startCpuSampler(intervalMs = 15000, { spawnFn = spawn, restartMs = RESTART_MS } = {}) {
+// A sample older than STALE_FACTOR intervals (the pwsh child hung or died and has not been replaced yet) is not
+// trusted: liveness falls back to process.kill(pid, 0) and CPU reads as unknown (null), so a dead session can
+// still show Gone and an old CPU figure never keeps a quiet session looking busy.
+const STALE_FACTOR = 3;
+
+export function startCpuSampler(intervalMs = 15000, { spawnFn = spawn, restartMs = RESTART_MS, now = Date.now } = {}) {
   if (process.platform !== 'win32') {
     return {
       descendants: (pid) => (killAlive(pid) ? [{ pid, cpuPct: null }] : []),
@@ -141,7 +149,7 @@ export function startCpuSampler(intervalMs = 15000, { spawnFn = spawn, restartMs
     if (stopped) return;
     buf = '';
     try {
-      child = spawnFn('pwsh', ['-NoProfile', '-NonInteractive', '-Command', psCommand(ms)], {
+      child = spawnFn('pwsh', ['-NoProfile', '-NonInteractive', '-Command', psCommand(ms, process.pid)], {
         cwd: here,
         env: { ...process.env, NoDefaultCurrentDirectoryInExePath: '1' },
         windowsHide: true,
@@ -155,7 +163,7 @@ export function startCpuSampler(intervalMs = 15000, { spawnFn = spawn, restartMs
         buf += d;
         let i;
         while ((i = buf.indexOf(MARK)) >= 0) {
-          state.ingest(buf.slice(0, i), Date.now());
+          state.ingest(buf.slice(0, i), now());
           buf = buf.slice(i + MARK.length).replace(/^\r?\n/, '');
         }
       } catch { buf = ''; }
@@ -166,9 +174,10 @@ export function startCpuSampler(intervalMs = 15000, { spawnFn = spawn, restartMs
   }
   start();
 
+  const fresh = () => state.hasSample() && now() - state.lastAt() <= STALE_FACTOR * ms;
   return {
-    descendants: (pid) => state.descendants(pid),
-    alive: (pid, procStart) => (state.hasSample() ? state.alive(pid, procStart) : killAlive(pid)),
+    descendants: (pid) => (fresh() ? state.descendants(pid) : killAlive(pid) ? [{ pid, cpuPct: null }] : []),
+    alive: (pid, procStart) => (fresh() ? state.alive(pid, procStart) : killAlive(pid)),
     stop() {
       stopped = true;
       clearTimeout(timer);
