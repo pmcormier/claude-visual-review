@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
-  sizeSummary, filterToken,
+  sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -259,4 +259,48 @@ test('Up next and triage leave out before-dashboard and dropped epics', () => {
   ];
   const model = { projects: [{ root: 'r', name: 'r', sessions: [], tree: { epics, left: { count: 1, hours: null } } }] };
   assert.deepEqual(triage(model, NOW).next[0].tasks.map((t) => t.id), ['c']);
+});
+
+// Wayfinding (spec 2026-11-19-dashboard-wayfinding-design.md): state groups, newest first, fold defaults.
+test('groupEpics: exclusive groups, running wins over waiting', () => {
+  const st = { a: 'work', b: 'wait', c: 'idle', d: 'done', s: 'stuck', g: 'gone' };
+  const stateOf = (t) => st[t.id];
+  const ep = (id, ids) => ({ id, title: id, tasks: ids.map((i) => ({ id: i, status: i === 'd' ? 'done' : i === 'a' ? 'doing' : 'next', startedMs: NOW - HOUR })) });
+  const r = groupEpics([ep('mix', ['a', 'b']), ep('w', ['b', 'c']), ep('n', ['c']), ep('fin', ['d']), ep('stk', ['s']), ep('gon', ['g'])], NOW, new Set(), stateOf);
+  assert.deepEqual(r.running.map((e) => e.id).sort(), ['gon', 'mix', 'stk']);
+  assert.deepEqual(r.waiting.map((e) => e.id), ['w']);
+  assert.deepEqual(r.next.map((e) => e.id), ['n']);
+  assert.deepEqual(r.done.map((e) => e.id), ['fin']);
+  assert.deepEqual(r.shown.map((e) => e.id).slice(-3), ['w', 'n', 'fin']);
+});
+
+test('groupEpics splits the week-old fold into quiet and done earlier', () => {
+  const old = NOW - 8 * DAY;
+  const r = groupEpics([
+    { id: 'q', tasks: [{ id: '1', status: 'next', startedMs: old }] },
+    { id: 'de', tasks: [{ id: '2', status: 'done', doneMs: old }] },
+  ], NOW, new Set(), (t) => (t.status === 'done' ? 'done' : 'idle'));
+  assert.deepEqual(r.quiet.map((e) => e.id), ['q']);
+  assert.deepEqual(r.doneEarlier.map((e) => e.id), ['de']);
+  assert.equal(r.shown.length, 0);
+});
+
+test('groupEpics sorts newest first, unknown activity last in source order', () => {
+  const t = (ms) => [{ id: 'x', status: 'next', ...(ms ? { startedMs: ms } : {}) }];
+  const r = groupEpics([{ id: 'u1', tasks: t() }, { id: 'old', tasks: t(NOW - 2 * DAY) }, { id: 'u2', tasks: t() }, { id: 'new', tasks: t(NOW - HOUR) }],
+    NOW, new Set(), () => 'idle');
+  assert.deepEqual(r.next.map((e) => e.id), ['new', 'old', 'u1', 'u2']);
+});
+
+test('groupEpics keeps before and dropped, and handles null', () => {
+  const r = groupEpics([{ id: 'b', before: true, tasks: [] }, { id: 'x', dropped: true, tasks: [] }], NOW, new Set(), () => 'idle');
+  assert.deepEqual([r.before.length, r.dropped.length], [1, 1]);
+  assert.equal(groupEpics(null, NOW, null, () => 'idle').shown.length, 0);
+});
+
+test('foldOpen and projectFoldKeys', () => {
+  assert.equal(foldOpen({ k: false }, 'k', true), false);
+  assert.equal(foldOpen({}, 'k', true), true);
+  assert.deepEqual(projectFoldKeys({ 'e|r1|a': true, 'g|r1|next': false, 'e|r2|a': true, 'p|r1': true }, 'r1').sort(), ['e|r1|a', 'g|r1|next']);
+  assert.deepEqual(GROUPS.filter((g) => g.open).map((g) => g.id), ['running', 'waiting']);
 });

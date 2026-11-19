@@ -141,6 +141,67 @@ export function foldEpics(epics, now, liveSessionIds) {
   return { shown, earlier, before, dropped };
 }
 
+/**
+ * Tree groups, in display order. `history` groups show only with "Show all history"; `open` is the default fold
+ * (Focus). Spec 2026-11-19-dashboard-wayfinding-design.md.
+ */
+export const GROUPS = Object.freeze([
+  { id: 'running', label: 'Running', history: false, open: true },
+  { id: 'waiting', label: 'Waiting on you', history: false, open: true },
+  { id: 'next', label: 'Next', history: false, open: false },
+  { id: 'done', label: 'Done', history: false, open: false },
+  { id: 'quiet', label: 'Quiet for a week', history: true, open: false },
+  { id: 'doneEarlier', label: 'Done earlier', history: true, open: false },
+  { id: 'before', label: 'Before the dashboard', history: true, open: false },
+  { id: 'dropped', label: 'dropped', history: true, open: false },
+].map((g) => Object.freeze(g)));
+
+/** Newest activity first; epics with no known activity last, in source order (Array#sort is stable). */
+function byActivity(epics) {
+  const k = (e) => epicLastActivity(e);
+  return [...epics].sort((a, b) => {
+    const x = k(a);
+    const y = k(b);
+    if (x === null || y === null) return x === null ? (y === null ? 0 : 1) : -1;
+    return y - x;
+  });
+}
+
+/**
+ * foldEpics split by state. An epic goes to the first that applies: any task work/stuck/gone -> running; any
+ * wait -> waiting; unfinished -> next; else done. Week-old epics split into quiet (unfinished) and doneEarlier.
+ * `stateOf(task)` is the page's task state. `shown` (running, waiting, next, done) is what work left counts.
+ */
+export function groupEpics(epics, now, liveSessionIds, stateOf) {
+  const { shown, earlier, before, dropped } = foldEpics(epics, now, liveSessionIds);
+  const g = { running: [], waiting: [], next: [], done: [] };
+  for (const e of shown) {
+    const st = arr(e?.tasks).map((t) => { try { return stateOf(t); } catch { return 'idle'; } });
+    if (st.some((s) => s === 'work' || s === 'stuck' || s === 'gone')) g.running.push(e);
+    else if (st.includes('wait')) g.waiting.push(e);
+    else if (!epicDone(e)) g.next.push(e);
+    else g.done.push(e);
+  }
+  const out = {
+    running: byActivity(g.running), waiting: byActivity(g.waiting), next: byActivity(g.next), done: byActivity(g.done),
+    quiet: byActivity(earlier.filter((e) => !epicDone(e))), doneEarlier: byActivity(earlier.filter((e) => epicDone(e))),
+    before: byActivity(before), dropped: byActivity(dropped),
+  };
+  out.shown = [...out.running, ...out.waiting, ...out.next, ...out.done];
+  return out;
+}
+
+/** A fold the person set (a stored boolean) wins; otherwise the default. */
+export const foldOpen = (openState, key, dflt) => (typeof openState?.[key] === 'boolean' ? openState[key] : !!dflt);
+
+/** The epic (`e|root|id`) and group (`g|root|id`) fold keys of one project; Focus deletes them. */
+export function projectFoldKeys(openState, root) {
+  return Object.keys(openState ?? {}).filter((k) => {
+    const [kind, r] = k.split('|');
+    return (kind === 'e' || kind === 'g') && r === root;
+  });
+}
+
 /** Unfinished tasks in the shown epics, with the model's hours estimate scaled to that count. */
 export function effortLeft(tree, shownEpics) {
   const count = arr(shownEpics).reduce((n, e) => n + arr(e?.tasks).filter((t) => t?.status !== 'done').length, 0);
