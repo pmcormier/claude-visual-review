@@ -223,3 +223,66 @@ test('a cached plan is read again once it changes', async () => {
     assert.deepEqual(titles(await buildModel(now, { sampler: sampler() })), ['One', 'Two']);
   } finally { rmSync(w.base, { recursive: true, force: true }); }
 });
+
+// R22: the stall rules read the CPU of the processes the pending tool started, not the whole session tree.
+test('stall CPU is the pending tool\'s own processes, not Claude Code or its MCP servers', async () => {
+  const ft = (ms) => (BigInt(ms) + 11644473600000n) * 10000n; // FILETIME, as the sampler reports CreationDate
+  const now = Date.now();
+  const toolStart = now - 30 * MIN;
+  const table = (toolChildCpu) => (pid) => {
+    const base = pid * 10;
+    return [
+      { pid, cpuPct: 3, created: ft(now - 5 * 60 * MIN) }, // claude.exe, idle-ish
+      { pid: base + 1, cpuPct: 50, created: ft(now - 4 * 60 * MIN) }, // an MCP server, busy, started long before
+      { pid: base + 2, cpuPct: toolChildCpu, created: ft(toolStart + 500) }, // what the tool started
+    ];
+  };
+  const run = async (toolChildCpu) => {
+    const w = makeWorld();
+    try {
+      const root = project(w, 'nu');
+      // A foreground tool pending 30 min, transcript quiet for 25 min.
+      transcript(w, root, 'h1', [toolAt(toolStart, 'b1', 'Bash', { command: 'npm test' })], now - 25 * MIN);
+      session(w, 601, root, 'h1', 'busy');
+      // No tool pending, busy, transcript quiet for 25 min: only status and the transcript decide.
+      transcript(w, root, 'q1', [userAt(now - 25 * MIN)], now - 25 * MIN);
+      session(w, 602, root, 'q1', 'busy');
+      // The parent waits on a subagent whose own Bash call has been pending 30 min.
+      transcript(w, root, 'a1', [toolAt(now - 31 * MIN, 'ag', 'Agent', { prompt: 'go' })], now - 31 * MIN);
+      session(w, 603, root, 'a1', 'busy');
+      const dir = join(w.claude, 'projects', enc(root), 'a1', 'subagents');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'agent-s.jsonl'), JSON.stringify(toolAt(toolStart, 'sb', 'Bash', { command: 'make' })) + '\n');
+      utimesSync(join(dir, 'agent-s.jsonl'), new Date(now - 25 * MIN), new Date(now - 25 * MIN));
+      writeFileSync(join(dir, 'agent-s.meta.json'), JSON.stringify({ description: 'build', finished: false }));
+      const { buildModel } = await import('../../global/dashboard/lib/model.mjs');
+      const m = await buildModel(now, { sampler: { alive: () => true, descendants: table(toolChildCpu) } });
+      const by = Object.fromEntries(m.projects[0].sessions.map((s) => [s.sessionId, s]));
+      return by;
+    } finally { rmSync(w.base, { recursive: true, force: true }); }
+  };
+
+  const quietTool = await run(0);
+  assert.equal(quietTool.h1.cpuPct, 0);
+  assert.equal(quietTool.h1.state, 'stuck');
+  assert.match(quietTool.h1.evidence, /0% CPU/);
+  assert.equal(quietTool.q1.cpuPct, null); // nothing pending: CPU not consulted
+  assert.equal(quietTool.q1.state, 'stuck');
+  assert.equal(quietTool.a1.subagents[0].state, 'stuck');
+
+  const busyTool = await run(40);
+  assert.equal(busyTool.h1.cpuPct, 40);
+  assert.equal(busyTool.h1.state, 'working');
+  assert.equal(busyTool.a1.subagents[0].state, 'working');
+});
+
+test('toolCpu: unknown when the sampler has no figure, 0 when the tool started nothing', async () => {
+  const { toolCpu } = await import('../../global/dashboard/lib/model.mjs');
+  const ft = (ms) => (BigInt(ms) + 11644473600000n) * 10000n;
+  const t = 1.9e12;
+  assert.equal(toolCpu({ descendants: (pid) => [{ pid, cpuPct: null, created: ft(t - 1e6) }] }, 7, t), null);
+  assert.equal(toolCpu({ descendants: (pid) => [{ pid, cpuPct: 2, created: ft(t - 1e6) }] }, 7, t), 0);
+  assert.equal(toolCpu({ descendants: (pid) => [{ pid, cpuPct: 2, created: ft(t - 1e6) }] }, 7, null), null);
+  // Created within the 2 s slack before the tool's start still counts.
+  assert.equal(toolCpu({ descendants: (pid) => [{ pid, cpuPct: 2, created: ft(t - 1e6) }, { pid: 8, cpuPct: 9, created: ft(t - 1500) }] }, 7, t), 9);
+});

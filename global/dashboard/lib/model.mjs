@@ -4,8 +4,9 @@
 //
 // buildModel(now, {sampler, config, historyDays, commitDays, sources}) -> Model (async: BMAD and git are async)
 //   sources: test seam, overrides any of {readWorklog, readPlans, readBmad, readInbox, readCommits}.
-//   sampler: {alive(pid, procStart), descendants(pid)} from procs.mjs startCpuSampler (default: kill(0)
-//            liveness, CPU unknown). config: loadConfig() result, read once per rebuild by the caller.
+//   sampler: {alive(pid, procStart), descendants(pid) -> [{pid, cpuPct, created}]} from procs.mjs
+//            startCpuSampler (default: kill(0) liveness, CPU unknown).
+//   config: loadConfig() result, read once per rebuild by the caller.
 //
 // Judgment calls (see the task report for the reasoning):
 //  - Projects (R17) = live sessions' roots ∪ roots of transcripts modified in the last `historyDays` (7);
@@ -13,7 +14,9 @@
 //  - A session whose process is not alive is kept only while it still had a tool pending ("Gone"), and only
 //    for GONE_KEEP_MS after its last transcript write; otherwise it closed normally and is dropped.
 //  - A session record without a pid counts as not alive (Claude Code names the file after the pid).
-//  - Subagents: status null, alive = the parent's, CPU = the parent's tree (subagents run in its process).
+//  - CPU for the stall rules (R22) = the processes the pending tool started (see toolCpu); none pending: null.
+//  - Subagents: status null, alive = the parent's, CPU = their own pending tool's processes inside the parent's
+//    tree (subagents run in its process).
 //    A finished subagent of a gone parent shows idle. Any "stuck" subagent verdict needs the parent to be
 //    waiting on it actively (its pending tool is an Agent/Task call); otherwise the subagent shows idle.
 //  - Finished/idle subagents collapse to the last KEEP_DONE_SUBAGENTS plus a count (subagentsHidden).
@@ -177,13 +180,28 @@ function cached(kind, root, sig, read) {
 
 // ---- sessions ------------------------------------------------------------------------------------------------
 
-function cpuOf(sampler, pid) {
+// CPU for the stall rules (R22): the summed CPU of the processes in the session's tree that the pending tool
+// started, i.e. those created at or after its start (less TOOL_START_SLACK_MS for clock and rounding skew).
+// Claude Code itself and its MCP servers predate the tool and never count: their idle CPU alone kept an idle
+// tree above the "low" line (measured 2026-11-19: 5-102 % for idle sessions). No tool pending: null (CPU is
+// not consulted). The sampler's root entry carrying no CPU (no second sample, or stale) also reads null, as
+// does any counted process without a figure. A tool that started no process reads 0.
+const TOOL_START_SLACK_MS = 2000;
+const FILETIME_EPOCH_MS = 11644473600000n; // 1601-01-01 to 1970-01-01
+const filetimeOf = (ms) => (BigInt(Math.floor(ms)) + FILETIME_EPOCH_MS) * 10000n;
+
+export function toolCpu(sampler, pid, startedMs) {
+  if (!Number.isInteger(pid) || !Number.isFinite(startedMs)) return null;
   let list;
   try { list = sampler.descendants(pid); } catch { return null; }
   if (!Array.isArray(list) || !list.length) return null;
+  const root = list.find((d) => d?.pid === pid);
+  if (!Number.isFinite(root?.cpuPct)) return null;
+  const cutoff = filetimeOf(startedMs - TOOL_START_SLACK_MS);
   let sum = 0;
   for (const d of list) {
-    if (!Number.isFinite(d?.cpuPct)) return null; // unknown (fewer than two samples, or stale)
+    if (typeof d?.created !== 'bigint' || d.created < cutoff) continue;
+    if (!Number.isFinite(d.cpuPct)) return null;
     sum += d.cpuPct;
   }
   return sum;
@@ -205,9 +223,11 @@ const idleOf = (t, now) => (t?.outputFile ? outputGrowth(t.outputFile, now).idle
 const RANK = { stuck: 0, waiting: 1, working: 2 };
 const rankOf = (state) => RANK[state] ?? 3;
 
-function subagentView(a, parent, now, th) {
+function subagentView(a, parent, now, th, sampler) {
+  const own = a.signals.pendingTool;
+  const cpuPct = parent.alive && own ? toolCpu(sampler, parent.pid, own.startedMs) : null;
   let v = classify({
-    kind: 'subagent', status: null, alive: parent.alive, signals: a.signals, cpuPct: parent.cpuPct,
+    kind: 'subagent', status: null, alive: parent.alive, signals: a.signals, cpuPct,
     outputIdleMs: idleOf(a.signals.pendingTool, now), finished: a.finished, now,
   }, th);
   if (v.state === 'gone' && a.finished === true) v = { state: 'idle', evidence: null, hint: null, since: a.lastWriteMs };
@@ -229,15 +249,15 @@ function sessionView(s, now, th, sampler) {
   const alive = aliveOf(sampler, s);
   const tool = signals.pendingTool;
   if (!alive && (!tool || (signals.lastWriteMs ?? 0) < now - GONE_KEEP_MS)) return null; // closed normally
-  const cpuPct = alive ? cpuOf(sampler, s.pid) : null;
+  const cpuPct = alive && tool ? toolCpu(sampler, s.pid, tool.startedMs) : null;
   const v = classify({
     kind: 'session', status: s.status, alive, signals, cpuPct, outputIdleMs: idleOf(tool, now), finished: null, now,
     statusUpdatedAt: s.statusUpdatedAt,
   }, th);
-  const parent = { alive, cpuPct, waitsOnAgent: !!tool && (tool.name === 'Agent' || tool.name === 'Task') };
+  const parent = { alive, pid: s.pid, waitsOnAgent: !!tool && (tool.name === 'Agent' || tool.name === 'Task') };
   let subs = [];
   try { subs = s.transcriptPath ? readSubagents(s.transcriptPath, now, th, { cache: subagentCache }) : []; } catch { subs = []; }
-  const views = subs.map((a) => subagentView(a, parent, now, th)); // newest first (readSubagents order)
+  const views = subs.map((a) => subagentView(a, parent, now, th, sampler)); // newest first (readSubagents order)
   const active = views.filter((a) => a.finished !== true && a.state !== 'idle');
   const rest = views.filter((a) => !active.includes(a));
   return {

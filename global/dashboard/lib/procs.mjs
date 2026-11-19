@@ -94,7 +94,7 @@ export function createSamplerState() {
         const p = prev?.byPid.get(r.pid);
         const dt = prev ? (cur.at - prev.at) / 1000 : 0;
         if (p && dt > 0 && p.created === r.created) cpuPct = Math.max(0, ((r.cpuSeconds - p.cpuSeconds) / dt) * 100);
-        out.push({ pid: r.pid, cpuPct });
+        out.push({ pid: r.pid, cpuPct, created: r.created });
         for (const c of kids.get(r.pid) ?? []) if (!seen.has(c.pid)) { seen.add(c.pid); stack.push(c); }
       }
       return out;

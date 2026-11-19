@@ -18,6 +18,8 @@
 //  - Not alive: always 'gone'. Evidence names the pending tool if there was one, else null.
 //  - Waiting: since = statusUpdatedAt, falling back to the transcript's last write when the
 //    caller has no status timestamp. Evidence appears once waiting >= thresholds.waiting.
+//  - cpuPct is the CPU of the processes the pending tool started (model.mjs, R22); with no tool pending the
+//    caller passes null and the quiet rules rest on status busy + a quiet transcript + nothing running.
 //  - Unknown CPU (null) never makes anything stuck by itself: the other signs must also be
 //    quiet (no output growth, no transcript write), and evidence says "CPU unknown".
 //    "0% CPU" means under 0.5%, so evidence never reads "1% CPU" when stuck (rounds to 0).
