@@ -276,3 +276,47 @@ asking. Design: `docs/superpowers/specs/2026-11-18-live-dashboard-design.md`. Th
 - **Usage through a status-line tap,** because the status line's input is the only documented source of the
   5-hour and weekly limits (checked against the docs on 2026-11-18).
 - **Its own look, not the setup guide's:** a tool kept open all day; chosen over several rounds of mockups.
+
+## 31. The live dashboard, as built (2026-11-19)
+Decision 30's design shipped as the opt-in Dashboard component: `global/dashboard/` (server, sampler, page,
+work-log tool), `commands/dashboard.md`, `rules/dashboard.md`, a `SessionStart` and a `PostToolUse` hook, the
+status-line wrap and a Start menu shortcut. `-Remove Dashboard` undoes the hooks, the wrap and the shortcut, and
+like Rigor it is never removed by leaving it out of `-Components`. Where the build differs from the design, and why:
+- **Commit-to-task matching is narrower.** The "only one unfinished plan" clause applies only when the repo has
+  exactly one plan file, and a plan's add date comes from the commit that really added it. Only a commit's
+  subject line is matched. Reviews kept reproducing wrong ticks from the broader history reconstruction, and the
+  design's own priority is that a missed tick beats a wrong one. A repo with several plans ticks only when the
+  subject names the plan or the session linked the plan; the rule text asks for that.
+- **The original status line is saved in `~/.claude/dashboard/statusline-original.json`**, not in the manifest
+  (the design said manifest). The whole object is kept, so removal restores it exactly.
+- **Process sampling every 15 s, not 5 s, with a property-restricted query.** Stall thresholds are minutes, so a
+  15 s CPU window is enough.
+- **Project discovery:** live sessions plus projects with transcript activity in the last 7 days, because the
+  folder names under `~/.claude/projects` can't be turned back into paths.
+- **Stuck subagents count in the headline,** not only stuck sessions.
+- **A heartbeat event every 5 s,** so "updated Ns ago" means "the server was last heard from", and the page says
+  "Server not responding" after 60 s of silence.
+- **Light-mode stuck red darkened to `#ab241d`.** The approved token measured 4.30:1, under WCAG AA's 4.5:1.
+- **A new `start` in the work log closes the session's unfinished task as not done** (doing goes back to next),
+  rather than claiming it finished. A session running two tasks in parallel on purpose sees the first demoted.
+- **A background job's end is read from Claude Code's queued task notifications,** or it looked stuck forever.
+- **Child processes never run with a project as their working directory** (Windows searches it for executables
+  first, so a planted binary would run), and git runs with fsmonitor off and `GIT_*` variables cleared.
+
+Measurements, this PC, 2026-11-18/19 (one core = 100%):
+- Process sampler: 2.32% at 5 s with the full query, 1.17% with the restricted query, 0.56% at 15 s.
+- Server with four live sessions: 28.5% before throttling, 2.6% after a 2 s minimum gap between rebuilds and
+  caches (a warm rebuild went from 385 ms to 19 ms). With the sampler, about 3.2% (summed, not measured together).
+- The status-line tap adds a median 42.5 ms per refresh (20 runs).
+- Reading a project's BMAD status takes 0.3 to 0.9 s.
+- One API reply is often several transcript entries repeating the same usage (239 distinct requests over 505
+  entries), so tokens are summed once per request.
+
+Still waiting on the owner: sign-off on the rule file's text, and two choices built as provisional: whether a
+finished plan nobody marked folds away after 7 days untouched with no live session, and whether commits name the
+plan and task (asked in the rule text).
+
+Known limits: removal leaves the runtime files (`config.json`, `usage.json`, the work log) and doesn't stop a
+running server (it stops itself after 30 idle minutes, or from the page's Stop). The shortcut stores the Node path
+found at install time, so rerun the installer after switching Node versions. Usage numbers need a Pro, Max or
+Ultra plan and appear after a session's first reply.

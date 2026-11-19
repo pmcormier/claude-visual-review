@@ -14,8 +14,9 @@ them. Ask before anything that changes my machine beyond what's listed here, and
 1. **Check the basics.** This needs Windows with PowerShell 7, VS Code, Claude Code, git and Python, plus
    `uv` for BMAD projects. Tell me what's missing and how to get it; stop if it isn't Windows.
 2. **Ask me what I want**, in one go:
-   - Which components: Review (always), Methods, Bmad, Fable, Rigor. Explain each in a line, from the README.
-   - For Rigor: whether Node.js is installed (its hook runs on `node`).
+   - Which components: Review (always), Methods, Bmad, Fable, Rigor, Dashboard. Explain each in a line, from the README.
+   - For Rigor and Dashboard: whether Node.js is installed (they run on `node`). Dashboard is opt-in: it wraps
+     the status line (saved and restored on removal) and adds a Start menu shortcut, so say so when I choose it.
    - Whether I have access to the Fable model (Fable is pointless without it).
    - Whether I want superpowers and/or BMAD. Methods is written for them; skip it if I want neither.
 3. **Install superpowers and BMAD if I said yes**, from their official instructions: look them up now (the
