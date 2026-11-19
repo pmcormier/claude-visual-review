@@ -1,0 +1,156 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, appendFileSync, existsSync, readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const here = fileURLToPath(new URL('.', import.meta.url));
+const NOTE = resolve(here, '../../global/dashboard/note.mjs');
+
+function setup() {
+  const home = mkdtempSync(join(tmpdir(), 'cvr-wl-home-'));
+  const proj = mkdtempSync(join(tmpdir(), 'cvr-wl-proj-'));
+  mkdirSync(join(proj, '.git'));
+  return { home, proj };
+}
+
+function note(env, args, session = 's1') {
+  const e = { ...process.env, CVR_DASH_CLAUDE_HOME: env.home };
+  if (session === null) delete e.CLAUDE_CODE_SESSION_ID; else e.CLAUDE_CODE_SESSION_ID = session;
+  return spawnSync(process.execPath, [NOTE, ...args], { cwd: env.proj, env: e, encoding: 'utf8' });
+}
+
+async function lib(env) {
+  process.env.CVR_DASH_CLAUDE_HOME = env.home;
+  return import('../../global/dashboard/lib/worklog.mjs');
+}
+async function read(env) {
+  return (await lib(env)).readWorklog(env.proj);
+}
+
+test('start then steps then done yields a done epic with three done tasks', async () => {
+  const env = setup();
+  note(env, ['start', 'Build web-shop cart', '--plan', 'plan.md', '--task', '4', '--steps', 'model|api|ui']);
+  note(env, ['step', '1', 'doing']);
+  note(env, ['step', '1', 'done']);
+  note(env, ['done']);
+  const epics = await read(env);
+  assert.equal(epics.length, 1);
+  const e = epics[0];
+  assert.equal(e.source, 'worklog');
+  assert.equal(e.title, 'Build web-shop cart');
+  assert.equal(e.file, 'plan.md');
+  assert.deepEqual(e.tasks.map((t) => t.title), ['model', 'api', 'ui']);
+  assert.ok(e.tasks.every((t) => t.status === 'done' && t.doneMs > 0 && t.sessionId === 's1'));
+  assert.equal(e.tasks[0].n, 4);
+  assert.equal(e.tasks[1].n, null);
+});
+
+test('step status changes keep latest', async () => {
+  const env = setup();
+  note(env, ['start', 'Fix billing-api', '--steps', 'a|b']);
+  note(env, ['step', '2', 'doing']);
+  note(env, ['step', '2', 'waiting']);
+  note(env, ['step', '1', 'done']);
+  note(env, ['step', '1', 'todo']);
+  const [e] = await read(env);
+  assert.equal(e.tasks[0].status, 'next');
+  assert.equal(e.tasks[1].status, 'waiting');
+  assert.ok(e.tasks[1].startedMs > 0);
+});
+
+test('missing session id still writes with session null', async () => {
+  const env = setup();
+  const r = note(env, ['start', 'Solo job'], null);
+  assert.equal(r.status, 0);
+  const [e] = await read(env);
+  assert.equal(e.tasks[0].sessionId, null);
+  note(env, ['done'], null);
+  assert.equal((await read(env))[0].tasks[0].status, 'done');
+});
+
+test('cli never exits non-zero', () => {
+  const env = setup();
+  for (const args of [[], ['bogus'], ['start'], ['step'], ['step', 'x', 'y'], ['done'], ['drop']]) {
+    const r = note(env, args);
+    assert.equal(r.status, 0, args.join(' '));
+    assert.equal(r.stdout, '');
+    assert.equal(r.stderr, '');
+  }
+  // A dash home that cannot be created: its parent is a file.
+  const blocker = join(env.home, 'blocker');
+  appendFileSync(blocker, 'x');
+  const r = spawnSync(process.execPath, [NOTE, 'start', 'x'], {
+    cwd: env.proj, env: { ...process.env, CVR_DASH_CLAUDE_HOME: blocker }, encoding: 'utf8',
+  });
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout + r.stderr, '');
+});
+
+test('errors go to note.log and never into the project', () => {
+  const env = setup();
+  note(env, ['frobnicate']);
+  assert.ok(existsSync(join(env.home, 'dashboard', 'note.log')));
+  assert.deepEqual(readdirSync(env.proj), ['.git']);
+});
+
+test('steps out of range are ignored', async () => {
+  const env = setup();
+  note(env, ['start', 'T', '--steps', 'a|b']);
+  note(env, ['step', '3', 'done']);
+  note(env, ['step', '0', 'done']);
+  const [e] = await read(env);
+  assert.deepEqual(e.tasks.map((t) => t.status), ['next', 'next']);
+});
+
+test('drop hides the epic; dropped step hides the task', async () => {
+  const env = setup();
+  note(env, ['start', 'Keep', '--steps', 'a|b|c']);
+  note(env, ['step', '2', 'dropped']);
+  note(env, ['start', 'Gone']);
+  note(env, ['drop', 'not needed']);
+  const epics = await read(env);
+  assert.equal(epics.length, 1);
+  assert.deepEqual(epics[0].tasks.map((t) => t.title), ['a', 'c']);
+});
+
+test('two sessions epics do not interfere', async () => {
+  const env = setup();
+  note(env, ['start', 'One', '--steps', 'a'], 'sA');
+  note(env, ['start', 'Two', '--steps', 'b'], 'sB');
+  note(env, ['step', '1', 'done'], 'sA');
+  note(env, ['done'], 'sB');
+  const epics = await read(env);
+  const one = epics.find((e) => e.title === 'One');
+  const two = epics.find((e) => e.title === 'Two');
+  assert.equal(one.tasks[0].status, 'done');
+  assert.equal(one.tasks[0].sessionId, 'sA');
+  assert.equal(two.tasks[0].status, 'done');
+  assert.equal(two.tasks[0].sessionId, 'sB');
+});
+
+test('start without steps is a single doing task that done closes', async () => {
+  const env = setup();
+  note(env, ['start', 'Refactor']);
+  let [e] = await read(env);
+  assert.equal(e.tasks.length, 1);
+  assert.equal(e.tasks[0].title, 'Refactor');
+  assert.equal(e.tasks[0].status, 'doing');
+  assert.ok(e.tasks[0].startedMs > 0);
+  note(env, ['done']);
+  [e] = await read(env);
+  assert.equal(e.tasks[0].status, 'done');
+});
+
+test('reader ignores unknown verbs, other versions and broken lines', async () => {
+  const env = setup();
+  const { worklogPath, readWorklog } = await lib(env);
+  assert.deepEqual(readWorklog(env.proj), []);
+  note(env, ['start', 'X']);
+  appendFileSync(worklogPath(env.proj),
+    '{"v":2,"verb":"done","session":"s1"}\n{"v":1,"verb":"zap"}\nnot json\n{"v":1,"verb":"done"');
+  const [e] = await read(env);
+  assert.equal(e.tasks[0].status, 'doing');
+});
