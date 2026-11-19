@@ -1,7 +1,6 @@
 // Reads Claude Code's own session registry (<claudeHome>/sessions/<pid>.json). Read-only; never throws.
-import { readdirSync, readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { join, basename, resolve } from 'node:path';
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
+import { join, basename, resolve, dirname } from 'node:path';
 import { claudeHome } from './paths.mjs';
 
 const STATUSES = new Set(['busy', 'idle', 'waiting']);
@@ -10,15 +9,17 @@ const rootCache = new Map();
 export function projectRoot(cwd) {
   if (!cwd) return cwd || '';
   if (rootCache.has(cwd)) return rootCache.get(cwd);
-  let root = cwd;
   try {
-    const out = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-      cwd, stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000,
-    }).toString().trim();
-    if (out) root = resolve(out); // git prints forward slashes; resolve gives the platform form
-  } catch { /* missing dir, not a repo, or no git */ }
-  rootCache.set(cwd, root);
-  return root;
+    // Walk up to the first folder holding a .git entry (a folder, or a file in worktrees). No process is run.
+    let dir = resolve(cwd);
+    for (;;) {
+      if (existsSync(join(dir, '.git'))) { rootCache.set(cwd, dir); return dir; }
+      const up = dirname(dir);
+      if (up === dir) break;
+      dir = up;
+    }
+  } catch { /* fall through */ }
+  return cwd; // not cached: a folder that is git-init'ed later is picked up
 }
 
 export function transcriptPathFor(cwd, sessionId) {

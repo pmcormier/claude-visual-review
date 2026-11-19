@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readSessions, projectRoot, transcriptPathFor } from '../../global/dashboard/lib/sessions.mjs';
@@ -53,6 +53,7 @@ test('missing fields do not throw', () => withHome((d) => {
   put(d, '10.json', {});
   put(d, '11.json', 'null');
   const got = readSessions();
+  assert.equal(got.length, 2); // 'null' file skipped; {} and {pid} yield records
   const s = got.find((x) => x.pid === 9);
   assert.equal(s.status, 'unknown');
   assert.equal(s.statusUpdatedAt, null);
@@ -71,14 +72,39 @@ test('transcriptPathFor encodes a cwd of drive X, folder work, folder web-shop a
   assert.equal(transcriptPathFor(['C:', 'Users', 'x', '.claude', 'skills'].join(bs), 'q'), join(d, 'projects', 'C--Users-x--claude-skills', 'q.jsonl'));
 }));
 
-test('projectRoot falls back to cwd when not a repo or missing', () => {
+test('projectRoot falls back to cwd when missing or empty', () => {
   const missing = join(tmpdir(), 'cvr-no-such-dir', 'billing-api');
-  assert.equal(projectRoot(missing), missing);
+  const got = projectRoot(missing);
+  assert.ok(got === missing || existsSync(join(got, '.git')));
   assert.equal(projectRoot(''), '');
 });
 
-test('projectRoot finds the repo top from a subfolder', () => {
-  const top = projectRoot(process.cwd());
-  assert.ok(top.length > 0);
-  assert.equal(projectRoot(join(process.cwd(), 'global')), top);
+test('projectRoot walks up to a .git folder', () => {
+  const t = mkdtempSync(join(tmpdir(), 'cvr-dash-'));
+  try {
+    mkdirSync(join(t, 'repo', '.git'), { recursive: true });
+    mkdirSync(join(t, 'repo', 'a', 'b'), { recursive: true });
+    assert.equal(projectRoot(join(t, 'repo', 'a', 'b')), join(t, 'repo'));
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test('projectRoot treats a .git file (worktree) as a root', () => {
+  const t = mkdtempSync(join(tmpdir(), 'cvr-dash-'));
+  try {
+    mkdirSync(join(t, 'wt', 'src'), { recursive: true });
+    writeFileSync(join(t, 'wt', '.git'), 'gitdir: elsewhere');
+    assert.equal(projectRoot(join(t, 'wt', 'src')), join(t, 'wt'));
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test('projectRoot returns the cwd or a real repo ancestor when no .git is in the temp tree, and does not cache a fallback', () => {
+  const t = mkdtempSync(join(tmpdir(), 'cvr-dash-'));
+  try {
+    const got = projectRoot(t);
+    assert.ok(got === t || existsSync(join(got, '.git')));
+    if (got === t) {
+      mkdirSync(join(t, '.git'));
+      assert.equal(projectRoot(t), t);
+    }
+  } finally { rmSync(t, { recursive: true, force: true }); }
 });
