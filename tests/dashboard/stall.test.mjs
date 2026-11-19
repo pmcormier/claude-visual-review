@@ -120,6 +120,25 @@ test('background job with no output and 0% CPU is stuck; idle session is not jud
   assert.equal(classify(inp({ status: 'idle', cpuPct: 0, outputIdleMs: 40 * MIN, signals: s }), T).state, 'idle');
 });
 
+test('busy session writing its transcript is never stuck on a quiet background job (R27)', () => {
+  const t = tool(45, { command: 'npm run dev', outputFile: 'bg-out.txt' });
+  const live = classify(inp({ cpuPct: 0, outputIdleMs: 25 * MIN, signals: sig({ lastWriteMs: now - 5000, pendingTool: t }) }), T);
+  assert.equal(live.state, 'working');
+  const quiet = classify(inp({ cpuPct: 0, outputIdleMs: 25 * MIN, signals: sig({ lastWriteMs: ago(25), pendingTool: t }) }), T);
+  assert.equal(quiet.state, 'stuck');
+  assert.equal(quiet.evidence, 'npm running 45 min · 0% CPU · no output for 25 min');
+  const unknown = classify(inp({ cpuPct: 0, outputIdleMs: 25 * MIN, signals: sig({ lastWriteMs: null, pendingTool: t }) }), T);
+  assert.equal(unknown.state, 'working');
+});
+
+test('unknown tool CPU falls back to transcript quiet', () => {
+  const t = tool(25, { name: 'mcp__x__long', command: null });
+  assert.equal(classify(inp({ cpuPct: null, signals: sig({ lastWriteMs: ago(1), pendingTool: t }) }), T).state, 'working');
+  const r = classify(inp({ cpuPct: null, signals: sig({ lastWriteMs: ago(25), pendingTool: t }) }), T);
+  assert.equal(r.state, 'stuck');
+  assert.equal(r.evidence, 'mcp__x__long running 25 min · CPU unknown · no output for 25 min');
+});
+
 test('evidence names the tool when there is no command', () => {
   const r = classify(inp({ signals: sig({ lastWriteMs: ago(31), pendingTool: tool(52, { name: 'WebFetch', command: null }) }) }), T);
   assert.equal(r.evidence, 'WebFetch running 52 min · 0% CPU · no output for 31 min');

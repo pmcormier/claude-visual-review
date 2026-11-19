@@ -14,7 +14,8 @@
 //  - A session whose process is not alive is kept only while it still had a tool pending ("Gone"), and only
 //    for GONE_KEEP_MS after its last transcript write; otherwise it closed normally and is dropped.
 //  - A session record without a pid counts as not alive (Claude Code names the file after the pid).
-//  - CPU for the stall rules (R22) = the processes the pending tool started (see toolCpu); none pending: null.
+//  - CPU for the stall rules (R22) = the processes the pending tool started (see toolCpu); none pending, none of
+//    them visible, or a creation time unknown: null (the verdict then falls back to transcript quiet).
 //  - Subagents: status null, alive = the parent's, CPU = their own pending tool's processes inside the parent's
 //    tree (subagents run in its process).
 //    A finished subagent of a gone parent shows idle. Any "stuck" subagent verdict needs the parent to be
@@ -200,12 +201,15 @@ export function toolCpu(sampler, pid, startedMs) {
   if (!Number.isFinite(root?.cpuPct)) return null;
   const cutoff = filetimeOf(startedMs - TOOL_START_SLACK_MS);
   let sum = 0;
+  let found = false;
   for (const d of list) {
-    if (typeof d?.created !== 'bigint' || d.created < cutoff) continue;
+    if (typeof d?.created !== 'bigint') return null; // creation time unknown: cannot tell the tool's processes apart
+    if (d.created < cutoff) continue;
     if (!Number.isFinite(d.cpuPct)) return null;
     sum += d.cpuPct;
+    found = true;
   }
-  return sum;
+  return found ? sum : null; // nothing the tool started is visible (an MCP server predates the call): unknown, not 0
 }
 
 function aliveOf(sampler, s) {

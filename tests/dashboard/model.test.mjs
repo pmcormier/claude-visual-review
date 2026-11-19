@@ -276,12 +276,15 @@ test('stall CPU is the pending tool\'s own processes, not Claude Code or its MCP
   assert.equal(busyTool.a1.subagents[0].state, 'working');
 });
 
-test('toolCpu: unknown when the sampler has no figure, 0 when the tool started nothing', async () => {
+test('toolCpu: unknown when the sampler has no figure, 0 when the tool started a quiet process', async () => {
   const { toolCpu } = await import('../../global/dashboard/lib/model.mjs');
   const ft = (ms) => (BigInt(ms) + 11644473600000n) * 10000n;
   const t = 1.9e12;
   assert.equal(toolCpu({ descendants: (pid) => [{ pid, cpuPct: null, created: ft(t - 1e6) }] }, 7, t), null);
-  assert.equal(toolCpu({ descendants: (pid) => [{ pid, cpuPct: 2, created: ft(t - 1e6) }] }, 7, t), 0);
+  // Nothing created at/after the tool start (an MCP server predates the call), or an unknown creation time: unknown (R27).
+  assert.equal(toolCpu({ descendants: (pid) => [{ pid, cpuPct: 2, created: ft(t - 1e6) }, { pid: 8, cpuPct: 30, created: ft(t - 5e5) }] }, 7, t), null);
+  assert.equal(toolCpu({ descendants: (pid) => [{ pid, cpuPct: 2, created: ft(t - 1e6) }, { pid: 9, cpuPct: 80, created: null }] }, 7, t), null);
+  assert.equal(toolCpu({ descendants: (pid) => [{ pid, cpuPct: 2, created: ft(t - 1e6) }, { pid: 8, cpuPct: 0, created: ft(t + 500) }] }, 7, t), 0);
   assert.equal(toolCpu({ descendants: (pid) => [{ pid, cpuPct: 2, created: ft(t - 1e6) }] }, 7, null), null);
   // Created within the 2 s slack before the tool's start still counts.
   assert.equal(toolCpu({ descendants: (pid) => [{ pid, cpuPct: 2, created: ft(t - 1e6) }, { pid: 8, cpuPct: 9, created: ft(t - 1500) }] }, 7, t), 9);

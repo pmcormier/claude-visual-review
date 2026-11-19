@@ -1,6 +1,6 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, utimesSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -527,4 +527,25 @@ test('a work-log task left doing by a session that is no longer live reads next'
   // Without liveness the work log is taken as written.
   const raw = buildTree('/proj', { ...empty(), worklog }, TH);
   assert.deepEqual(raw.epics[0].tasks.map((x) => x.status), ['doing', 'doing', 'doing']);
+});
+
+test('readCommits keeps an unchanged-signature entry for 5 minutes (R27)', async () => {
+  const { root } = setup();
+  const { readCommits } = await mod('git.mjs');
+  initRepo(root);
+  commit(root, 'Task 1 one', T0);
+  const dir = join(root, '.git');
+  const ref = join(dir, ...readFileSync(join(dir, 'HEAD'), 'utf8').match(/^ref:\s*(\S+)/)[1].split('/'));
+  const files = [join(dir, 'HEAD'), ref, join(dir, 'refs', 'heads')];
+  const pin = () => files.forEach((f) => utimesSync(f, 1_700_000_000, 1_700_000_000)); // whole seconds: exact in the signature
+  pin();
+  let t = 1_000_000;
+  const now = () => t;
+  assert.equal((await readCommits(root, 0, { now })).length, 1);
+  commit(root, 'Task 2 two', T0 + MIN);
+  pin(); // signature looks unchanged
+  t += 4 * 60_000;
+  assert.equal((await readCommits(root, 0, { now })).length, 1, 'cached at 4 min');
+  t += 61_000;
+  assert.equal((await readCommits(root, 0, { now })).length, 2, 'refreshed after 5 min');
 });

@@ -91,7 +91,9 @@ export function classify(input, thresholds) {
         const old = background || ageMs >= th.hungTool * MIN;
         const noOutput = idleMs >= th.hungTool * MIN;
         const noLife = cpuPct == null ? quietMs >= th.hungTool * MIN : cpuLow(cpuPct);
-        if (old && noOutput && noLife) {
+        // A session still writing its transcript is never stuck on a tool (R27); lastWriteMs null: never judged.
+        const transcriptQuiet = signals.lastWriteMs != null && quietMs >= th.hungTool * MIN;
+        if (old && noOutput && noLife && transcriptQuiet) {
           return result('stuck',
             `${label(tool)} running ${mins(ageMs)} min · ${cpuText} · no output for ${mins(idleMs)} min`,
             background ? now - idleMs : tool.startedMs, hint);

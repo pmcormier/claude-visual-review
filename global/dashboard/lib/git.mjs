@@ -4,7 +4,8 @@
 // with -C; NoDefaultCurrentDirectoryInExePath=1, windowsHide, 10 s timeout, async so the server never blocks;
 // core.fsmonitor is emptied so a repo's config cannot make git start another program.
 // Cache per root: reused while HEAD, the branch ref HEAD points to, refs/heads and packed-refs keep their
-// mtimes AND the entry is younger than 30 s (the TTL covers worktrees and ref layouts the mtimes miss).
+// mtimes AND the entry is younger than 5 min (the TTL covers worktrees and ref layouts the mtimes miss; a changed
+// signature refreshes at once, so 5 min like bmad.mjs, not 30 s).
 import { execFile } from 'node:child_process';
 import { existsSync, statSync, readFileSync, appendFileSync, mkdirSync } from 'node:fs';
 import { join, resolve, isAbsolute } from 'node:path';
@@ -13,7 +14,7 @@ import { dashHome } from './paths.mjs';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const TIMEOUT_MS = 10_000;
-const TTL_MS = 30_000;
+const TTL_MS = 5 * 60_000;
 const MAX_COUNT = 2000;
 const RS = '\x1e';
 const US = '\x1f';
@@ -109,7 +110,7 @@ function fail(key, msg) {
 
 const copy = (list, sinceMs) => list.filter((c) => c.ms >= sinceMs).map((c) => ({ ...c, files: [...c.files], added: [...c.added] }));
 
-async function fetchCommits(key, sig, sinceMs) {
+async function fetchCommits(key, sig, sinceMs, clock) {
   try {
     const out = await run([
       '--no-pager', '-c', 'core.fsmonitor=', '-c', 'core.quotepath=off', '-c', 'log.showSignature=false',
@@ -117,13 +118,13 @@ async function fetchCommits(key, sig, sinceMs) {
       '--no-color', '--name-status', `--format=${RS}%H${US}%ct${US}%B${US}`,
     ]);
     const commits = parseLog(out);
-    cache.set(key, { sig, at: Date.now(), since: sinceMs, commits });
+    cache.set(key, { sig, at: clock(), since: sinceMs, commits });
     lastLogged.delete(key);
     return commits;
   } catch (e) {
     const why = String(e?.stderr || '').trim().split(/\r?\n/).pop();
     fail(key, `log failed for a project: ${e?.killed ? 'timeout' : e?.code || e?.message || e}${why ? ' ' + why : ''}`);
-    cache.set(key, { sig, at: Date.now(), since: sinceMs, commits: [] });
+    cache.set(key, { sig, at: clock(), since: sinceMs, commits: [] });
     return [];
   }
 }
@@ -131,21 +132,23 @@ async function fetchCommits(key, sig, sinceMs) {
 /**
  * @param {string} root project root (git top-level)
  * @param {number} [sinceMs] only commits whose committer time is at or after this (default 0: the whole history)
+ * @param {{now?: () => number}} [opts] now: clock for the cache (tests).
  * @returns {Promise<{sha: string, ms: number, message: string, files: string[], added: string[]}[]>} newest first
  */
-export async function readCommits(root, sinceMs = 0) {
+export async function readCommits(root, sinceMs = 0, opts = {}) {
   try {
+    const clock = typeof opts?.now === 'function' ? opts.now : Date.now;
     const key = resolve(String(root || ''));
     const since = Number.isFinite(sinceMs) ? Math.max(0, sinceMs) : 0;
     const dir = existsSync(join(key, '.git')) ? gitDir(key) : null;
     if (!dir) { fail(key, 'not a git repository'); return []; }
     const sig = signature(dir);
     const hit = cache.get(key);
-    if (hit && hit.sig === sig && Date.now() - hit.at < TTL_MS && hit.since <= since) return copy(hit.commits, since);
+    if (hit && hit.sig === sig && clock() - hit.at < TTL_MS && hit.since <= since) return copy(hit.commits, since);
     const fk = `${key}\u0000${since}`;
     let p = inflight.get(fk);
     if (!p) {
-      p = fetchCommits(key, sig, since).finally(() => inflight.delete(fk));
+      p = fetchCommits(key, sig, since, clock).finally(() => inflight.delete(fk));
       inflight.set(fk, p);
     }
     return copy(await p, since);
