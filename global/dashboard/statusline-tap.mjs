@@ -1,4 +1,4 @@
-// Status-line tap: records plan-usage numbers, then runs the user's original status line unchanged.
+// Status-line tap: records plan-usage numbers and session spend, then runs the user's original status line unchanged.
 // Runs on every refresh: node built-ins only, no config load. Never throws; any error still runs the original.
 import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync, renameSync, unlinkSync, mkdirSync, statSync } from 'node:fs';
@@ -30,6 +30,37 @@ function recordUsage(dir, input) {
     renameSync(tmp, join(dir, 'usage.json'));
   } catch {
     try { unlinkSync(tmp); } catch { /* nothing to clean */ }
+  }
+}
+
+// Session spend (decision 34): Claude Code's own running cost and token totals for this session, one file per
+// session so a finished session still counts after its transcript is deleted.
+const SESSION_ID = /^[A-Za-z0-9-]{1,64}$/;
+function recordSpend(dir, input) {
+  let tmp = null;
+  try {
+    const j = JSON.parse(input.toString('utf8'));
+    const id = j?.session_id;
+    const cost = j?.cost?.total_cost_usd;
+    if (typeof id !== 'string' || !SESSION_ID.test(id) || typeof cost !== 'number' || !Number.isFinite(cost)) return;
+    const sdir = join(dir, 'spend');
+    const file = join(sdir, `${id}.json`);
+    mkdirSync(sdir, { recursive: true });
+    let firstAt = null;
+    try { firstAt = JSON.parse(readFileSync(file, 'utf8'))?.firstAt ?? null; } catch { /* first refresh */ }
+    const now = Date.now();
+    const n = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+    const cw = j.context_window ?? {};
+    const body = JSON.stringify({
+      sessionId: id, cwd: typeof j.cwd === 'string' ? j.cwd : '', model: typeof j.model?.id === 'string' ? j.model.id : null,
+      costUsd: cost, tokensIn: n(cw.total_input_tokens), tokensOut: n(cw.total_output_tokens),
+      firstAt: typeof firstAt === 'number' ? firstAt : now, at: now,
+    });
+    tmp = `${file}.${process.pid}.tmp`;
+    writeFileSync(tmp, body);
+    renameSync(tmp, file);
+  } catch {
+    if (tmp) { try { unlinkSync(tmp); } catch { /* nothing to clean */ } }
   }
 }
 
@@ -74,6 +105,7 @@ async function main() {
   try {
     const dir = dashHome();
     recordUsage(dir, input);
+    recordSpend(dir, input);
     command = originalCommand(dir);
   } catch { /* fall through to the original, if any */ }
   if (!command) return 0;
