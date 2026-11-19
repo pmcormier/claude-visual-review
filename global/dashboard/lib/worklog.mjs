@@ -5,8 +5,6 @@ import { join } from 'node:path';
 import { dashHome } from './paths.mjs';
 import { readJsonl } from './jsonl.mjs';
 
-/** @typedef {import('./types.mjs')} _Types */
-
 export function projectSlug(root) {
   return String(root || '').replace(/[^A-Za-z0-9]/g, '-');
 }
@@ -56,6 +54,12 @@ export function readWorklog(root) {
           id, source: 'worklog', title, file: typeof r.plan === 'string' && r.plan ? r.plan : null,
           tasks, _hidden: new Set(), _dropped: false, _closed: false, _startMs: at,
         };
+        // A new start supersedes this session's open epic: it stays listed, unfinished work shows as next,
+        // and no later record reaches it.
+        const prev = open.get(session);
+        if (prev) {
+          for (const t of prev.tasks) if (t.status === 'doing') { t.status = 'next'; t.startedMs = null; }
+        }
         epics.push(epic);
         open.set(session, epic);
         continue;

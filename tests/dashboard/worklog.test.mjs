@@ -1,6 +1,6 @@
-import { test } from 'node:test';
+import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, appendFileSync, existsSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, appendFileSync, copyFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -8,6 +8,11 @@ import { fileURLToPath } from 'node:url';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const NOTE = resolve(here, '../../global/dashboard/note.mjs');
+
+const ORIG_HOME = process.env.CVR_DASH_CLAUDE_HOME;
+after(() => {
+  if (ORIG_HOME === undefined) delete process.env.CVR_DASH_CLAUDE_HOME; else process.env.CVR_DASH_CLAUDE_HOME = ORIG_HOME;
+});
 
 function setup() {
   const home = mkdtempSync(join(tmpdir(), 'cvr-wl-home-'));
@@ -153,4 +158,72 @@ test('reader ignores unknown verbs, other versions and broken lines', async () =
     '{"v":2,"verb":"done","session":"s1"}\n{"v":1,"verb":"zap"}\nnot json\n{"v":1,"verb":"done"');
   const [e] = await read(env);
   assert.equal(e.tasks[0].status, 'doing');
+});
+
+test('a second start closes the first as superseded: doing reverts to next, later records reach only the new one', async () => {
+  const env = setup();
+  note(env, ['start', 'A', '--steps', 'a|b']);
+  note(env, ['step', '1', 'doing']);
+  note(env, ['step', '2', 'waiting']);
+  note(env, ['start', 'B', '--steps', 'c']);
+  note(env, ['done']);
+  const epics = await read(env);
+  assert.equal(epics.length, 2);
+  assert.deepEqual(epics[0].tasks.map((t) => t.status), ['next', 'waiting']);
+  assert.equal(epics[0].tasks[0].startedMs, null);
+  assert.equal(epics[1].tasks[0].status, 'done');
+});
+
+test('a null-session epic does not collide with a session-bearing one', async () => {
+  const env = setup();
+  note(env, ['start', 'Anon', '--steps', 'a'], null);
+  note(env, ['start', 'Named', '--steps', 'b'], 'sA');
+  note(env, ['done'], null);
+  const epics = await read(env);
+  assert.equal(epics.find((e) => e.title === 'Anon').tasks[0].status, 'done');
+  assert.equal(epics.find((e) => e.title === 'Named').tasks[0].status, 'next');
+});
+
+test('step after done is ignored', async () => {
+  const env = setup();
+  note(env, ['start', 'A', '--steps', 'a']);
+  note(env, ['done']);
+  note(env, ['step', '1', 'todo']);
+  assert.equal((await read(env))[0].tasks[0].status, 'done');
+});
+
+test('a dropped step is restored by todo', async () => {
+  const env = setup();
+  note(env, ['start', 'A', '--steps', 'a|b']);
+  note(env, ['step', '2', 'dropped']);
+  assert.equal((await read(env))[0].tasks.length, 1);
+  note(env, ['step', '2', 'todo']);
+  assert.deepEqual((await read(env))[0].tasks.map((t) => t.status), ['next', 'next']);
+});
+
+test('--steps skips empty segments', async () => {
+  const env = setup();
+  note(env, ['start', 'A', '--steps', 'a||  |b|']);
+  assert.deepEqual((await read(env))[0].tasks.map((t) => t.title), ['a', 'b']);
+});
+
+test('--task must be an integer of at least 1, otherwise ignored and logged', async () => {
+  const env = setup();
+  for (const bad of ['0', '-2', 'x', '1.5', '']) note(env, ['start', 'T' + bad, '--task', bad]);
+  const epics = await read(env);
+  assert.ok(epics.every((e) => e.tasks[0].n === null));
+  assert.ok(readFileSync(join(env.home, 'dashboard', 'note.log'), 'utf8').includes('ignored --task'));
+});
+
+test('a partial install (note.mjs without lib/) still exits 0 and prints nothing', () => {
+  const env = setup();
+  const lone = mkdtempSync(join(tmpdir(), 'cvr-wl-lone-'));
+  copyFileSync(NOTE, join(lone, 'note.mjs'));
+  const r = spawnSync(process.execPath, [join(lone, 'note.mjs'), 'start', 'x'], {
+    cwd: env.proj, env: { ...process.env, CVR_DASH_CLAUDE_HOME: env.home }, encoding: 'utf8',
+  });
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, '');
+  assert.equal(r.stderr, '');
+  assert.ok(existsSync(join(env.home, 'dashboard', 'note.log')));
 });
