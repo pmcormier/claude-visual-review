@@ -1,6 +1,6 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, appendFileSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -91,6 +91,7 @@ test('bmad fixture maps states', async () => {
   const epics = mapBmadStatus(JSON.parse(readFileSync(FIXTURE, 'utf8')));
   const cart = epics.find((e) => e.id === 'bmad:epic-cart');
   assert.equal(cart.source, 'bmad');
+  assert.equal(cart.title, 'Cart');
   assert.deepEqual(cart.tasks.map((t) => [t.n, t.status]), [[1, 'done'], [2, 'doing'], [3, 'doing'], [4, 'next']]);
   assert.equal(epics.find((e) => e.id === 'bmad:epic-pricing').tasks[0].status, 'next');
   assert.equal(epics.length, 3);
@@ -148,15 +149,20 @@ test('inbox latest checklist per thread wins', async () => {
     env(1, 1, 'a', 'message', 'm1', { id: 'm1', thread_id: 't1', subject: 'Ship checkout', thread_name: null, created_at: 'a' }),
     env(1, 2, 'a', 'message', 'm2', { id: 'm2', thread_id: 't1', subject: 'Re: later', thread_name: null, created_at: 'a' }),
     env(1, 3, 'a', 'message', 'm3', { id: 'm3', thread_id: 't2', subject: 'x', thread_name: 'Named thread', created_at: 'a' }),
+    env(1, 4, 'a', 'message', 'm4', { id: 'm4', thread_id: 't3', subject: 'Reply first', thread_name: null, created_at: 'a' }),
+    env(1, 5, 'a', 'message', 'm5', { id: 't3', thread_id: 't3', subject: 'The root subject', thread_name: null, created_at: 'a' }),
   ].join('\n') + '\n');
   writeFileSync(join(dir, 'steps.jsonl'), [
     env(1, 1, 'a', 'steps', 's1', rec('s1', 't1', 'sess-a', [st('Write', 'doing'), st('Test', 'todo')])),
     env(1, 2, 'a', 'steps', 's2', rec('s2', 't1', 'sess-a', [st('Write', 'done'), st('Test', 'waiting')])),
     env(1, 3, 'a', 'steps', 's3', rec('s3', 't2', 'sess-b', [st('Only', 'todo')])),
+    env(1, 4, 'a', 'steps', 's4', rec('s4', 't3', 'sess-c', [st('Z', 'todo')])),
+    env(1, 5, 'a', 'steps', 's5', rec('s5', 't4', 'sess-d', [st('All gone', 'dropped')])),
   ].join('\n') + '\n');
   const { readInbox } = await mod('inbox.mjs');
   const epics = readInbox(root);
-  assert.equal(epics.length, 2);
+  assert.equal(epics.length, 3); // t4 has only hidden steps and is skipped
+  assert.equal(epics.find((e) => e.id === 'inbox:t3:sess-c').title, 'The root subject');
   const t1 = epics.find((e) => e.id === 'inbox:t1:sess-a');
   assert.equal(t1.source, 'inbox');
   assert.equal(t1.title, 'Ship checkout');
@@ -183,4 +189,98 @@ test('inbox ignores other projects and tolerates Plannotator absent', async () =
   const dir = inboxProject(plan, join(root, 'other'));
   writeFileSync(join(dir, 'steps.jsonl'), env(1, 1, 'a', 'steps', 's1', rec('s1', 't1', 'x', [st('A', 'todo')])) + '\n');
   assert.deepEqual(readInbox(root), []);
+});
+
+// ---- fixes
+
+test('plans ignore headings and checkboxes inside fenced code', async () => {
+  const { root } = setup();
+  writePlan(root, 'f.md', [
+    '# F', '### Task 1: Real', '- [x] a', '```md', '### Task 2: Fake', '- [ ] fake box', '```', '- [ ] b', '',
+    '~~~', '### Task 3: Also fake', '~~~',
+  ].join('\n'));
+  const { readPlans } = await mod('plans.mjs');
+  const t = readPlans(root)[0].tasks;
+  assert.equal(t.length, 1);
+  assert.deepEqual(t[0].ticked, { done: 1, total: 2 });
+});
+
+test('bmad epic titles are humanized from the slug', async () => {
+  const { mapBmadStatus } = await mod('bmad.mjs');
+  const e = mapBmadStatus({ tickets: [{ epic: 'epic-platform-baseline', id: 1, state: 'done', ref: 'a', title: 'x' }] });
+  assert.equal(e[0].title, 'Platform baseline');
+  assert.equal(e[0].id, 'bmad:epic-platform-baseline');
+});
+
+function countingCommand(root, body) {
+  const counter = join(root, 'count.txt');
+  const script = join(root, 'count.cjs');
+  writeFileSync(script, `require('node:fs').appendFileSync(${JSON.stringify(counter)}, 'x'); ${body}`);
+  const runs = () => { try { return readFileSync(counter, 'utf8').length; } catch { return 0; } };
+  return { commands: [{ cmd: process.execPath, args: [script] }], runs };
+}
+
+test('bmad concurrent calls share one run', async () => {
+  const { root } = setup();
+  mkdirSync(join(root, '_bmad'));
+  const { commands, runs } = countingCommand(root, `process.stdout.write(require('node:fs').readFileSync(${JSON.stringify(FIXTURE)}, 'utf8'));`);
+  const { readBmad } = await mod('bmad.mjs');
+  const [a, b] = await Promise.all([readBmad(root, { commands }), readBmad(root, { commands })]);
+  assert.equal(runs(), 1);
+  assert.equal(a.length, 3);
+  assert.deepEqual(a, b);
+});
+
+test('bmad failure is cached and logged once; copies are safe to mutate', async () => {
+  const { claude, root } = setup();
+  mkdirSync(join(root, '_bmad'));
+  const { commands, runs } = countingCommand(root, 'process.exit(1);');
+  const { readBmad } = await mod('bmad.mjs');
+  assert.deepEqual(await readBmad(root, { commands }), []);
+  assert.deepEqual(await readBmad(root, { commands }), []);
+  assert.equal(runs(), 1);
+  const lines = readFileSync(join(claude, 'dashboard', 'dashboard.log'), 'utf8').trim().split('\n');
+  assert.equal(lines.length, 1);
+  // a result mutated by a caller does not leak into later reads
+  const ok = countingCommand(root, `process.stdout.write(require('node:fs').readFileSync(${JSON.stringify(FIXTURE)}, 'utf8'));`);
+  const root2 = mkdtempSync(join(tmpdir(), 'cvr-src-proj-'));
+  mkdirSync(join(root2, '_bmad'));
+  const first = await readBmad(root2, { commands: ok.commands });
+  first[0].title = 'MUTATED';
+  first.length = 0;
+  const again = await readBmad(root2, { commands: [{ cmd: 'no-such-program-xyz', args: [] }] });
+  assert.equal(again.length, 3);
+  assert.notEqual(again[0].title, 'MUTATED');
+});
+
+test('bmad cache is invalidated by a changed _bmad-output mtime', async () => {
+  const { root } = setup();
+  mkdirSync(join(root, '_bmad'));
+  mkdirSync(join(root, '_bmad-output'));
+  const { commands, runs } = countingCommand(root, `process.stdout.write(require('node:fs').readFileSync(${JSON.stringify(FIXTURE)}, 'utf8'));`);
+  const { readBmad } = await mod('bmad.mjs');
+  await readBmad(root, { commands });
+  await readBmad(root, { commands });
+  assert.equal(runs(), 1);
+  const later = new Date(Date.now() + 60_000);
+  utimesSync(join(root, '_bmad-output'), later, later);
+  await readBmad(root, { commands });
+  assert.equal(runs(), 2);
+});
+
+test('inbox reads project.json as JSONL (latest envelope) and as a single object', async () => {
+  const { plan, root } = setup();
+  const dir = inboxProject(plan, join(root, 'old-place'));
+  const base = JSON.parse(readFileSync(join(dir, 'project.json'), 'utf8')).record;
+  writeFileSync(join(dir, 'project.json'), [
+    env(1, 1, 'a', 'project', 'p', { ...base, root: join(root, 'old-place') }),
+    env(1, 9, 'b', 'project', 'p', { ...base, root, display_name: 'Web shop' }),
+  ].join('\n') + '\n');
+  writeFileSync(join(dir, 'steps.jsonl'), env(1, 1, 'a', 'steps', 's1', rec('s1', 't1', 'sess-a', [st('A', 'todo')])) + '\n');
+  const { readInbox } = await mod('inbox.mjs');
+  assert.equal(readInbox(root).length, 1);
+  assert.equal(readInbox(join(root, 'old-place')).length, 0); // the superseded record no longer matches
+  // single object, no trailing newline
+  writeFileSync(join(dir, 'project.json'), env(1, 1, 'a', 'project', 'p', { ...base, root }));
+  assert.equal(readInbox(root).length, 1);
 });

@@ -25,6 +25,11 @@ function log(msg) {
   } catch { /* logging must never throw */ }
 }
 
+function humanize(slug) {
+  const t = slug.replace(/^epic-/, '').replace(/-+/g, ' ').trim() || slug;
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 /** Maps the JSON of `tickets.py status` to epics. Exported for tests. */
 export function mapBmadStatus(data) {
   const byEpic = new Map();
@@ -34,7 +39,7 @@ export function mapBmadStatus(data) {
     const status = STATE[r.state];
     if (!status) continue; // dropped or unknown
     const slug = typeof r.epic === 'string' && r.epic ? r.epic : 'tickets';
-    if (!byEpic.has(slug)) byEpic.set(slug, { id: `bmad:${slug}`, source: 'bmad', title: slug, file: null, tasks: [] });
+    if (!byEpic.has(slug)) byEpic.set(slug, { id: `bmad:${slug}`, source: 'bmad', title: humanize(slug), file: null, tasks: [] });
     const epic = byEpic.get(slug);
     const n = Number.isFinite(Number(r.id)) && r.id !== '' && r.id !== null ? Number(r.id) : null;
     const key = typeof r.ref === 'string' && r.ref ? r.ref : String(r.file || r.id || epic.tasks.length + 1);
@@ -86,7 +91,31 @@ function signature(root) {
   return max;
 }
 
-const cache = new Map(); // resolved root -> { sig, at, epics }
+const cache = new Map(); // resolved root -> { sig, at, epics } (failures cache [] the same way)
+const inflight = new Map(); // resolved root -> Promise shared by concurrent callers
+const lastLogged = new Map(); // resolved root -> last failure message written to the log
+
+const copy = (epics) => structuredClone(epics); // callers may mutate what they get
+
+async function fetchEpics(key, sig, opts) {
+  const failures = [];
+  for (const { cmd, args } of opts.commands || defaultCommands()) {
+    try {
+      const out = await run(cmd, [...args, '--project-root', key, 'status']);
+      const epics = mapBmadStatus(JSON.parse(out));
+      cache.set(key, { sig, at: Date.now(), epics });
+      lastLogged.delete(key);
+      return epics;
+    } catch (e) {
+      const why = String(e?.stderr || '').trim().split(/\r?\n/).pop();
+      failures.push(`${cmd}: ${e?.code || e?.message || e}${why ? ' ' + why : ''}`);
+    }
+  }
+  const msg = `status failed for a project: ${failures.join('; ')}`;
+  if (lastLogged.get(key) !== msg) { lastLogged.set(key, msg); log(msg); }
+  cache.set(key, { sig, at: Date.now(), epics: [] });
+  return [];
+}
 
 /**
  * @param {string} root project root
@@ -100,21 +129,13 @@ export async function readBmad(root, opts = {}) {
     if (!existsSync(join(key, '_bmad'))) return [];
     const sig = signature(key);
     const hit = cache.get(key);
-    if (hit && hit.sig === sig && Date.now() - hit.at < TTL_MS) return hit.epics;
-    const failures = [];
-    for (const { cmd, args } of opts.commands || defaultCommands()) {
-      try {
-        const out = await run(cmd, [...args, '--project-root', key, 'status']);
-        const epics = mapBmadStatus(JSON.parse(out));
-        cache.set(key, { sig, at: Date.now(), epics });
-        return epics;
-      } catch (e) {
-        const why = String(e?.stderr || '').trim().split(/\r?\n/).pop();
-        failures.push(`${cmd}: ${e?.code || e?.message || e}${why ? ' ' + why : ''}`);
-      }
+    if (hit && hit.sig === sig && Date.now() - hit.at < TTL_MS) return copy(hit.epics);
+    let p = inflight.get(key);
+    if (!p) {
+      p = fetchEpics(key, sig, opts).finally(() => inflight.delete(key));
+      inflight.set(key, p);
     }
-    log(`status failed for a project: ${failures.join('; ')}`);
-    return [];
+    return copy(await p);
   } catch (e) {
     log(`unexpected: ${e?.message || e}`);
     return [];

@@ -8,11 +8,28 @@ import { readJsonl } from '../jsonl.mjs';
 
 const STATUS = { todo: 'next', doing: 'doing', done: 'done', waiting: 'waiting' }; // dropped: hidden
 
+const seqOf = (r) => (Number.isFinite(r?.seq) ? r.seq : null);
+
 function sameRoot(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
   const x = resolve(a);
   const y = resolve(b);
   return process.platform === 'win32' ? x.toLowerCase() === y.toLowerCase() : x === y;
+}
+
+// project.json is JSONL: the project record is rewritten by appending, so the highest-seq `project` envelope
+// is current. A file holding a single JSON object (no trailing newline, or pretty-printed) is read too.
+function projectRecord(file) {
+  const envs = readJsonl(file).records.filter((e) => e && e.kind === 'project' && e.record && typeof e.record === 'object');
+  if (envs.length) {
+    let best = envs[0];
+    for (const e of envs) if (!(seqOf(e) !== null && seqOf(best) !== null && seqOf(e) < seqOf(best))) best = e;
+    return best.record;
+  }
+  try {
+    const one = JSON.parse(readFileSync(file, 'utf8'));
+    return one?.record && typeof one.record === 'object' ? one.record : one;
+  } catch { return null; }
 }
 
 function projectDirs(root) {
@@ -22,14 +39,11 @@ function projectDirs(root) {
   const out = [];
   for (const key of keys) {
     try {
-      const env = JSON.parse(readFileSync(join(base, key, 'project.json'), 'utf8'));
-      if (sameRoot(env?.record?.root, root)) out.push(join(base, key));
+      if (sameRoot(projectRecord(join(base, key, 'project.json'))?.root, root)) out.push(join(base, key));
     } catch { /* not a project folder */ }
   }
   return out;
 }
-
-const seqOf = (r) => (Number.isFinite(r?.seq) ? r.seq : null);
 
 function titles(dir) {
   const named = new Map(); // thread -> thread_name
@@ -88,6 +102,7 @@ export function readInbox(root) {
             startedMs: status === 'doing' ? at : null, doneMs: status === 'done' ? at : null, ticked: null,
           });
         });
+        if (!tasks.length) continue;
         epics.push({ id, source: 'inbox', title: titleOf(r.thread_id), file: null, tasks });
       }
     }

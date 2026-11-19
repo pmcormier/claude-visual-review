@@ -14,7 +14,11 @@ function parsePlan(text) {
   const title = lines.map((l) => /^#\s+(.+?)\s*$/.exec(l)).find(Boolean)?.[1] ?? null;
   const tasks = [];
   let cur = null;
+  let fence = null;
   for (const line of lines) {
+    const f = /^\s*(```|~~~)/.exec(line);
+    if (f) { fence = fence === null ? f[1] : fence === f[1] ? null : fence; continue; }
+    if (fence !== null) continue;
     if (/^#{2,3}\s/.test(line)) {
       const m = TASK.exec(line);
       if (m) {
