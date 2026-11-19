@@ -152,7 +152,8 @@ function findBash() {
   if (process.env.SHELL && existsSync(process.env.SHELL)) return process.env.SHELL;
   const exts = process.platform === 'win32' ? ['.exe', ''] : [''];
   for (const dir of String(process.env.PATH || '').split(process.platform === 'win32' ? ';' : ':')) {
-    for (const e of exts) { const p = join(dir, 'bash' + e); if (dir && existsSync(p)) return p; }
+    // System32\bash.exe is the WSL launcher (fails with no distro), not a bash this test can use.
+    for (const e of exts) { const p = join(dir, 'bash' + e); if (dir && existsSync(p) && !/[\\/]system32[\\/]bash\.exe$/i.test(p)) return p; }
   }
   return null;
 }
@@ -187,6 +188,17 @@ test('tap falls back to the platform shell with no SHELL and no Git Bash', () =>
   delete env.SHELL; delete env.MSYSTEM;
   const r = spawnSync(process.execPath, [TAP], { input: 'plain', env });
   assert.equal(r.status, 0);
+  assert.equal(r.stdout.toString(), 'plain');
+  rmSync(home, { recursive: true, force: true });
+});
+
+test('tap never takes the WSL launcher in System32 for Git Bash', { skip: (process.platform !== 'win32' || !process.env.SystemRoot || !existsSync(join(process.env.SystemRoot || '', 'System32', 'bash.exe'))) && 'Windows with the WSL launcher only' }, () => {
+  const { home } = setup({ type: 'command', command: ECHO });
+  const sys32 = join(process.env.SystemRoot || '', 'System32');
+  const env = { ...process.env, CVR_DASH_CLAUDE_HOME: home, MSYSTEM: 'MINGW64', PATH: sys32 };
+  delete env.SHELL; delete env.Path;
+  const r = spawnSync(process.execPath, [TAP], { input: 'plain', env });
+  assert.equal(r.status, 0, String(r.stderr));
   assert.equal(r.stdout.toString(), 'plain');
   rmSync(home, { recursive: true, force: true });
 });

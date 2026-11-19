@@ -42,12 +42,16 @@ function originalCommand(dir) {
 
 const isFile = (p) => { try { return statSync(p).isFile(); } catch { return false; } };
 
+// Windows' System32\bash.exe is the WSL launcher, not Git Bash: with no Linux installed it fails, and with one it
+// runs the command in Linux. Never pick it.
+const isWslLauncher = (p) => process.platform === 'win32' && /[\\/]system32[\\/]bash\.exe$/i.test(p);
+
 // `bash` from PATH (absolute entries only), with Windows' executable extensions.
 function bashOnPath() {
   const exts = process.platform === 'win32' ? ['.exe', '.cmd', '.bat', ''] : [''];
   for (const dir of String(process.env.PATH || '').split(delimiter)) {
     if (!dir || !isAbsolute(dir)) continue;
-    for (const e of exts) { const p = join(dir, 'bash' + e); if (isFile(p)) return p; }
+    for (const e of exts) { const p = join(dir, 'bash' + e); if (isFile(p) && !isWslLauncher(p)) return p; }
   }
   return null;
 }
