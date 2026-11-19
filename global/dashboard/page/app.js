@@ -366,12 +366,22 @@ function replaceKeepingFocus(old, el) {
  * Keyed, incremental children: items are [{key, sig, build}] in display order. A child is rebuilt only when its
  * signature changed (focus carried over), removed when its key is gone, and moved only when out of order.
  */
-function syncKeyed(container, cache, items) {
+// Panels kept as they were because the pointer was over them (spec rule 10); rebuilt once it leaves.
+const heldPanels = new Set();
+let userRender = false;
+let pointerPanel = null; // the project panel under the mouse, from mouseover (`:hover` goes stale when nodes are swapped)
+
+function syncKeyed(container, cache, items, hold = null) {
   const keep = new Set(items.map((it) => it.key));
   for (const [k, rec] of cache) if (!keep.has(k)) { rec.el.remove(); cache.delete(k); }
   const els = items.map((it) => {
     let rec = cache.get(it.key);
+    if (rec && rec.sig !== it.sig && hold && !userRender && rec.el.isConnected && hold(rec.el)) {
+      heldPanels.add(rec.el);
+      return rec.el;
+    }
     if (!rec || rec.sig !== it.sig) {
+      if (rec) heldPanels.delete(rec.el);
       const el = it.build();
       if (rec?.el.isConnected) replaceKeepingFocus(rec.el, el);
       rec = { sig: it.sig, el };
@@ -384,7 +394,13 @@ function syncKeyed(container, cache, items) {
 }
 
 function sync(container, cache, list, build, now, kind) {
-  syncKeyed(container, cache, list.map((p) => ({ key: p.root, sig: sigOf(p, now, kind), build: () => build(p, now) })));
+  const hold = kind === 'panel' ? (el) => el === pointerPanel : null;
+  syncKeyed(container, cache, list.map((p) => ({ key: p.root, sig: sigOf(p, now, kind), build: () => build(p, now) })), hold);
+}
+
+function renderByUser() {
+  userRender = true;
+  try { dirty.projects = true; render(); } finally { userRender = false; }
 }
 
 function renderProjects(now) {
@@ -663,8 +679,7 @@ document.addEventListener('click', (e) => {
     } else if (t.dataset.tw === 'proj') {
       openState[key] = t.getAttribute('aria-expanded') !== 'true';
       store.set('dash-open', openState);
-      dirty.projects = true;
-      render();
+      renderByUser();
       $(`[data-fk="${CSS.escape(key)}"]`)?.focus({ preventScroll: false });
     }
     return;
@@ -682,8 +697,7 @@ document.addEventListener('click', (e) => {
       }
     }
     store.set('dash-open', openState);
-    dirty.projects = true;
-    render();
+    renderByUser();
     $(`.fold-act[data-act="${act.dataset.act}"][data-root="${CSS.escape(root)}"]`)?.focus({ preventScroll: true });
     return;
   }
@@ -695,10 +709,12 @@ document.addEventListener('click', (e) => {
 function goToTask(link) {
   const node = $(`#v-projects .node[data-link="${CSS.escape(link)}"]`);
   if (!node) return;
-  const list = node.closest('ul.tree[hidden]');
-  if (list) {
-    const btn = list.closest('li')?.querySelector(':scope > .node .tw');
-    if (btn) btn.click();
+  for (let i = 0, list = node.closest('ul.tree[hidden]'); list && i < 4; i += 1, list = node.closest('ul.tree[hidden]')) {
+    let top = list; // the outermost folded list: open from the outside in
+    for (let up = top.parentElement?.closest('ul.tree[hidden]'); up; up = up.parentElement?.closest('ul.tree[hidden]')) top = up;
+    const btn = top.closest('li')?.querySelector(':scope > .node .tw');
+    if (!btn) break;
+    btn.click();
   }
   node.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'center' });
   node.classList.add('flash');
@@ -710,9 +726,17 @@ let litKey = null;
 function setLit(k) {
   for (const x of $$('.linked')) x.classList.remove('linked');
   litKey = k;
-  if (k) for (const x of $$(`[data-link="${CSS.escape(k)}"]`)) x.classList.add('linked');
+  if (!k) return;
+  for (const x of $$(`[data-link="${CSS.escape(k)}"]`)) {
+    x.classList.add('linked');
+    for (let ul = x.closest('ul.tree[hidden]'); ul; ul = ul.parentElement?.closest('ul.tree[hidden]')) {
+      ul.parentElement?.querySelector(':scope > .node')?.classList.add('linked');
+    }
+  }
 }
 document.addEventListener('mouseover', (e) => {
+  pointerPanel = e.target.closest?.('#v-projects .panel') ?? null;
+  if (heldPanels.size && !heldPanels.has(pointerPanel)) { heldPanels.clear(); dirty.projects = true; render(); }
   const k = e.target.closest?.('[data-link]')?.dataset.link ?? null;
   if (k !== litKey) setLit(k);
   const al = e.target.closest?.('[data-alerts]');
@@ -853,6 +877,10 @@ document.addEventListener('mousemove', (e) => {
   }
 });
 document.addEventListener('mouseleave', hideTip);
+document.documentElement.addEventListener('mouseleave', () => {
+  pointerPanel = null;
+  if (heldPanels.size) { heldPanels.clear(); dirty.projects = true; render(); }
+});
 document.addEventListener('scroll', hideTip, true);
 
 // ---- help tour: spotlight each part in turn ---------------------------------------------------------------------------
