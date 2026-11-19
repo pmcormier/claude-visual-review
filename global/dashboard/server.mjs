@@ -26,6 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { claudeHome, dashHome, plannotatorHome } from './lib/paths.mjs';
 import { loadConfig } from './lib/config.mjs';
 import { buildModel } from './lib/model.mjs';
+import { pruneSpend } from './lib/spend.mjs';
 import { startCpuSampler } from './lib/procs.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -298,6 +299,7 @@ server.listen(port, '127.0.0.1', () => {
     renameSync(tmp, SERVER_JSON);
   } catch (e) { log(`could not write server.json: ${e?.message || e}`); }
   log(`listening on 127.0.0.1:${port} (pid ${process.pid})`);
+  pruneSpend(join(home, 'spend')); // session spend files untouched for a year (decision 34)
   process.on('exit', removeServerJson);
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGBREAK', 'SIGHUP']) {
     try { process.on(sig, () => shutdown(sig)); } catch { /* not on this platform */ }

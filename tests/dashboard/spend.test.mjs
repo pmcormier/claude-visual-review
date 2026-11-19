@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { readSpend, pruneSpend, spendFor } from '../../global/dashboard/lib/spend.mjs';
+import { readSpend, pruneSpend, spendFor, sessionSpend, readSpendCached } from '../../global/dashboard/lib/spend.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const TAP = join(here, '..', '..', 'global', 'dashboard', 'statusline-tap.mjs');
@@ -99,5 +99,27 @@ test('pruneSpend deletes files untouched for a year', () => {
   pruneSpend(dir, Date.now());
   assert.deepEqual(readdirSync(dir), ['new.json']);
   pruneSpend(join(dir, 'missing'), Date.now()); // never throws
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('sessionSpend uses the status-line record, else transcript tokens with no cost', () => {
+  assert.deepEqual(sessionSpend({ costUsd: 2.5, tokensIn: 900, tokensOut: 100 }, { input: 1, output: 1 }),
+    { costUsd: 2.5, tokensIn: 900, tokensOut: 100, source: 'statusline' });
+  assert.deepEqual(sessionSpend(undefined, { input: 10, cacheRead: 20, cacheCreate: 5, output: 7 }),
+    { costUsd: null, tokensIn: 35, tokensOut: 7, source: 'transcript' });
+  assert.equal(sessionSpend(undefined, undefined), null);
+});
+
+test('readSpendCached re-reads only files that changed', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cvr-spend-c-'));
+  const put = (id, cost) => writeFileSync(join(dir, `${id}.json`), JSON.stringify({ sessionId: id, cwd: W, costUsd: cost, at: Date.now() }));
+  put('a', 1);
+  assert.equal(readSpendCached(dir).get('a').costUsd, 1);
+  put('a', 3);
+  const later = (Date.now() + 5000) / 1000;
+  utimesSync(join(dir, 'a.json'), later, later);
+  assert.equal(readSpendCached(dir).get('a').costUsd, 3);
+  rmSync(join(dir, 'a.json'));
+  assert.equal(readSpendCached(dir).size, 0);
   rmSync(dir, { recursive: true, force: true });
 });

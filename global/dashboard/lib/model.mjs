@@ -49,6 +49,7 @@ import { readInbox } from './sources/inbox.mjs';
 import { readCommits } from './git.mjs';
 import { buildTree } from './tree.mjs';
 import { readUsage } from './usage.mjs';
+import { readSpendCached, spendFor, sessionSpend } from './spend.mjs';
 
 const DAY = 86400000;
 export const HISTORY_DAYS = 7;
@@ -399,8 +400,12 @@ export async function buildModel(now = Date.now(), opts = {}) {
       }
     }));
 
+    // Session spend (decision 34): the status line's records, kept after a session ends.
+    const spend = (() => { try { return readSpendCached(join(dashHome(), 'spend')); } catch { return new Map(); } })();
     for (const p of projects) {
+      p.spend = spendFor(spend, p.root, now);
       for (const s of p.sessions) {
+        s.spend = sessionSpend(spend.get(s.sessionId), s.tokens);
         delete s._signals;
         if (s.state in RANK) model.counts[s.state] += 1;
         model.counts.stuck += s.subagents.filter((a) => a.state === 'stuck').length;
