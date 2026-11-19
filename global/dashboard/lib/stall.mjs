@@ -23,8 +23,9 @@
 //    "0% CPU" means under 1% (rounds to 0).
 //  - Hung tool, foreground: pending >= hungTool min, no output for >= hungTool min, low CPU.
 //    With no outputFile there is no output signal, so "no output" is measured from tool start.
-//  - Hung tool, background (outputFile set): such a job stays pending forever, even when
-//    finished, so age is never a sign. Judged only on output idle (outputIdleMs; null means
+//  - Hung tool, background (outputFile set): such a job stays pending while it runs (a finished
+//    one is cleared by its task-notification in transcripts.mjs), and a long job is normal,
+//    so age is never a sign. Judged only on output idle (outputIdleMs; null means
 //    unknown, so not judged) plus CPU, and only while the session is not idle (an idle
 //    session's leftover background job is not a stall).
 //  - Subagent "parent not waiting on it actively" is not visible here; the model layer handles it.

@@ -31,6 +31,19 @@ function resultText(content) {
   return content.map((c) => (isObj(c) && typeof c.text === 'string' ? c.text : '')).join('\n');
 }
 
+// A finished background job (or subagent) is recorded as a <task-notification> in a
+// queue-operation entry (content) and an attachment entry (attachment.prompt). Either one
+// resolves the tool_use it names, as if its tool_result had arrived.
+const NOTIF_RE = /<task-notification>[\s\S]*?<tool-use-id>\s*([^<\s]+)\s*<\/tool-use-id>[\s\S]*?<status>[^<]*<\/status>/;
+function resolveNotification(st, e) {
+  let text = null;
+  if (e.type === 'queue-operation' && typeof e.content === 'string') text = e.content;
+  else if (e.type === 'attachment' && isObj(e.attachment) && typeof e.attachment.prompt === 'string') text = e.attachment.prompt;
+  if (!text) return;
+  const m = NOTIF_RE.exec(text);
+  if (m) st.pending.delete(m[1]);
+}
+
 function ingest(st, e) {
   const ms = typeof e.timestamp === 'string' ? Date.parse(e.timestamp) : NaN;
   const hasMs = Number.isFinite(ms);
@@ -42,6 +55,7 @@ function ingest(st, e) {
     if (hasMs) st.lastEntryMs = ms;
     st.lastEntryIsApiError = e.isApiErrorMessage === true;
   }
+  resolveNotification(st, e);
   const msg = isObj(e.message) ? e.message : null;
   const content = msg && Array.isArray(msg.content) ? msg.content : [];
 

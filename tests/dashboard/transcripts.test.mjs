@@ -158,3 +158,34 @@ test('explicit thresholds override the config', () => withDir((d) => {
   assert.equal(scanTranscript(p, NOW, { loopWindow: 5 }).repeat, null);
   assert.equal(scanTranscript(p, NOW, { loopWindow: 10 }).repeat.count, 2);
 }));
+
+const notif = (id, status = 'completed') => `<task-notification> <task-id>job1</task-id> <tool-use-id>${id}</tool-use-id> <output-file>x.output</output-file> <status>${status}</status> <summary>done</summary> </task-notification>`;
+const bgStart = (out) => lines(
+  toolUse('toolu_b', 'Bash', { command: 'npm run watch', run_in_background: true }, 30),
+  result('toolu_b', [{ type: 'text', text: `Command running in background with ID: job1. Output is being written to: ${out}.` }], 30),
+);
+
+test('background job notification (queue-operation) clears the pending tool', () => withDir((d) => {
+  const p = join(d, 't.jsonl');
+  writeFileSync(p, bgStart(join(d, 'job1.output')));
+  assert.equal(scanTranscript(p, NOW).pendingTool.outputFile, join(d, 'job1.output'));
+  appendFileSync(p, lines(
+    { type: 'queue-operation', operation: 'enqueue', timestamp: iso(5), content: notif('toolu_b', 'failed') },
+    { type: 'attachment', timestamp: iso(5), attachment: { type: 'queued_command', prompt: notif('toolu_b', 'failed') } },
+  ));
+  assert.equal(scanTranscript(p, NOW).pendingTool, null);
+}));
+
+test('the attachment form alone also clears the pending tool', () => withDir((d) => {
+  const p = join(d, 't.jsonl');
+  writeFileSync(p, bgStart(join(d, 'job1.output')));
+  appendFileSync(p, lines({ type: 'attachment', timestamp: iso(5), attachment: { type: 'queued_command', prompt: notif('toolu_b') } }));
+  assert.equal(scanTranscript(p, NOW).pendingTool, null);
+}));
+
+test('a notification for another tool id leaves the pending tool alone', () => withDir((d) => {
+  const p = join(d, 't.jsonl');
+  writeFileSync(p, bgStart(join(d, 'job1.output')));
+  appendFileSync(p, lines({ type: 'queue-operation', operation: 'enqueue', timestamp: iso(5), content: notif('toolu_other') }));
+  assert.equal(scanTranscript(p, NOW).pendingTool.name, 'Bash');
+}));
