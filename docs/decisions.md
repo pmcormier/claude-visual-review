@@ -424,10 +424,14 @@ How it works:
 - Fold state stays in this browser (`dash-open`). A stored key means "the person set this"; anything else follows
   the default (Running and Waiting open, the rest folded). Expand all and Collapse all set keys for the project;
   Focus deletes them. Going to a task opens its group and epic.
-- A panel under the mouse is not rebuilt while the mouse stays on it, so rows never move while being read; it
-  catches up when the mouse leaves. The panel is tracked from mouse events, not `:hover`, which goes stale in Chrome
-  once the node under a still mouse is swapped (measured: 9 rebuilds while "hovered"). Renders the person causes
-  (the fold buttons) apply at once.
+- A project's tree is not rebuilt while the mouse is over it, so rows never move while being read; it catches up
+  when the mouse leaves. Only the tree is held: the session blocks above it stay live (the whole-branch review
+  found that holding the whole panel froze them). Projects keep their order while the mouse is over the grid,
+  after the owner saw busy projects swapping places. The mouse is tracked by its last position, not `:hover`,
+  which goes stale in Chrome once the node under a still mouse is swapped (measured: 9 rebuilds while "hovered").
+  Renders the person causes (the fold buttons) apply at once.
+- A task that is done is never shown as a session's current work, even if the session's last link points to it
+  (the owner saw a finished catch-up task as "Working on").
 - Hovering a session lights its task and every folded parent. A Key in the header explains the symbols; the hover
   pop-up starts with a cut-off label in full when its text doesn't already.
 
