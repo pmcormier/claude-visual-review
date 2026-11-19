@@ -6,7 +6,7 @@
 import {
   STATE_LABEL, STATE_CLASS, formatDuration, agoWords, updatedText, shortId, shortDate, lifePath, foldEpics,
   effortLeft, liveIds, usageView, detailText, sessionWhat, nowLine, triage, epicDone, epicLastActivity, sizeSummary,
-  filterToken,
+  filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys,
 } from '/render.mjs';
 
 const MIN = 60000;
@@ -244,14 +244,13 @@ function taskLi(p, t, byId) {
     nowText ? h('div', { class: `now s-${STATE_CLASS[s.state] ?? 'work'}` }, h('span', { text: nowText })) : null);
 }
 
-function epicLi(p, e, byId) {
+function epicLi(p, e, byId, dflt = false) {
   const key = keyOf('e', p.root, e.id);
   const st = epicState(e, byId);
   const done = epicDone(e);
   const tasks = arr(e.tasks);
   const ndone = tasks.filter((t) => t.status === 'done').length;
-  const o = openState[key];
-  const open = typeof o === 'boolean' ? o : !done;
+  const open = foldOpen(openState, key, dflt);
   const spent = e.spentMin > 0 ? formatDuration(e.spentMin * MIN) : '';
   const meta = done ? `${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}` : `${ndone} of ${tasks.length}`;
   return h('li', null,
@@ -263,32 +262,61 @@ function epicLi(p, e, byId) {
 }
 
 // One history row per epic, shown only with "Show all history" on; `note` (e.g. 'dropped') ends its line.
-function histRows(p, epics, note = '') {
-  return h('li', { class: 'histrow', hidden: !showHistory }, epics.map((e) => {
+function histNodes(p, epics, note = '') {
+  return epics.map((e) => {
     const spent = e.spentMin > 0 ? formatDuration(e.spentMin * MIN) : '';
     const text = [e.title || 'Untitled', shortDate(epicLastActivity(e)), spent, note].filter(Boolean).join(' · ');
     const st = epicDone(e) ? 'done' : 'idle';
     return h('div', { class: `node s-${st}`, data: { dk: keyOf('e', p.root, e.id) } },
       h('span'), h('span', { class: 'name' }, icon(st), h('span', { class: 'label done-label', text })), h('span'));
-  }));
+  });
+}
+
+const HIST_NOTE = { before: 'before the dashboard', dropped: 'dropped' };
+
+// One state group (spec 2026-11-19 wayfinding): a foldable header, then its epics. History groups are always built
+// and shown or hidden by "Show all history", with a one-line hint in their place while it is off.
+function groupLi(p, g, epics, byId) {
+  const key = keyOf('g', p.root, g.id);
+  const open = foldOpen(openState, key, g.open);
+  const label = `${g.label} (${epics.length})`;
+  const items = g.history
+    ? histNodes(p, epics, HIST_NOTE[g.id]).map((n) => h('li', null, n))
+    : epics.map((e) => epicLi(p, e, byId, g.open));
+  return h('li', { class: `group g-${g.id}${g.history ? ' histrow' : ''}`, hidden: g.history ? !showHistory : null },
+    h('div', { class: 'node gh' }, tw(open, key, g.label, 'group'), h('span', { class: 'name' }, h('b', { text: label })), h('span')),
+    h('ul', { class: 'tree', hidden: !open }, items));
 }
 
 const histHint = (text) => h('li', { class: 'histhint', hidden: showHistory },
   h('div', { class: 'node' }, h('span'), h('span', { class: 'name', text }), h('span')));
 
-function treeOf(p, { shown, earlier, before, dropped }) {
-  if (!shown.length && !earlier.length && !before.length && !dropped.length) return h('p', { class: 'noplan', text: 'No plan found' });
-  const byId = new Map(arr(p.sessions).map((s) => [s.sessionId, s]));
-  const ul = h('ul', { class: 'tree' }, shown.map((e) => epicLi(p, e, byId)));
-  if (earlier.length) ul.append(histRows(p, earlier), histHint(`Done earlier (${earlier.length})`));
-  // Plans from before the dashboard (decision 32): folded until they show progress; dropped plans only in history.
-  if (before.length) ul.append(histRows(p, before, 'before the dashboard'), histHint(`Before the dashboard (${before.length})`));
-  if (dropped.length) ul.append(histRows(p, dropped, 'dropped'));
+function treeOf(p, groups, byId) {
+  if (GROUPS.every((g) => !groups[g.id].length)) return h('p', { class: 'noplan', text: 'No plan found' });
+  const ul = h('ul', { class: 'tree' });
+  for (const g of GROUPS) {
+    const epics = groups[g.id];
+    if (!epics.length) continue;
+    ul.append(groupLi(p, g, epics, byId));
+    // Plans from before the dashboard (decision 32) fold until they show progress; dropped plans only in history.
+    if (g.history && g.id !== 'dropped') ul.append(histHint(`${g.label} (${epics.length})`));
+  }
   return ul;
 }
 
+const groupsOf = (p, now, byId) => groupEpics(p.tree?.epics, now, liveIds(p), (t) => taskState(t, liveSession(byId, t)));
+
+function foldActs(p) {
+  const b = (act, text, title) => h('button', { type: 'button', class: 'fold-act', title, data: { act, root: p.root }, text });
+  return h('span', { class: 'fold-acts' },
+    b('expand', 'Expand all', 'Open every group and plan in this project'),
+    b('collapse', 'Collapse all', 'Fold every group and plan in this project'),
+    b('focus', 'Focus', 'Back to the default: running and waiting work open, the rest folded'));
+}
+
 function panelFor(p, now) {
-  const groups = foldEpics(p.tree?.epics, now, liveIds(p));
+  const byId = new Map(arr(p.sessions).map((s) => [s.sessionId, s]));
+  const groups = groupsOf(p, now, byId);
   const { shown } = groups;
   const keys = alertKeys(p);
   const fresh = unseenOf(keys).length > 0;
@@ -301,11 +329,12 @@ function panelFor(p, now) {
       fresh ? h('span', { class: 'newbadge', text: 'New' }) : null,
       p.state !== 'quiet' ? chip(p.state) : null,
       h('span', { class: 'meta' }, h('span', { text: leftText(p, shown, true) }),
-        p.tree?.spentMin > 0 ? h('span', { class: 't', text: formatDuration(p.tree.spentMin * MIN) }) : null)),
+        p.tree?.spentMin > 0 ? h('span', { class: 't', text: formatDuration(p.tree.spentMin * MIN) }) : null),
+      arr(p.tree?.epics).length ? foldActs(p) : null),
     p.error ? h('div', { class: 'err', text: p.error }) : null,
     sessions.flatMap((s) => [sessionBlock(p, s, now),
       ...arr(s.subagents).filter((a) => a.state === 'stuck').map((a) => stuckSubBlock(p, s, a, now))]),
-    treeOf(p, groups));
+    treeOf(p, groups, byId));
 }
 
 function quietRow(p, now) {
@@ -321,7 +350,8 @@ function quietRow(p, now) {
 }
 
 function sigOf(p, now, kind) {
-  const ep = arr(p.tree?.epics).map((e) => openState[keyOf('e', p.root, e.id)] ?? '-').join('');
+  const ep = [...arr(p.tree?.epics).map((e) => keyOf('e', p.root, e.id)), ...GROUPS.map((g) => keyOf('g', p.root, g.id))]
+    .map((k) => openState[k] ?? '-').join('');
   return `${kind}|${showHistory}|${Math.floor(now / HOUR)}|${ep}|${unseenOf(alertKeys(p)).length}|${JSON.stringify(p)}`;
 }
 
@@ -623,7 +653,7 @@ document.addEventListener('click', (e) => {
   const t = e.target.closest?.('.tw');
   if (t) {
     const key = t.dataset.fk;
-    if (t.dataset.tw === 'epic') {
+    if (t.dataset.tw === 'epic' || t.dataset.tw === 'group') {
       const open = t.getAttribute('aria-expanded') !== 'true';
       t.setAttribute('aria-expanded', String(open));
       const list = t.closest('li')?.querySelector(':scope > ul.tree');
@@ -637,6 +667,24 @@ document.addEventListener('click', (e) => {
       render();
       $(`[data-fk="${CSS.escape(key)}"]`)?.focus({ preventScroll: false });
     }
+    return;
+  }
+  const act = e.target.closest?.('.fold-act');
+  if (act) {
+    const root = act.dataset.root;
+    if (act.dataset.act === 'focus') {
+      for (const k of projectFoldKeys(openState, root)) delete openState[k];
+    } else {
+      const panel = act.closest('.panel');
+      for (const b of panel ? panel.querySelectorAll('.tw[data-tw="epic"], .tw[data-tw="group"]') : []) {
+        if (b.closest('.histrow[hidden]')) continue; // history groups only while "Show all history" is on
+        openState[b.dataset.fk] = act.dataset.act === 'expand';
+      }
+    }
+    store.set('dash-open', openState);
+    dirty.projects = true;
+    render();
+    $(`.fold-act[data-act="${act.dataset.act}"][data-root="${CSS.escape(root)}"]`)?.focus({ preventScroll: true });
     return;
   }
   const go = e.target.closest?.('.go');

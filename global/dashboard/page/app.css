@@ -225,3 +225,12 @@ main > section { display: grid; gap: 32px; min-width: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
+
+/* Wayfinding: state groups and the per-project fold buttons (spec 2026-11-19). */
+.group > .gh b { font: 600 .8rem var(--body); letter-spacing: .02em; text-transform: uppercase; color: var(--muted); }
+.group + .group { margin-top: 2px; }
+.fold-acts { display: flex; gap: 10px; flex-wrap: wrap; margin-left: auto; }
+.fold-act { border: 0; background: none; padding: 0; cursor: pointer; color: var(--muted); font: 500 .78rem var(--body);
+  text-decoration: underline dotted; text-underline-offset: 3px; }
+.fold-act:hover, .fold-act:focus-visible { color: var(--accent); }
+.ph .fold-acts { flex-basis: 100%; justify-content: flex-end; }
