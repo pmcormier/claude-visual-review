@@ -322,9 +322,13 @@ async function buildProject(root, sessions, lastSeenMs, events, now, th, sinceMs
  */
 export async function buildModel(now = Date.now(), opts = {}) {
   const usage = (() => { try { return readUsage(now); } catch { return { fiveHour: null, week: null, stale: true }; } })();
-  const model = { generatedAt: now, usage, counts: { stuck: 0, waiting: 0, working: 0, next: 0 }, live: 0, projects: [], error: null };
+  const model = {
+    generatedAt: now, usage, counts: { stuck: 0, waiting: 0, working: 0, next: 0 }, live: 0, projects: [], error: null,
+    thresholds: { waitingEscalate: 15 }, // the one config value the page needs: Triage's waiting escalation (min)
+  };
   try {
     const th = (opts.config ?? loadConfig()).thresholds;
+    if (Number.isFinite(th?.waitingEscalate) && th.waitingEscalate >= 0) model.thresholds.waitingEscalate = th.waitingEscalate;
     const sampler = opts.sampler ?? DEFAULT_SAMPLER;
     const historyDays = Number.isFinite(opts.historyDays) ? opts.historyDays : HISTORY_DAYS;
     const sinceMs = now - (Number.isFinite(opts.commitDays) ? opts.commitDays : COMMIT_DAYS) * DAY;

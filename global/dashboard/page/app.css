@@ -7,8 +7,10 @@
 @font-face { font-family: "Geist Mono"; font-weight: 400; font-style: normal; font-display: swap; src: url("/fonts/GeistMono-Regular.woff2") format("woff2"); }
 @font-face { font-family: "Geist Mono"; font-weight: 500; font-style: normal; font-display: swap; src: url("/fonts/GeistMono-Medium.woff2") format("woff2"); }
 
+/* Light --stuck is #ab241d, darker than the mockup's #c42d24 (R20): 4.56:1 on the page background, 5.37:1 on --stuck-soft,
+   5.90:1 on cards. The mockup value was 3.66:1 and 4.30:1. */
 :root { --bg:#c5d2e3; --surface:#e8ecf1; --fg:#0f1724; --muted:#3d4858; --rule:#b4c1d2; --accent:#1d4fd8; --accent-soft:#d3dff8;
-  --approve:#0b6b63; --approve-soft:#d2e8e5; --stuck:#c42d24; --stuck-soft:#f5dcd9; --wait:#5b3bcc; --wait-soft:#e0d9f7; --idle:#6b7586;
+  --approve:#0b6b63; --approve-soft:#d2e8e5; --stuck:#ab241d; --stuck-soft:#f5dcd9; --wait:#5b3bcc; --wait-soft:#e0d9f7; --idle:#6b7586;
   --shell:#c5d2e3; --shell-fg:#0f1724; --shell-dim:#3d4858; color-scheme: light;
   --display:"Instrument Sans",system-ui,sans-serif; --body:"Instrument Sans",system-ui,sans-serif; --mono:"Geist Mono",ui-monospace,monospace; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0d1117; --surface:#151b24; --fg:#e6edf3; --muted:#9aa5b4; --rule:#252e3a;
@@ -150,7 +152,7 @@ main > section { display: grid; gap: 32px; min-width: 0; }
 .qrow:hover { background: var(--surface); }
 .qrow b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qrow .chip { justify-self: start; }
-.qmore { border: 0; background: none; padding: 0; cursor: pointer; color: var(--accent); font: inherit; font-size: .9rem; text-align: left; }
+.qmore { border: 0; background: none; padding: 0; cursor: pointer; color: var(--fg); text-decoration: underline dotted; text-underline-offset: 3px; font: inherit; font-size: .9rem; text-align: left; }
 
 /* Views */
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--rule); }
@@ -189,8 +191,8 @@ main > section { display: grid; gap: 32px; min-width: 0; }
 /* Hover explanation */
 .tip { position: fixed; z-index: 50; max-width: 320px; background: var(--fg); color: var(--bg); font: 400 .85rem/1.5 var(--body);
   padding: 10px 12px; border-radius: 10px; box-shadow: 0 10px 30px -10px rgba(0,0,0,.4); pointer-events: none; opacity: 0; transform: translateY(4px);
-  transition: opacity .15s, transform .2s cubic-bezier(.16,1,.3,1); left: 0; top: 0; }
-.tip.show { opacity: 1; transform: none; }
+  transition: opacity .15s, transform .2s cubic-bezier(.16,1,.3,1), visibility .15s; left: 0; top: 0; visibility: hidden; }
+.tip.show { opacity: 1; transform: none; visibility: visible; }
 
 /* Help tour */
 .tour { position: fixed; inset: 0; z-index: 40; background: color-mix(in srgb, #000 45%, transparent); }

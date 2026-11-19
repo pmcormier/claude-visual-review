@@ -8,8 +8,9 @@ const DAY = 24 * HOUR;
 
 /** An epic untouched this long, with no live session on it, folds into "Done earlier" (R14, provisional). */
 export const EARLIER_AFTER_MS = 7 * DAY;
-/** "Waiting on you" moves up to Needs a look in Triage after this long (the config's waitingEscalate default). */
-export const WAIT_ESCALATE_MS = 15 * MIN;
+/** "Waiting on you" moves up to Needs a look in Triage after this many minutes, unless the model carries
+ *  thresholds.waitingEscalate (the config value). */
+export const WAIT_ESCALATE_MIN = 15;
 
 export const STATE_LABEL = Object.freeze({
   working: 'Working', waiting: 'Waiting on you', idle: 'Idle', stuck: 'Looks stuck', gone: 'Gone',
@@ -19,6 +20,12 @@ export const STATE_LABEL = Object.freeze({
 export const STATE_CLASS = Object.freeze({
   working: 'work', waiting: 'wait', stuck: 'stuck', gone: 'gone', idle: 'idle', quiet: 'idle',
 });
+
+/** The count pill a state answers to. Gone is a stall too, so the "Looks stuck" pill and Triage agree. */
+export function filterToken(state) {
+  if (state === 'gone') return 'stuck';
+  return { working: 'work', waiting: 'wait', stuck: 'stuck' }[state] ?? 'idle';
+}
 
 const num = (v) => typeof v === 'number' && Number.isFinite(v);
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -136,6 +143,18 @@ export function effortLeft(tree, shownEpics) {
   return { count, hours: count > 0 ? scaled : null };
 }
 
+const SIZE_ORDER = ['L', 'M', 'S'];
+
+/** Unfinished tasks by size, "2L 1M 3S": L, M, S first, any other size after them alphabetically. */
+export function sizeSummary(shownEpics) {
+  const n = new Map();
+  for (const e of arr(shownEpics)) {
+    for (const t of arr(e?.tasks)) if (t?.status !== 'done' && t?.size) n.set(t.size, (n.get(t.size) ?? 0) + 1);
+  }
+  const rank = (s) => { const i = SIZE_ORDER.indexOf(s); return i < 0 ? SIZE_ORDER.length : i; };
+  return [...n].sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b)).map(([s, c]) => `${c}${s}`).join(' ');
+}
+
 export function liveIds(project) {
   return new Set(arr(project?.sessions).filter((s) => s?.alive).map((s) => s.sessionId));
 }
@@ -220,7 +239,8 @@ function subagentText({ subagent, session, project, now }) {
 function epicText({ epic }) {
   const tasks = arr(epic?.tasks);
   const done = tasks.filter((t) => t?.status === 'done').length;
-  return `${done} of ${tasks.length} tasks done, ${formatDuration((epic?.spentMin ?? 0) * MIN)} spent.`;
+  const spent = num(epic?.spentMin) && epic.spentMin > 0 ? `, ${formatDuration(epic.spentMin * MIN)} spent` : '';
+  return `${done} of ${tasks.length} tasks done${spent}.`;
 }
 
 const PROJECT_PHRASE = {
@@ -301,7 +321,8 @@ export function nowLine(s) {
 // ---- triage ---------------------------------------------------------------------------------------------------
 
 /**
- * Needs a look: stuck sessions and subagents, gone sessions, and waits past 15 minutes (longest first).
+ * Needs a look: stuck sessions and subagents, gone sessions, and waits of model.thresholds.waitingEscalate minutes
+ * or more (15 when absent; longest first).
  * Moving: shorter waits, working sessions and working subagents. Up next: each project's next tasks in its shown
  * epics. Items: {project, session, subagent?}; next: [{project, tasks: [{...task, epicTitle}]}].
  */
@@ -312,13 +333,15 @@ export function triage(model, now) {
   const shortWait = [];
   const working = [];
   const next = [];
+  const esc = model?.thresholds?.waitingEscalate;
+  const escalateMs = (num(esc) && esc >= 0 ? esc : WAIT_ESCALATE_MIN) * MIN;
   for (const p of arr(model?.projects)) {
     for (const s of arr(p?.sessions)) {
       if (s.state === 'stuck') stuck.push({ project: p, session: s });
       else if (s.state === 'gone') gone.push({ project: p, session: s });
       else if (s.state === 'waiting') {
         const waited = num(s.since) ? now - s.since : 0;
-        (waited >= WAIT_ESCALATE_MS ? longWait : shortWait).push({ project: p, session: s, waited });
+        (waited >= escalateMs ? longWait : shortWait).push({ project: p, session: s, waited });
       } else if (s.state === 'working') working.push({ project: p, session: s });
       for (const a of arr(s.subagents)) {
         if (a?.state === 'stuck') stuck.push({ project: p, session: s, subagent: a });

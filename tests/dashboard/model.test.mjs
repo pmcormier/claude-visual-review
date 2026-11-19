@@ -59,6 +59,9 @@ test('buildModel with no sessions and no projects returns an empty valid model',
     assert.deepEqual(m.projects, []);
     assert.equal(m.live, 0);
     assert.ok(m.usage && 'fiveHour' in m.usage);
+    assert.deepEqual(m.thresholds, { waitingEscalate: 15 }); // the default reaches the page
+    const tuned = await buildModel(now, { sampler: sampler(), config: { thresholds: { waitingEscalate: 30 } } });
+    assert.deepEqual(tuned.thresholds, { waitingEscalate: 30 });
     JSON.stringify(m); // serialisable
   } finally { rmSync(w.base, { recursive: true, force: true }); }
 });

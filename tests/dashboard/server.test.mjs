@@ -72,8 +72,9 @@ function http(port, { method = 'GET', path = '/', headers = {} } = {}) {
   });
 }
 
-async function withServer(fn) {
+async function withServer(fn, env = {}) {
   const home = await makeHome();
+  Object.assign(home.env, env);
   const s = startServer(home);
   try {
     await waitFor(() => existsSync(join(home.dash, 'server.json')) && serverJson(home).pid === s.child.pid);
@@ -83,6 +84,38 @@ async function withServer(fn) {
     await Promise.race([s.exited, new Promise((r) => setTimeout(r, 2000))]);
     rmSync(home.base, { recursive: true, force: true });
   }
+}
+
+// Reads /events until done(events) is true; events are {event, data} ('message' when unnamed). Comments are skipped.
+function sseUntil(port, done, ms = 8000) {
+  return new Promise((res, rej) => {
+    const events = [];
+    const req = request({ host: '127.0.0.1', port, path: '/events', headers: { Host: `127.0.0.1:${port}` } }, (r) => {
+      assert.equal(r.statusCode, 200);
+      assert.match(r.headers['content-type'], /text\/event-stream/);
+      let buf = '';
+      r.setEncoding('utf8');
+      r.on('data', (d) => {
+        buf += d;
+        let i;
+        while ((i = buf.indexOf('\n\n')) >= 0) {
+          const block = buf.slice(0, i);
+          buf = buf.slice(i + 2);
+          let event = 'message';
+          const data = [];
+          for (const line of block.split('\n')) {
+            if (line.startsWith('event: ')) event = line.slice(7);
+            else if (line.startsWith('data: ')) data.push(line.slice(6));
+          }
+          if (data.length) events.push({ event, data: data.join('\n') });
+        }
+        if (done(events)) { req.destroy(); res(events); }
+      });
+    });
+    req.on('error', rej);
+    req.setTimeout(ms, () => { req.destroy(); rej(new Error(`no matching events: ${JSON.stringify(events).slice(0, 300)}`)); });
+    req.end();
+  });
 }
 
 const tokenOf = (html) => /<meta name="dash-token" content="([0-9a-f]+)">/.exec(html)?.[1];
@@ -140,22 +173,8 @@ test('stop with token ends the process', async () => {
 
 test('events stream sends model on connect', async () => {
   await withServer(async (home) => {
-    const first = await new Promise((res, rej) => {
-      const req = request({ host: '127.0.0.1', port: home.port, path: '/events' }, (r) => {
-        assert.equal(r.statusCode, 200);
-        assert.match(r.headers['content-type'], /text\/event-stream/);
-        let buf = '';
-        r.setEncoding('utf8');
-        r.on('data', (d) => {
-          buf += d;
-          const m = /^data: (.*)$/m.exec(buf);
-          if (m && buf.includes('\n\n')) { req.destroy(); res(JSON.parse(m[1])); }
-        });
-      });
-      req.on('error', rej);
-      req.setTimeout(8000, () => { req.destroy(); rej(new Error('no event')); });
-      req.end();
-    });
+    const events = await sseUntil(home.port, (evs) => evs.some((e) => e.event === 'message'));
+    const first = JSON.parse(events.find((e) => e.event === 'message').data);
     assert.deepEqual(first.counts, { stuck: 0, waiting: 0, working: 0, next: 0 });
     assert.ok(Array.isArray(first.projects));
     assert.ok(Number.isFinite(first.generatedAt));
@@ -179,6 +198,16 @@ test('static files come only from the allow-list and Host must be local', async 
     assert.equal((await http(home.port, { headers: { Host: 'attacker.example' } })).status, 403);
     assert.equal((await http(home.port, { headers: { Host: `localhost:${home.port}` } })).status, 200);
   });
+});
+
+test('events stream sends a named hb event with the server time, repeatedly', async () => {
+  await withServer(async (home) => {
+    const t0 = Date.now();
+    const events = await sseUntil(home.port, (evs) => evs.filter((e) => e.event === 'hb').length >= 3);
+    const hbs = events.filter((e) => e.event === 'hb').map((e) => Number(e.data));
+    for (const t of hbs) assert.ok(Number.isFinite(t) && t >= t0 - 1000 && t <= Date.now() + 1000, String(t));
+    assert.ok(hbs[2] > hbs[0], 'later heartbeats carry later times');
+  }, { CVR_DASH_HB_MS: '100' });
 });
 
 test('/events accepts GET only', async () => {

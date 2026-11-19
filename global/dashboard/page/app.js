@@ -5,7 +5,8 @@
 // over to the rebuilt node.
 import {
   STATE_LABEL, STATE_CLASS, formatDuration, agoWords, updatedText, shortId, shortDate, lifePath, foldEpics,
-  effortLeft, liveIds, usageView, detailText, sessionWhat, nowLine, triage, epicDone, epicLastActivity,
+  effortLeft, liveIds, usageView, detailText, sessionWhat, nowLine, triage, epicDone, epicLastActivity, sizeSummary,
+  filterToken,
 } from '/render.mjs';
 
 const MIN = 60000;
@@ -30,7 +31,8 @@ const openState = (() => { const o = store.get('dash-open', {}); return o && typ
 const seen = new Set(arr(store.get('dash-seen', [])).filter((k) => typeof k === 'string'));
 
 let model = null;
-let lastAt = 0;
+let heardAt = 0; // last model or heartbeat from the server (R19)
+const SILENT_MS = 60000; // after this long without either, the bar says "Server not responding"
 let filter = null;
 let stopped = false;
 let showAllQuiet = false;
@@ -38,7 +40,6 @@ const dirty = { projects: true, sessions: true, triage: true };
 const details = new Map(); // detail key -> item for detailText
 const panels = new Map(); // root -> {sig, el}
 const qrows = new Map(); // root -> {sig, el}
-const viewSig = { sessions: null, triage: null };
 
 // ---- building blocks --------------------------------------------------------------------------------------------
 
@@ -137,19 +138,13 @@ function markSeen(keys) {
 }
 
 function stateTokens(p, shown) {
-  const t = new Set([STATE_CLASS[p.state] ?? 'idle']);
+  const t = new Set([filterToken(p.state)]);
   for (const s of arr(p.sessions)) {
-    t.add(STATE_CLASS[s.state] ?? 'idle');
-    for (const a of arr(s.subagents)) if (isActiveSub(a)) t.add(STATE_CLASS[a.state] ?? 'idle');
+    t.add(filterToken(s.state));
+    for (const a of arr(s.subagents)) if (isActiveSub(a)) t.add(filterToken(a.state));
   }
   if (shown.some((e) => arr(e.tasks).some((x) => x.status === 'next'))) t.add('next');
   return [...t].join(' ');
-}
-
-function sizeSummary(shown) {
-  const n = new Map();
-  for (const e of shown) for (const t of arr(e.tasks)) if (t.status !== 'done' && t.size) n.set(t.size, (n.get(t.size) ?? 0) + 1);
-  return [...n].map(([s, c]) => `${c}${s}`).join(' ');
 }
 
 function leftText(p, shown, header = false) {
@@ -329,22 +324,29 @@ function replaceKeepingFocus(old, el) {
   if (fk) el.querySelector(`[data-fk="${CSS.escape(fk)}"]`)?.focus({ preventScroll: true });
 }
 
-function sync(container, cache, list, build, now, kind) {
-  const keep = new Set(list.map((p) => p.root));
-  for (const [root, rec] of cache) if (!keep.has(root)) { rec.el.remove(); cache.delete(root); }
-  const els = list.map((p) => {
-    const sig = sigOf(p, now, kind);
-    let rec = cache.get(p.root);
-    if (!rec || rec.sig !== sig) {
-      const el = build(p, now);
+/**
+ * Keyed, incremental children: items are [{key, sig, build}] in display order. A child is rebuilt only when its
+ * signature changed (focus carried over), removed when its key is gone, and moved only when out of order.
+ */
+function syncKeyed(container, cache, items) {
+  const keep = new Set(items.map((it) => it.key));
+  for (const [k, rec] of cache) if (!keep.has(k)) { rec.el.remove(); cache.delete(k); }
+  const els = items.map((it) => {
+    let rec = cache.get(it.key);
+    if (!rec || rec.sig !== it.sig) {
+      const el = it.build();
       if (rec?.el.isConnected) replaceKeepingFocus(rec.el, el);
-      rec = { sig, el };
-      cache.set(p.root, rec);
+      rec = { sig: it.sig, el };
+      cache.set(it.key, rec);
     }
     return rec.el;
   });
   els.forEach((el, i) => { if (container.children[i] !== el) container.insertBefore(el, container.children[i] ?? null); });
   while (container.children.length > els.length) container.lastElementChild.remove();
+}
+
+function sync(container, cache, list, build, now, kind) {
+  syncKeyed(container, cache, list.map((p) => ({ key: p.root, sig: sigOf(p, now, kind), build: () => build(p, now) })));
 }
 
 function renderProjects(now) {
@@ -354,7 +356,7 @@ function renderProjects(now) {
   sync($('#v-projects .grid'), panels, open, panelFor, now, 'panel');
   const shownQuiet = showAllQuiet ? quiet : quiet.slice(0, QUIET_SHOWN);
   const list = $('#v-projects .qlist');
-  $('.qmore', list)?.remove();
+  $('.qmore', list)?.closest('.qrow')?.remove();
   sync(list, qrows, shownQuiet, quietRow, now, 'quiet');
   if (quiet.length > shownQuiet.length) {
     const n = quiet.length - shownQuiet.length;
@@ -368,64 +370,74 @@ function renderProjects(now) {
 
 // ---- Sessions view ------------------------------------------------------------------------------------------------
 
-function sessionRows(now) {
-  const rows = [h('div', { class: 'srow head' }, ...['State', 'Project', 'Session', 'On task', 'Last hour', 'Last activity'].map((t) => h('span', { text: t })))];
-  for (const p of arr(model?.projects)) {
-    for (const s of arr(p.sessions)) {
-      const cls = STATE_CLASS[s.state] ?? 'idle';
-      const { what, line } = sessionWhat(s);
-      const keys = alertKeys({ sessions: [{ ...s, subagents: [] }] });
-      const fresh = unseenOf(keys).length > 0;
-      rows.push(h('div', { class: `srow s-${cls}${fresh ? ' changed' : ''}`, data: { state: cls, dk: keyOf('s', p.root, s.sessionId), alerts: keys.join(',') || null } },
-        h('span', { class: 'cell state' }, chip(s.state), fresh ? [' ', h('span', { class: 'newbadge', text: 'New' })] : null),
-        h('span', { class: 'cell', text: p.name }),
-        h('span', { class: 'cell who-cell' }, h('b', { text: `Session ${shortId(s.sessionId)}` }), ' · ', what,
-          line && s.state !== 'idle' ? h('div', { class: 'muted' }, `${line.prefix} `, since(line.from, now), line.suffix ?? '') : null,
-          s.evidence ? h('div', { class: 'evidence', text: s.evidence }) : null,
-          s.hint ? h('div', { class: 'hint', text: s.hint }) : null),
-        h('span', { class: `cell${s.linkedTask ? '' : ' muted'}`, text: s.linkedTask?.title || 'Not linked to a task yet' }),
-        life(s.life),
-        h('span', { class: 'cell ago' }, Number.isFinite(s.lastWriteMs) ? [since(s.lastWriteMs, now), ' ago'] : '')));
-      for (const a of arr(s.subagents).filter(isActiveSub)) {
-        const acls = STATE_CLASS[a.state] ?? 'idle';
-        const akey = a.state === 'stuck' ? `${s.sessionId}/${a.agentId}|${a.state}|${a.since ?? ''}` : null;
-        const afresh = akey && !seen.has(akey);
-        rows.push(h('div', { class: `srow subrow s-${acls}`, data: { state: acls, dk: keyOf('a', p.root, s.sessionId, a.agentId), alerts: akey } },
-          h('span', { class: 'cell state' }, chip(a.state), afresh ? [' ', h('span', { class: 'newbadge', text: 'New' })] : null),
-          h('span', { class: 'cell', text: p.name }),
-          h('span', { class: 'cell who-cell' }, h('span', { class: 'name' }, icon('sub'), ' ', h('b', { text: 'Subagent' }), ' · ', a.description || 'Subagent'),
-            a.model ? [' ', h('span', { class: 'size', text: a.model })] : null,
-            a.evidence ? h('div', { class: 'evidence', text: a.evidence }) : null),
-          h('span', { class: 'cell muted', text: `Helper of session ${shortId(s.sessionId)}` }),
-          life(a.life),
-          h('span', { class: 'cell ago' }, Number.isFinite(a.lastWriteMs) ? [since(a.lastWriteMs, now), ' ago'] : '')));
-      }
-    }
-  }
-  return rows;
+const sessionCache = new Map(); // row key -> {sig, el}
+
+function sessionRow(p, s, fresh, keys, now) {
+  const cls = STATE_CLASS[s.state] ?? 'idle';
+  const { what, line } = sessionWhat(s);
+  return h('div', { class: `srow s-${cls}${fresh ? ' changed' : ''}`, data: { state: filterToken(s.state), dk: keyOf('s', p.root, s.sessionId), alerts: keys.join(',') || null } },
+    h('span', { class: 'cell state' }, chip(s.state), fresh ? [' ', h('span', { class: 'newbadge', text: 'New' })] : null),
+    h('span', { class: 'cell', text: p.name }),
+    h('span', { class: 'cell who-cell' }, h('b', { text: `Session ${shortId(s.sessionId)}` }), ' · ', what,
+      line && s.state !== 'idle' ? h('div', { class: 'muted' }, `${line.prefix} `, since(line.from, now), line.suffix ?? '') : null,
+      s.evidence ? h('div', { class: 'evidence', text: s.evidence }) : null,
+      s.hint ? h('div', { class: 'hint', text: s.hint }) : null),
+    h('span', { class: `cell${s.linkedTask ? '' : ' muted'}`, text: s.linkedTask?.title || 'Not linked to a task yet' }),
+    life(s.life),
+    h('span', { class: 'cell ago' }, Number.isFinite(s.lastWriteMs) ? [since(s.lastWriteMs, now), ' ago'] : ''));
+}
+
+function subagentRow(p, s, a, akey, fresh, now) {
+  const acls = STATE_CLASS[a.state] ?? 'idle';
+  return h('div', { class: `srow subrow s-${acls}${fresh ? ' changed' : ''}`, data: { state: filterToken(a.state), dk: keyOf('a', p.root, s.sessionId, a.agentId), alerts: akey } },
+    h('span', { class: 'cell state' }, chip(a.state), fresh ? [' ', h('span', { class: 'newbadge', text: 'New' })] : null),
+    h('span', { class: 'cell', text: p.name }),
+    h('span', { class: 'cell who-cell' }, h('span', { class: 'name' }, icon('sub'), ' ', h('b', { text: 'Subagent' }), ' · ', a.description || 'Subagent'),
+      a.model ? [' ', h('span', { class: 'size', text: a.model })] : null,
+      a.evidence ? h('div', { class: 'evidence', text: a.evidence }) : null),
+    h('span', { class: 'cell muted', text: `Helper of session ${shortId(s.sessionId)}` }),
+    life(a.life),
+    h('span', { class: 'cell ago' }, Number.isFinite(a.lastWriteMs) ? [since(a.lastWriteMs, now), ' ago'] : ''));
 }
 
 function renderSessions(now) {
   const view = $('#v-sessions');
-  const sig = JSON.stringify(arr(model?.projects).map((p) => [p.name, p.sessions])) + [...seen].length;
-  if (sig === viewSig.sessions && view.childElementCount) return;
-  viewSig.sessions = sig;
-  const rows = sessionRows(now);
-  const content = rows.length > 1 ? h('div', { class: 'stable' }, rows)
-    : h('p', { class: 'empty muted', text: 'No Claude Code session is open.' });
-  view.replaceChildren(content);
+  if (!view.childElementCount) {
+    view.append(h('div', { class: 'stable' }), h('p', { class: 'empty muted', text: 'No Claude Code session is open.', hidden: true }));
+  }
+  const items = [{
+    key: 'head', sig: 'head',
+    build: () => h('div', { class: 'srow head' }, ...['State', 'Project', 'Session', 'On task', 'Last hour', 'Last activity'].map((t) => h('span', { text: t }))),
+  }];
+  for (const p of arr(model?.projects)) {
+    for (const s of arr(p.sessions)) {
+      const keys = alertKeys({ sessions: [{ ...s, subagents: [] }] });
+      const fresh = unseenOf(keys).length > 0;
+      const row = { ...s, subagents: undefined };
+      items.push({ key: keyOf('s', p.root, s.sessionId), sig: JSON.stringify([p.name, row, fresh]), build: () => sessionRow(p, s, fresh, keys, now) });
+      for (const a of arr(s.subagents).filter(isActiveSub)) {
+        const akey = a.state === 'stuck' ? `${s.sessionId}/${a.agentId}|${a.state}|${a.since ?? ''}` : null;
+        const afresh = !!akey && !seen.has(akey);
+        items.push({ key: keyOf('a', p.root, s.sessionId, a.agentId), sig: JSON.stringify([p.name, s.sessionId, a, afresh]), build: () => subagentRow(p, s, a, akey, afresh, now) });
+      }
+    }
+  }
+  const [table, empty] = view.children;
+  syncKeyed(table, sessionCache, items);
+  table.hidden = items.length === 1;
+  empty.hidden = items.length > 1;
 }
 
 // ---- Triage view ----------------------------------------------------------------------------------------------------
 
-function triageItem(it, now) {
+const triageCache = { needs: new Map(), moving: new Map(), next: new Map() };
+
+function triageItem(it, akey, fresh, now) {
   const { project: p, session: s, subagent: a } = it;
   const who = a ? a : s;
   const cls = STATE_CLASS[who.state] ?? 'idle';
-  const akey = (who.state === 'stuck' || who.state === 'waiting') ? `${a ? `${s.sessionId}/${a.agentId}` : s.sessionId}|${who.state}|${who.since ?? ''}` : null;
-  const fresh = akey && !seen.has(akey);
   const { what, line } = a ? { what: a.description || 'Subagent', line: null } : sessionWhat(s);
-  return h('div', { class: `titem s-${cls}${fresh ? ' changed' : ''}`, data: { state: cls, alerts: akey, dk: a ? keyOf('a', p.root, s.sessionId, a.agentId) : keyOf('s', p.root, s.sessionId) } },
+  return h('div', { class: `titem s-${cls}${fresh ? ' changed' : ''}`, data: { state: filterToken(who.state), alerts: akey, dk: a ? keyOf('a', p.root, s.sessionId, a.agentId) : keyOf('s', p.root, s.sessionId) } },
     h('div', { class: 'top' }, chip(who.state), fresh ? h('span', { class: 'newbadge', text: 'New' }) : null,
       h('b', { text: a ? 'Subagent' : `Session ${shortId(s.sessionId)}` }), h('span', { class: 'where', text: `in ${p.name}` })),
     h('div', null, what, line ? h('span', { class: 'muted' }, ' · ', `${line.prefix} `, since(line.from, now), line.suffix ?? '') : null),
@@ -433,24 +445,47 @@ function triageItem(it, now) {
     !a ? h('div', { class: `on-task${s.linkedTask ? '' : ' none'}`, text: s.linkedTask ? `Working on ${s.linkedTask.title}` : 'Not linked to a task yet' }) : null);
 }
 
+function triageItems(list, now) {
+  return list.map((it) => {
+    const { project: p, session: s, subagent: a } = it;
+    const who = a ?? s;
+    const akey = (who.state === 'stuck' || who.state === 'waiting') ? `${a ? `${s.sessionId}/${a.agentId}` : s.sessionId}|${who.state}|${who.since ?? ''}` : null;
+    const fresh = !!akey && !seen.has(akey);
+    const key = a ? keyOf('a', p.root, s.sessionId, a.agentId) : keyOf('s', p.root, s.sessionId);
+    return { key, sig: JSON.stringify([p.name, { ...s, subagents: undefined }, a ?? null, fresh]), build: () => triageItem(it, akey, fresh, now) };
+  });
+}
+
+function upNextItem(p, tasks) {
+  return h('div', { class: 'titem', data: { state: 'next' } },
+    h('div', { class: 'top' }, h('b', { text: p.name })),
+    h('ul', { class: 'tnext' }, tasks.slice(0, 5).map((x) => h('li', { data: { dk: keyOf('t', p.root, x.id) } }, x.title || 'Untitled task', ' ', h('span', { class: 'epic', text: `· ${x.epicTitle}` }))),
+      tasks.length > 5 ? h('li', { class: 'muted', text: `and ${tasks.length - 5} more` }) : null));
+}
+
 function renderTriage(now) {
   const view = $('#v-triage');
+  if (!view.childElementCount) {
+    const col = (name, title, emptyText) => h('section', { class: 'tcol', data: { col: name } },
+      h('h2', null, title, h('span', { class: 'num', text: '0' })),
+      h('div', { class: 'tlist' }),
+      h('p', { class: 'muted empty', text: emptyText, hidden: true }));
+    view.append(h('div', { class: 'tgrid' },
+      col('needs', 'Needs a look', 'Nothing needs a look.'), col('moving', 'Moving', 'Nothing is moving.'), col('next', 'Up next', 'Nothing planned.')));
+  }
   const t = triage(model, now);
-  const sig = JSON.stringify([t.needs.map((x) => [x.project.name, x.session, x.subagent ?? null]), t.moving.map((x) => [x.project.name, x.session, x.subagent ?? null]),
-    t.next.map((x) => [x.project.name, x.tasks]), [...seen].length, Math.floor(now / MIN)]);
-  if (sig === viewSig.triage && view.childElementCount) return;
-  viewSig.triage = sig;
-  const col = (title, n, body, emptyText) => h('section', { class: 'tcol' },
-    h('h2', null, title, h('span', { class: 'num', text: String(n) })),
-    n ? body : h('p', { class: 'muted empty', text: emptyText }));
-  const nextCount = t.next.reduce((n, x) => n + x.tasks.length, 0);
-  view.replaceChildren(h('div', { class: 'tgrid' },
-    col('Needs a look', t.needs.length, t.needs.map((x) => triageItem(x, now)), 'Nothing needs a look.'),
-    col('Moving', t.moving.length, t.moving.map((x) => triageItem(x, now)), 'Nothing is moving.'),
-    col('Up next', nextCount, t.next.map(({ project: p, tasks }) => h('div', { class: 'titem', data: { state: 'next' } },
-      h('div', { class: 'top' }, h('b', { text: p.name })),
-      h('ul', { class: 'tnext' }, tasks.slice(0, 5).map((x) => h('li', { data: { dk: keyOf('t', p.root, x.id) } }, x.title || 'Untitled task', ' ', h('span', { class: 'epic', text: `· ${x.epicTitle}` }))),
-        tasks.length > 5 ? h('li', { class: 'muted', text: `and ${tasks.length - 5} more` }) : null))), 'Nothing planned.')));
+  const lists = {
+    needs: triageItems(t.needs, now),
+    moving: triageItems(t.moving, now),
+    next: t.next.map(({ project: p, tasks }) => ({ key: p.root, sig: JSON.stringify([p.name, tasks]), build: () => upNextItem(p, tasks) })),
+  };
+  const counts = { needs: t.needs.length, moving: t.moving.length, next: t.next.reduce((n, x) => n + x.tasks.length, 0) };
+  for (const name of Object.keys(lists)) {
+    const col = $(`.tcol[data-col="${name}"]`, view);
+    syncKeyed($('.tlist', col), triageCache[name], lists[name]);
+    $('h2 .num', col).textContent = String(counts[name]);
+    $('.empty', col).hidden = counts[name] > 0;
+  }
 }
 
 // ---- the bar ------------------------------------------------------------------------------------------------------
@@ -525,13 +560,19 @@ function render() {
 function onModel(m) {
   if (!m || typeof m !== 'object') return;
   model = m;
-  lastAt = Date.now();
-  $('.bar').classList.remove('offline');
+  heard();
   buildDetails(m);
   banner(m.error || '');
   dirty.projects = dirty.sessions = dirty.triage = true;
   render();
-  tickTimes();
+  refreshTimers();
+}
+
+/** The server spoke (a model or a heartbeat): "updated Ns ago" counts from here. */
+function heard() {
+  heardAt = Date.now();
+  $('.bar').classList.remove('offline');
+  tickUpdated();
 }
 
 function applyFilter() {
@@ -540,12 +581,25 @@ function applyFilter() {
   }
 }
 
-// Relative times keep moving between pushes: "updated" every second, timers every 15 s.
+// "updated Ns ago" = when the server was last heard (model or heartbeat, R19); after 60 s of silence the bar says
+// so instead. Rewritten every second.
 function tickUpdated() {
-  if (stopped) { $('.bar .updated').textContent = 'Server stopped'; return; }
-  $('.bar .updated time').textContent = lastAt ? updatedText(Date.now() - lastAt) : '…';
+  const box = $('.bar .updated');
+  const silent = !stopped && heardAt > 0 && Date.now() - heardAt > SILENT_MS;
+  $('.bar').classList.toggle('offline', stopped || silent);
+  if (stopped) box.replaceChildren('Server stopped');
+  else if (silent) box.replaceChildren('Server not responding');
+  else box.replaceChildren('updated ', h('time', { text: heardAt ? updatedText(Date.now() - heardAt) : '…' }));
 }
+// Every 15 s: timers move, and the views re-render so time-based decisions (the waiting escalation in Triage,
+// the 7-day fold) happen without waiting for a push. Unchanged rows keep their nodes (signatures).
 function tickTimes() {
+  if (!model || stopped) return;
+  dirty.projects = dirty.sessions = dirty.triage = true;
+  render();
+  refreshTimers();
+}
+function refreshTimers() {
   const now = Date.now();
   for (const el of $$('[data-since]')) el.textContent = formatDuration(Math.max(0, now - Number(el.dataset.since)));
   for (const el of $$('[data-until]')) el.textContent = formatDuration(Math.max(0, Number(el.dataset.until) - now));
@@ -650,6 +704,8 @@ for (const b of $$('.tabs [role="tab"]')) {
     const i = TABS.indexOf(b.dataset.tab);
     if (e.key === 'ArrowRight') setTab(TABS[(i + 1) % TABS.length], true);
     else if (e.key === 'ArrowLeft') setTab(TABS[(i + TABS.length - 1) % TABS.length], true);
+    else if (e.key === 'Home') { e.preventDefault(); setTab(TABS[0], true); }
+    else if (e.key === 'End') { e.preventDefault(); setTab(TABS[TABS.length - 1], true); }
   });
 }
 
@@ -841,6 +897,8 @@ function connect() {
     try { m = JSON.parse(ev.data); } catch { return; }
     onModel(m);
   };
-  events.onerror = () => { if (!stopped) $('.bar').classList.add('offline'); };
+  events.addEventListener('hb', () => heard());
+  // A dropped stream reconnects by itself; the bar turns to "Server not responding" only after 60 s of silence.
+  events.onerror = () => {};
 }
 connect();

@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
+  sizeSummary, filterToken,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -107,6 +108,33 @@ test('detailText templates for the other kinds', () => {
   assert.equal(detailText(null), '');
 });
 
+test('an epic tip leaves out the time when nothing was measured', () => {
+  const tasks = [{ status: 'done' }, { status: 'next' }];
+  assert.equal(detailText({ kind: 'epic', epic: { tasks, spentMin: 0 } }), '1 of 2 tasks done.');
+  assert.equal(detailText({ kind: 'epic', epic: { tasks } }), '1 of 2 tasks done.');
+  assert.equal(detailText({ kind: 'epic', epic: { tasks, spentMin: 65 } }), '1 of 2 tasks done, 1h 05m spent.');
+});
+
+test('sizeSummary counts unfinished sizes in a fixed L, M, S order', () => {
+  const shown = [
+    { tasks: [{ status: 'next', size: 'S' }, { status: 'doing', size: 'M' }, { status: 'done', size: 'L' }] },
+    { tasks: [{ status: 'next', size: 'L' }, { status: 'next', size: 'S' }, { status: 'next', size: null }] },
+  ];
+  assert.equal(sizeSummary(shown), '1L 1M 2S');
+  assert.equal(sizeSummary([{ tasks: [{ status: 'next', size: 'XL' }, { status: 'next', size: 'S' }] }]), '1S 1XL');
+  assert.equal(sizeSummary([]), '');
+});
+
+test('filterToken: gone counts as stuck for the pills', () => {
+  assert.equal(filterToken('gone'), 'stuck');
+  assert.equal(filterToken('stuck'), 'stuck');
+  assert.equal(filterToken('waiting'), 'wait');
+  assert.equal(filterToken('working'), 'work');
+  assert.equal(filterToken('idle'), 'idle');
+  assert.equal(filterToken('quiet'), 'idle');
+  assert.equal(filterToken('weird'), 'idle');
+});
+
 test('STATE_LABEL is the copy the page shows', () => {
   assert.deepEqual(STATE_LABEL, {
     working: 'Working', waiting: 'Waiting on you', idle: 'Idle', stuck: 'Looks stuck', gone: 'Gone',
@@ -175,6 +203,12 @@ test('triage sorts sessions into needs a look, moving and up next', () => {
   };
   const t = triage(model, NOW);
   assert.deepEqual(t.needs.map((x) => x.session.sessionId + (x.subagent ? '/' + x.subagent.agentId : '')), ['a', 'd/g', 'e', 'b']);
+  // The escalation threshold comes from the model when it carries one.
+  const late = triage({ ...model, thresholds: { waitingEscalate: 30 } }, NOW);
+  assert.ok(!late.needs.some((x) => x.session.sessionId === 'b'), 'a 20-minute wait is not escalated at 30');
+  assert.deepEqual(late.moving.map((x) => x.session.sessionId).slice(0, 2), ['b', 'c']);
+  const early = triage({ ...model, thresholds: { waitingEscalate: 1 } }, NOW);
+  assert.deepEqual(early.needs.slice(-2).map((x) => x.session.sessionId), ['b', 'c']);
   assert.deepEqual(t.moving.map((x) => x.session.sessionId + (x.subagent ? '/' + x.subagent.agentId : '')), ['c', 'd', 'd/h']);
   assert.equal(t.next.length, 1);
   assert.equal(t.next[0].tasks.length, 1);

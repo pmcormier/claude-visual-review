@@ -6,14 +6,15 @@
 // DNS-rebinding pages from reading the token or the model):
 //   GET /             page/index.html with <!--DASH_TOKEN--> replaced by <meta name="dash-token" content="…">
 //   GET /app.js, /render.mjs, /app.css, /fonts/<name>.woff2   fixed allow-list under page/ (raw path match)
-//   GET /events       SSE: the full model on connect, then on change (at most once a second), heartbeat 25 s
+//   GET /events       SSE: the full model on connect, then on change (at most once a second); a named `hb` event
+//                     (data: server time in ms) on connect and every 5 s, so the page knows the server is alive
 //   POST /stop        needs X-Dash-Token (per-start random token) and Origin http://<that Host>; else 403
 // Rebuilds: fs.watch (recursive) on <claudeHome>/sessions, <claudeHome>/projects, <dashHome> and
 // <plannotatorHome>/inbox (when present), throttled: a rebuild starts 500 ms after the first event and at least
 // 2 s after the previous rebuild started; plus a 5 s tick. SSE clients more than 4 MB behind are dropped. Auto-stops after `autoStop` minutes with no live session.
 // Files (all under <dashHome>): server.json {pid, port, startedAt} while running; server.log, rotated to
 // server.log.1 at 1 MB.
-// Env: CVR_DASH_PORT overrides the port; CVR_DASH_PAGE_DIR the page folder (tests); CVR_DASH_SAMPLER=off
+// Env: CVR_DASH_PORT overrides the port; CVR_DASH_HB_MS the heartbeat interval (tests); CVR_DASH_PAGE_DIR the page folder (tests); CVR_DASH_SAMPLER=off
 // replaces the pwsh CPU sampler with kill(0) liveness (tests).
 import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -36,7 +37,10 @@ const WATCH_THROTTLE_MS = 500;
 const WATCH_MIN_GAP_MS = 2000;
 const MAX_BUFFERED = 4 * 1024 * 1024; // an SSE client this far behind is dropped
 const PUSH_MIN_MS = 1000;
-const HEARTBEAT_MS = 25000;
+// The page shows "updated Ns ago" from the last model or heartbeat, and "Server not responding" after 60 s of
+// neither (R19), so the heartbeat keeps the tick's pace. It also keeps idle connections from being closed.
+const HEARTBEAT_MS = (() => { const n = Number(process.env.CVR_DASH_HB_MS); return Number.isInteger(n) && n >= 50 ? n : TICK_MS; })();
+const hbEvent = () => `event: hb\ndata: ${Date.now()}\n\n`;
 const LOG_MAX = 1024 * 1024;
 const MAX_CLIENTS = 32;
 const SLOW_BUILD_MS = 2000;
@@ -222,6 +226,7 @@ function onEvents(req, res) {
   res.on('error', bye);
   send(res, 'retry: 3000\n\n');
   if (modelJson) send(res, `data: ${modelJson}\n\n`);
+  send(res, hbEvent());
 }
 
 function handle(req, res) {
@@ -302,6 +307,6 @@ server.listen(port, '127.0.0.1', () => {
   sampler = process.env.CVR_DASH_SAMPLER === 'off' ? null : startCpuSampler(15000);
   ensureWatchers();
   tick = setInterval(() => { ensureWatchers(); rebuild(); }, TICK_MS);
-  heartbeat = setInterval(() => { for (const c of [...clients]) send(c, ': hb\n\n'); }, HEARTBEAT_MS);
+  heartbeat = setInterval(() => { const hb = hbEvent(); for (const c of [...clients]) send(c, hb); }, HEARTBEAT_MS);
   rebuild();
 });
