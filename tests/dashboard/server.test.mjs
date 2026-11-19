@@ -29,6 +29,7 @@ async function makeHome(config = {}) {
   mkdirSync(join(page, 'fonts'), { recursive: true });
   writeFileSync(join(page, 'index.html'), '<!doctype html><head><!--DASH_TOKEN--></head><body>stub</body>');
   writeFileSync(join(page, 'app.js'), 'console.log(1)');
+  writeFileSync(join(page, 'render.mjs'), 'export const x = 1;');
   writeFileSync(join(page, 'fonts', 'Inter.woff2'), 'font');
   writeFileSync(join(base, 'secret.txt'), 'nope');
   const port = await freePort();
@@ -167,6 +168,9 @@ test('static files come only from the allow-list and Host must be local', async 
     assert.equal(page.status, 200);
     assert.doesNotMatch(page.body, /DASH_TOKEN/);
     assert.equal((await http(home.port, { path: '/app.js' })).status, 200);
+    const mod = await http(home.port, { path: '/render.mjs' });
+    assert.equal(mod.status, 200);
+    assert.match(mod.headers['content-type'], /^text\/javascript/); // module scripts need a JavaScript type
     assert.equal((await http(home.port, { path: '/app.css' })).status, 404); // absent from the stub page
     assert.equal((await http(home.port, { path: '/fonts/Inter.woff2' })).status, 200);
     for (const path of ['/fonts/../app.js', '/fonts/%2e%2e%2fsecret.txt', '/../secret.txt', '/fonts/x.ttf', '/server.mjs']) {

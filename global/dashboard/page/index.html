@@ -1,0 +1,38 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!--DASH_TOKEN-->
+<title>Claude Dashboard</title>
+<link rel="icon" href="data:,">
+<link rel="preload" href="/fonts/InstrumentSans-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/app.css">
+<script type="module" src="/app.js"></script>
+</head><body><header class="bar">
+  <div class="brand"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 8.5h3l2-5 3 9 2-4h3"/></svg> Claude Dashboard</div>
+  <div class="counts" role="group" aria-label="Filter by state">
+    <button type="button" class="count s-stuck" aria-pressed="false" data-f="stuck"><span class="dot"></span>Looks stuck <b data-count="stuck">0</b></button>
+    <button type="button" class="count s-wait" aria-pressed="false" data-f="wait"><span class="dot"></span>Waiting on you <b data-count="waiting">0</b></button>
+    <button type="button" class="count s-work" aria-pressed="false" data-f="work"><span class="dot"></span>Working <b data-count="working">0</b></button>
+    <button type="button" class="count s-idle" aria-pressed="false" data-f="next"><span class="dot"></span>Up next <b data-count="next">0</b></button>
+  </div>
+  <div class="right">
+    <div class="usage" aria-label="Claude plan usage"><span class="muted">Usage not available</span></div>
+    <span class="updated">updated <time>…</time></span>
+    <label><input type="checkbox" class="hist"> Show all history</label>
+    <button type="button" class="stop" title="Stop the dashboard server">Stop</button>
+    <button type="button" class="modebtn" title="Light or dark">Auto</button>
+    <button type="button" class="helpbtn" title="Show me around" aria-label="Show me around">?</button>
+  </div>
+</header><main>
+<div class="tabs" role="tablist" aria-label="Views">
+  <button type="button" role="tab" id="tab-projects" aria-controls="v-projects" aria-selected="true" data-tab="projects">Projects</button>
+  <button type="button" role="tab" id="tab-sessions" aria-controls="v-sessions" aria-selected="false" data-tab="sessions" tabindex="-1">Sessions</button>
+  <button type="button" role="tab" id="tab-triage" aria-controls="v-triage" aria-selected="false" data-tab="triage" tabindex="-1">Triage</button>
+</div>
+<div class="banner" role="status" hidden></div>
+<section id="v-projects" role="tabpanel" aria-labelledby="tab-projects">
+  <div class="grid"></div>
+  <section class="quiet" hidden><h3>Nothing running</h3><div class="qlist"></div></section>
+  <p class="empty muted" hidden>Waiting for the first update…</p>
+</section>
+<section id="v-sessions" role="tabpanel" aria-labelledby="tab-sessions" hidden></section>
+<section id="v-triage" role="tabpanel" aria-labelledby="tab-triage" hidden></section>
+</main></body></html>

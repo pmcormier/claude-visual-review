@@ -5,7 +5,7 @@
 // Routes (every request must carry Host 127.0.0.1:<port> or localhost:<port>, else 403, which also blocks
 // DNS-rebinding pages from reading the token or the model):
 //   GET /             page/index.html with <!--DASH_TOKEN--> replaced by <meta name="dash-token" content="…">
-//   GET /app.js, /app.css, /fonts/<name>.woff2   fixed allow-list under page/ (matched on the raw path)
+//   GET /app.js, /render.mjs, /app.css, /fonts/<name>.woff2   fixed allow-list under page/ (raw path match)
 //   GET /events       SSE: the full model on connect, then on change (at most once a second), heartbeat 25 s
 //   POST /stop        needs X-Dash-Token (per-start random token) and Origin http://<that Host>; else 403
 // Rebuilds: fs.watch (recursive) on <claudeHome>/sessions, <claudeHome>/projects, <dashHome> and
@@ -186,6 +186,7 @@ function reply(res, status, body = '', type = 'text/plain; charset=utf-8', extra
 
 const STATIC = new Map([
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
+  ['/render.mjs', ['render.mjs', 'text/javascript; charset=utf-8']],
   ['/app.css', ['app.css', 'text/css; charset=utf-8']],
 ]);
 
