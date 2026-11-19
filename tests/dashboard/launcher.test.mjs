@@ -121,6 +121,55 @@ test('plan hook records plan and BMAD ticket files', async () => {
   } finally { rmSync(h.base, { recursive: true, force: true }); }
 });
 
+test('launcher --open opens the page with the opener, silently', async () => {
+  const h = await makeHome();
+  // Something already answers on the port, so the launcher goes straight to opening the page.
+  const srv = createServer((q, s) => s.end('ok'));
+  await new Promise((res) => srv.listen(h.port, '127.0.0.1', res));
+  try {
+    const stub = join(h.base, 'opener.mjs');
+    const out = join(h.base, 'opened.txt');
+    writeFileSync(stub, "import { writeFileSync } from 'node:fs';\nwriteFileSync(process.env.CVR_TEST_OPENED, process.argv.slice(2).join(' '));\n");
+    h.env.CVR_DASH_OPENER = stub;
+    h.env.CVR_TEST_OPENED = out;
+    const r = await new Promise((res) => {
+      const c = spawn(process.execPath, [join(DASH, 'launcher.mjs'), '--open'], { env: h.env, windowsHide: true });
+      let all = '';
+      c.stdout.on('data', (d) => { all += d; });
+      c.stderr.on('data', (d) => { all += d; });
+      c.on('exit', (code) => res({ code, all }));
+      c.stdin.end();
+    });
+    assert.equal(r.code, 0);
+    assert.equal(r.all, '');
+    const end = Date.now() + 5000;
+    while (!existsSync(out) && Date.now() < end) await new Promise((x) => setTimeout(x, 50));
+    assert.equal(readFileSync(out, 'utf8'), `http://127.0.0.1:${h.port}/`);
+  } finally {
+    await new Promise((res) => srv.close(res));
+    rmSync(h.base, { recursive: true, force: true });
+  }
+});
+
+test('launcher without --open opens nothing', async () => {
+  const h = await makeHome();
+  const srv = createServer((q, s) => s.end('ok'));
+  await new Promise((res) => srv.listen(h.port, '127.0.0.1', res));
+  try {
+    const stub = join(h.base, 'opener.mjs');
+    const out = join(h.base, 'opened.txt');
+    writeFileSync(stub, "import { writeFileSync } from 'node:fs';\nwriteFileSync(process.env.CVR_TEST_OPENED, 'x');\n");
+    h.env.CVR_DASH_OPENER = stub;
+    h.env.CVR_TEST_OPENED = out;
+    assert.equal((await run('launcher.mjs', h.env)).code, 0);
+    await new Promise((x) => setTimeout(x, 500));
+    assert.equal(existsSync(out), false);
+  } finally {
+    await new Promise((res) => srv.close(res));
+    rmSync(h.base, { recursive: true, force: true });
+  }
+});
+
 test('launcher copied without its lib folder still exits 0 silently', async () => {
   const h = await makeHome();
   const alone = mkdtempSync(join(tmpdir(), 'cvr-launch-alone-'));
