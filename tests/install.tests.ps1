@@ -37,7 +37,7 @@ Test 'FreshInstallReviewOnly' {
 
 Test 'FreshInstallAllCoversEveryGlobalFile' {
   $h = New-TempDir
-  $r = Invoke-Install $h @('-Components', 'Review,Methods,Bmad,Fable,Rigor')
+  $r = Invoke-Install $h @('-Components', 'Review,Methods,Bmad,Fable,Rigor,Dashboard')
   Assert-Equal 0 $r.Code "exit code ($($r.Out))"
   foreach ($f in Get-ChildItem $global -Recurse -File) {
     $rel = [IO.Path]::GetRelativePath($global, $f.FullName) -replace '\\', '/' -replace '\.cs$', '.exe'
@@ -263,8 +263,8 @@ Test 'MissingToolsAreMissLines' {
 
 Test 'ComponentListInOrder' {
   $r = Invoke-Install (New-TempDir)
-  $i = 'Methods', 'Bmad', 'Fable', 'Rigor' | ForEach-Object { $r.Out.IndexOf("    $_`:") }
-  Assert-True ($i[0] -ge 0 -and $i[0] -lt $i[1] -and $i[1] -lt $i[2] -and $i[2] -lt $i[3]) "order: $($r.Out)"
+  $i = 'Methods', 'Bmad', 'Fable', 'Rigor', 'Dashboard' | ForEach-Object { $r.Out.IndexOf("    $_`:") }
+  Assert-True ($i[0] -ge 0 -and $i[0] -lt $i[1] -and $i[1] -lt $i[2] -and $i[2] -lt $i[3] -and $i[3] -lt $i[4]) "order: $($r.Out)"
 }
 
 Test 'RigorHookAddedOnceAndOthersKept' {
@@ -364,6 +364,176 @@ Test 'RigorHookSendsTheCheck' {
   $j = $out | ConvertFrom-Json -AsHashtable
   Assert-Equal 'UserPromptSubmit' $j.hookSpecificOutput.hookEventName 'event name'
   Assert-Equal (Get-Content -Raw "$global/rigor/pushback.md").Trim() $j.hookSpecificOutput.additionalContext 'sends pushback.md'
+}
+
+# Dashboard: two hooks found again by script name, and the status-line wrap (the tap found by its file name).
+function Read-Settings([string]$ClaudeHome) { Get-Content -Raw "$ClaudeHome/settings.json" | ConvertFrom-Json -AsHashtable }
+function Get-HookCommands($Settings, [string]$Event) { @($Settings.hooks[$Event] | ForEach-Object { $_.hooks } | ForEach-Object { $_.command }) }
+function Read-Original([string]$ClaudeHome) { Get-Content -Raw "$ClaudeHome/dashboard/statusline-original.json" | ConvertFrom-Json -AsHashtable }
+function Set-StatusLine([string]$ClaudeHome, [string]$Command) {
+  $s = Read-Settings $ClaudeHome
+  $s.statusLine = @{ type = 'command'; command = $Command }
+  $s | ConvertTo-Json -Depth 20 | Set-Content "$ClaudeHome/settings.json"
+}
+
+Test 'DashboardInstallAddsHooksOnce' {
+  $h = New-TempDir
+  Set-File "$h/settings.json" '{ "hooks": { "SessionStart": [ { "hooks": [ { "type": "command", "command": "other-start" } ] } ], "PostToolUse": [ { "matcher": "Bash", "hooks": [ { "type": "command", "command": "other-post" } ] } ] } }'
+  $r = Invoke-Install $h @('-Components', 'Review,Dashboard')
+  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  Assert-True ($r.Out -match 'added the Dashboard hook \(SessionStart\)') "announced: $($r.Out)"
+  $r2 = Invoke-Install $h @('-Components', 'Review,Dashboard')
+  Assert-Equal 0 $r2.Code "rerun exit code ($($r2.Out))"
+  Assert-True ($r2.Out -notmatch 'written|updated|added') "rerun quiet: $($r2.Out)"
+  $s = Read-Settings $h
+  $start = Get-HookCommands $s 'SessionStart'
+  $post = Get-HookCommands $s 'PostToolUse'
+  Assert-Equal 1 @($start | Where-Object { $_ -match 'launcher\.mjs' }).Count 'one launcher hook'
+  Assert-Equal 1 @($post | Where-Object { $_ -match 'plan-hook\.mjs' }).Count 'one plan hook'
+  Assert-True ($start -contains 'other-start') 'other SessionStart hook kept'
+  Assert-True ($post -contains 'other-post') 'other PostToolUse hook kept'
+  $launcher = @($start | Where-Object { $_ -match 'launcher\.mjs' })[0]
+  Assert-Equal "node `"$("$h/dashboard/launcher.mjs" -replace '\\', '/')`"" $launcher 'launcher command'
+  $g = @($s.hooks.PostToolUse | Where-Object { @($_.hooks | Where-Object { $_.command -match 'plan-hook\.mjs' }).Count })[0]
+  Assert-Equal 'Read|Edit|Write' $g.matcher 'plan hook matcher'
+  Assert-True (Test-Path "$h/commands/dashboard.md") 'command installed'
+  Assert-True (Test-Path "$h/rules/dashboard.md") 'rule installed'
+  Assert-True (Test-Path "$h/dashboard/lib/config.mjs") 'lib installed'
+}
+
+Test 'DashboardWrapsNoStatusLine' {
+  $h = New-TempDir
+  $r = Invoke-Install $h @('-Components', 'Review,Dashboard')
+  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  Assert-Equal 'null' (Get-Content -Raw "$h/dashboard/statusline-original.json").Trim() 'original saved as null'
+  $sl = (Read-Settings $h).statusLine
+  Assert-Equal 'command' $sl.type 'type'
+  Assert-Equal "node `"$("$h/dashboard/statusline-tap.mjs" -replace '\\', '/')`"" $sl.command 'tap command'
+  Assert-True (-not $sl.ContainsKey('padding')) 'no padding invented'
+}
+
+Test 'DashboardWrapsObjectStatusLineKeepsPadding' {
+  $h = New-TempDir
+  Set-File "$h/settings.json" '{ "statusLine": { "type": "command", "command": "my-line --x", "padding": 2, "refreshInterval": 5 } }'
+  $r = Invoke-Install $h @('-Components', 'Review,Dashboard')
+  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  $o = Read-Original $h
+  Assert-Equal 'my-line --x' $o.command 'original command saved'
+  Assert-Equal 2 $o.padding 'original padding saved'
+  Assert-Equal 5 $o.refreshInterval 'original refreshInterval saved'
+  $sl = (Read-Settings $h).statusLine
+  Assert-True ($sl.command -match 'statusline-tap\.mjs') 'tap set'
+  Assert-Equal 2 $sl.padding 'padding kept'
+  Assert-Equal 5 $sl.refreshInterval 'refreshInterval kept'
+}
+
+Test 'DashboardRerunNeverSavesTapAsOriginal' {
+  $h = New-TempDir
+  Set-File "$h/settings.json" '{ "statusLine": { "type": "command", "command": "my-line" } }'
+  Invoke-Install $h @('-Components', 'Review,Dashboard') | Out-Null
+  $r = Invoke-Install $h @('-Components', 'Review,Dashboard')
+  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  Assert-Equal 'my-line' (Read-Original $h).command 'original still the user''s'
+  # Even with -Replace statusLine, the tap is never saved as the original (it would run itself).
+  Invoke-Install $h @('-Components', 'Review,Dashboard', '-Replace', 'statusLine') | Out-Null
+  Assert-Equal 'my-line' (Read-Original $h).command 'original still the user''s after -Replace'
+}
+
+Test 'DashboardRemoveRestoresOriginalStatusLine' {
+  $h = New-TempDir
+  Set-File "$h/settings.json" '{ "statusLine": { "type": "command", "command": "my-line", "padding": 1 }, "hooks": { "SessionStart": [ { "hooks": [ { "type": "command", "command": "other-start" } ] } ] } }'
+  Invoke-Install $h @('-Components', 'Review,Dashboard') | Out-Null
+  $r = Invoke-Install $h @('-Components', 'Review', '-Remove', 'Dashboard')
+  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  $s = Read-Settings $h
+  Assert-Equal 'my-line' $s.statusLine.command 'original command restored'
+  Assert-Equal 1 $s.statusLine.padding 'original padding restored'
+  Assert-Equal 0 @(Get-HookCommands $s 'SessionStart' | Where-Object { $_ -match 'launcher\.mjs' }).Count 'launcher hook gone'
+  Assert-True (-not $s.hooks.ContainsKey('PostToolUse')) 'empty PostToolUse removed'
+  Assert-True ((Get-HookCommands $s 'SessionStart') -contains 'other-start') 'other hook kept'
+  foreach ($f in 'dashboard/launcher.mjs', 'dashboard/lib/config.mjs', 'commands/dashboard.md', 'rules/dashboard.md') {
+    Assert-True (-not (Test-Path "$h/$f")) "$f retired"
+    Assert-True (Test-Path "$h/$f.retired") "$f kept as .retired"
+  }
+  Assert-True (-not (Read-Manifest $h).ContainsKey('dashboard/launcher.mjs')) 'manifest forgets the launcher'
+  # No original at all: removal takes the tap out and leaves no statusLine.
+  $h2 = New-TempDir
+  Invoke-Install $h2 @('-Components', 'Review,Dashboard') | Out-Null
+  $r = Invoke-Install $h2 @('-Remove', 'Dashboard')
+  Assert-Equal 0 $r.Code "exit code, no original ($($r.Out))"
+  Assert-True (-not (Read-Settings $h2).ContainsKey('statusLine')) 'no statusLine left'
+  $r3 = Invoke-Install $h2 @('-Components', 'Review')
+  Assert-True ($r3.Out -notmatch 'Dashboard') "rerun quiet: $($r3.Out)"
+}
+
+Test 'DashboardRemoveLeavesChangedStatusLine' {
+  $h = New-TempDir
+  Invoke-Install $h @('-Components', 'Review,Dashboard') | Out-Null
+  Set-StatusLine $h 'another-tool'
+  $r = Invoke-Install $h @('-Components', 'Review', '-Remove', 'Dashboard')
+  Assert-Equal 3 $r.Code "exit code ($($r.Out))"
+  Assert-True ($r.Out -match 'MISS.*statusLine') "named: $($r.Out)"
+  Assert-Equal 'another-tool' (Read-Settings $h).statusLine.command 'left alone'
+}
+
+Test 'DashboardRerunReportsRewrittenStatusLine' {
+  $h = New-TempDir
+  Invoke-Install $h @('-Components', 'Review,Dashboard') | Out-Null
+  Set-StatusLine $h 'another-tool'
+  $r = Invoke-Install $h @('-Components', 'Review,Dashboard')
+  Assert-Equal 3 $r.Code "exit code ($($r.Out))"
+  Assert-True ($r.Out -match 'MISS.*usage') "says usage is unavailable: $($r.Out)"
+  Assert-True ($r.Out -match '-Replace statusLine') "says how to re-wrap: $($r.Out)"
+  Assert-Equal 'another-tool' (Read-Settings $h).statusLine.command 'not re-wrapped silently'
+  $r2 = Invoke-Install $h @('-Components', 'Review,Dashboard', '-Replace', 'statusLine')
+  Assert-Equal 0 $r2.Code "re-wrap exit code ($($r2.Out))"
+  Assert-True ((Read-Settings $h).statusLine.command -match 'statusline-tap\.mjs') 're-wrapped'
+  Assert-Equal 'another-tool' (Read-Original $h).command 'the new value is the original now'
+}
+
+Test 'DashboardKeptWhenLeftOut' {
+  $h = New-TempDir
+  Invoke-Install $h @('-Components', 'Review,Dashboard') | Out-Null
+  $r = Invoke-Install $h @('-Components', 'Review,Methods')
+  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  Assert-True ($r.Out -match '-Remove Dashboard') "says how to remove it: $($r.Out)"
+  Assert-True (Test-Path "$h/dashboard/launcher.mjs") 'files kept'
+  $s = Read-Settings $h
+  Assert-True ($s.statusLine.command -match 'statusline-tap\.mjs') 'tap kept'
+  Assert-Equal 1 @(Get-HookCommands $s 'SessionStart' | Where-Object { $_ -match 'launcher\.mjs' }).Count 'hook kept'
+}
+
+Test 'DashboardInBothComponentsAndRemoveErrors' {
+  $h = New-TempDir
+  Invoke-Install $h @('-Components', 'Review,Dashboard') | Out-Null
+  $r = Invoke-Install $h @('-Components', 'Review,Dashboard', '-Remove', 'Dashboard')
+  Assert-True ($r.Code -ne 0) "refused ($($r.Out))"
+  Assert-True ($r.Out -match 'Dashboard is in both -Components and -Remove') "says why: $($r.Out)"
+  Assert-True (Test-Path "$h/dashboard/launcher.mjs") 'nothing removed'
+}
+
+Test 'DashboardShortcutMadeAndRemoved' {
+  if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Host '  (node not on PATH; skipped)'; return }
+  $h = New-TempDir
+  $menu = New-TempDir   # never the real Start menu
+  $r = Invoke-Install $h @('-Components', 'Review,Dashboard', '-ShortcutDir', $menu)
+  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  $lnk = Join-Path $menu 'Claude Dashboard.lnk'
+  Assert-True (Test-Path $lnk) "shortcut made: $($r.Out)"
+  $sc = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+  Assert-Equal (Get-Command node).Source $sc.TargetPath 'target is node'
+  Assert-True ($sc.Arguments -match 'launcher\.mjs" --open$') "arguments: $($sc.Arguments)"
+  $r2 = Invoke-Install $h @('-Components', 'Review,Dashboard', '-ShortcutDir', $menu)
+  Assert-True ($r2.Out -notmatch 'written') "rerun quiet: $($r2.Out)"
+  $r3 = Invoke-Install $h @('-Remove', 'Dashboard', '-ShortcutDir', $menu)
+  Assert-Equal 0 $r3.Code "remove exit code ($($r3.Out))"
+  Assert-True (-not (Test-Path $lnk)) 'shortcut deleted'
+}
+
+Test 'DashboardNoShortcutUnderSkipToolCheck' {
+  # Without -ShortcutDir, -SkipToolCheck makes and deletes no shortcut, so tests never reach the real Start menu.
+  $r = Invoke-Install (New-TempDir) @('-Components', 'Review,Dashboard')
+  Assert-True ($r.Out -notmatch 'Claude Dashboard\.lnk') "no shortcut step: $($r.Out)"
 }
 
 Complete-Tests

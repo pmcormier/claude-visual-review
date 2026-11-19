@@ -5,7 +5,8 @@
 
 .DESCRIPTION
   Copies the chosen components from global/ into ~/.claude (building the VS Code opener), points
-  PLANNOTATOR_BROWSER at it in ~/.claude/settings.json (and, with Rigor, adds its UserPromptSubmit hook there),
+  PLANNOTATOR_BROWSER at it in ~/.claude/settings.json (and, with Rigor, adds its UserPromptSubmit hook there;
+  with Dashboard, its SessionStart and PostToolUse hooks, the status-line wrap and a Start menu shortcut),
   checks the tools the rules rely on, and (optionally)
   adds the BMAD overrides to the projects you name.
 
@@ -17,7 +18,8 @@
 .PARAMETER Components
   Which parts to install: Review (always), Methods (how the planning method is picked, BMAD and superpowers),
   Bmad (the BMAD review layer), Fable (the Fable final review for BMAD planning docs; needs Fable access),
-  Rigor (verification rules, and a hook that sends a pushback check with every message; needs Node.js).
+  Rigor (verification rules, and a hook that sends a pushback check with every message; needs Node.js),
+  Dashboard (a live local page of all Claude Code work on this computer; needs Node.js).
   Without it, an interactive run asks; a non-interactive run stops and lists them.
 
 .PARAMETER Owner
@@ -45,9 +47,14 @@
   Skip the tool checks and the hook. For tests.
 
 .PARAMETER Remove
-  Rigor, to turn it off: its hook is taken out of settings.json and its files retired as *.retired. Leaving
-  Rigor out of -Components never removes it once installed, so a partial -Components run can't switch off the
-  pushback check by accident.
+  Rigor or Dashboard, to turn it off: its hooks are taken out of settings.json and its files retired as
+  *.retired; for Dashboard, the status line it wrapped is restored and its Start menu shortcut deleted. Leaving
+  either out of -Components never removes it once installed, so a partial -Components run can't switch off the
+  pushback check or unwrap the status line by accident.
+
+.PARAMETER ShortcutDir
+  Where the Dashboard's Start menu shortcut goes. Default: the Start menu's Programs folder, or, with
+  -SkipToolCheck, no shortcut at all (none made, none deleted). For tests.
 
 .PARAMETER SkipBuild
   Don't compile the opener. For tests: security tools quarantine new .exe files appearing in %TEMP%.
@@ -67,7 +74,8 @@ param(
   [string]$ClaudeHome = (Join-Path $HOME '.claude'),
   [switch]$SkipToolCheck,
   [string[]]$Remove = @(),
-  [switch]$SkipBuild
+  [switch]$SkipBuild,
+  [string]$ShortcutDir = ''
 )
 $ErrorActionPreference = 'Stop'
 $repo = $PSScriptRoot
@@ -99,12 +107,17 @@ $componentFiles = [ordered]@{
   Bmad    = @('bmad/interactive-review.md', 'bmad/write_overrides.py')
   Fable   = @('rules/fable.md', 'bmad/fable-final-review.md')
   Rigor   = @('rules/rigor.md', 'rigor/pushback.md', 'hooks/pushback-check.mjs')
+  # Every file under global/dashboard/, listed at run time (server, launcher, hooks, lib/, page/, fonts).
+  Dashboard = @(@(Get-ChildItem (Join-Path $repo 'global/dashboard') -Recurse -File | Sort-Object FullName |
+        ForEach-Object { [IO.Path]::GetRelativePath((Join-Path $repo 'global'), $_.FullName) -replace '\\', '/' }) +
+    'commands/dashboard.md' + 'rules/dashboard.md')
 }
 $about = [ordered]@{
   Methods = 'how the planning method is picked per task, work tracking, BMAD and superpowers'
   Bmad    = 'the review layer for BMAD workflows'
   Fable   = 'the Fable final review of BMAD planning docs (needs access to the Fable model)'
   Rigor   = 'verification rules, and a check sent with every message so Claude holds a correct answer under pushback (needs Node.js)'
+  Dashboard = 'a live page of all Claude Code work on this computer: sessions, stalls, plans and usage (needs Node.js)'
 }
 
 Step 'Components'
@@ -136,18 +149,22 @@ elseif (-not $Components.Count) {
 }
 foreach ($c in $Components) { if (-not $componentFiles.Contains($c)) { throw "Unknown component '$c'; choose from $($componentFiles.Keys -join ', ')" } }
 $Components = @('Review') + @($Components | Where-Object { $_ -ne 'Review' }) | Select-Object -Unique
-# Rigor acts on every message, so it is removed only on request (decision 29): a partial -Components list copied
-# from an example must not quietly turn the pushback check off.
+# Rigor acts on every message and Dashboard wraps the status line, so each is removed only on request (decision
+# 29): a partial -Components list copied from an example must not quietly turn either off.
+$removable = @('Rigor', 'Dashboard')
 $Remove = Split-List $Remove
-foreach ($c in $Remove) { if ($c -ne 'Rigor') { throw "-Remove takes only Rigor; leaving another component out of -Components leaves its files in place" } }
-if ($Remove -contains 'Rigor' -and $askedFor -contains 'Rigor' -and -not $Owner) {
-  throw "Rigor is in both -Components and -Remove; drop it from one of them and run again"
-}
-$rigorInstalled = @($componentFiles['Rigor'] | Where-Object { $manifest.ContainsKey($_) }).Count -gt 0
-if ($Remove -contains 'Rigor') { $Components = @($Components | Where-Object { $_ -ne 'Rigor' }) }
-elseif ($rigorInstalled -and $Components -notcontains 'Rigor') {
-  $Components += 'Rigor'
-  Write-Host '  (Rigor kept: it is installed here, and leaving it out of -Components does not remove it; to turn it off, add -Remove Rigor)'
+foreach ($c in $Remove) { if ($removable -notcontains $c) { throw "-Remove takes only Rigor or Dashboard; leaving another component out of -Components leaves its files in place" } }
+$installedBefore = @{}
+foreach ($c in $removable) {
+  if ($Remove -contains $c -and $askedFor -contains $c -and -not $Owner) {
+    throw "$c is in both -Components and -Remove; drop it from one of them and run again"
+  }
+  $installedBefore[$c] = @($componentFiles[$c] | Where-Object { $manifest.ContainsKey($_) }).Count -gt 0
+  if ($Remove -contains $c) { $Components = @($Components | Where-Object { $_ -ne $c }) }
+  elseif ($installedBefore[$c] -and $Components -notcontains $c) {
+    $Components += $c
+    Write-Host "  ($c kept: it is installed here, and leaving it out of -Components does not remove it; to turn it off, add -Remove $c)"
+  }
 }
 Ok ($Components -join ', ')
 
@@ -205,16 +222,16 @@ foreach ($rel in @('rules/bmad.md')) {   # replaced by rules/methods.md (decisio
     Move-Item $old "$old.retired" -Force; $manifest.Remove($rel); Ok "$rel retired (kept as $rel.retired)"
   }
 }
-# -Remove Rigor turns it off: its files are retired and its hook removed (below). A file you changed stays where
-# it is, and is named once.
-if ($Remove -contains 'Rigor') {
-  foreach ($rel in $componentFiles['Rigor']) {
+# -Remove turns Rigor or Dashboard off: its files are retired and its hooks removed (below). A file you changed
+# stays where it is, and is named once.
+foreach ($c in $Remove) {
+  foreach ($rel in $componentFiles[$c]) {
     if (-not $manifest.ContainsKey($rel)) { continue }
     $old = Join-Path $claude $rel
     if ((Test-Path $old) -and (Hash $old) -eq $manifest[$rel].hash) {
-      Move-Item $old "$old.retired" -Force; Done "$rel retired (-Remove Rigor; kept as $rel.retired)"
+      Move-Item $old "$old.retired" -Force; Done "$rel retired (-Remove $c; kept as $rel.retired)"
     } elseif (Test-Path $old) {
-      Miss "$rel left in place because you changed it, so Rigor is still partly on: delete it to turn Rigor off"
+      Miss "$rel left in place because you changed it, so $c is still partly on: delete it to turn $c off"
     }
     $manifest.Remove($rel)
   }
@@ -238,8 +255,63 @@ if (Test-Path $settingsPath) {
     if ($settingsOk -and $settings -isnot [Collections.IDictionary]) { $settingsOk = $false }
   }
 }
+# The hooks each component adds. Each is found again on a rerun by its script's file name (Dashboard's with its
+# folder, since launcher.mjs is a common name), so it is never added twice; any other hooks are left as they are.
+$hookSpecs = @(
+  @{ Component = 'Rigor'; Event = 'UserPromptSubmit'; Script = 'hooks/pushback-check.mjs'; Find = 'pushback-check\.mjs' }
+  @{ Component = 'Dashboard'; Event = 'SessionStart'; Script = 'dashboard/launcher.mjs'; Find = 'dashboard[\\/]launcher\.mjs' }
+  @{ Component = 'Dashboard'; Event = 'PostToolUse'; Script = 'dashboard/plan-hook.mjs'; Find = 'dashboard[\\/]plan-hook\.mjs'; Matcher = 'Read|Edit|Write' }
+)
+# Adds or updates one hook; returns what changed, or nothing when it was already set.
+function Set-Hook($Spec) {
+  $label = "$($Spec.Component) hook ($($Spec.Event))"
+  $cmd = "node `"$((Join-Path $claude $Spec.Script) -replace '\\', '/')`""
+  if ($settings['hooks'] -isnot [Collections.IDictionary]) { $settings['hooks'] = [ordered]@{} }
+  $groups = @($settings['hooks'][$Spec.Event] | Where-Object { $_ })
+  foreach ($g in $groups) {
+    $hk = @($g['hooks'] | Where-Object { $_ -is [Collections.IDictionary] -and "$($_['command'])" -match $Spec.Find })
+    if (-not $hk.Count) { continue }
+    $matcherOk = -not $Spec.Matcher -or $g['matcher'] -eq $Spec.Matcher
+    if ($hk[0]['command'] -eq $cmd -and $matcherOk) { Ok "$label already set"; return }
+    $hk[0]['command'] = $cmd
+    if (-not $matcherOk) { $g['matcher'] = $Spec.Matcher }
+    return "updated the $label command"
+  }
+  $entry = [ordered]@{}
+  if ($Spec.Matcher) { $entry['matcher'] = $Spec.Matcher }
+  $entry['hooks'] = @([ordered]@{ type = 'command'; command = $cmd })
+  $settings['hooks'][$Spec.Event] = @($groups) + @($entry)
+  "added the $label"
+}
+# Takes one hook out, keeping every other one; returns what changed, or nothing.
+function Remove-Hook($Spec) {
+  if ($settings['hooks'] -isnot [Collections.IDictionary] -or -not $settings['hooks'][$Spec.Event]) { return }
+  $isOurs = { "$($_['command'])" -match $Spec.Find }
+  $groups = @($settings['hooks'][$Spec.Event] | Where-Object { $_ })
+  if (-not @($groups | ForEach-Object { $_['hooks'] } | Where-Object $isOurs).Count) { return }
+  $kept = @(foreach ($g in $groups) {
+      $g['hooks'] = @($g['hooks'] | Where-Object { -not (& $isOurs) })
+      if ($g['hooks'].Count) { $g }
+    })
+  if ($kept.Count) { $settings['hooks'][$Spec.Event] = $kept } else { $settings['hooks'].Remove($Spec.Event) }
+  if ($Spec.Component -eq 'Rigor') { "removed the Rigor hook (-Remove Rigor)" }
+  else { "removed the $($Spec.Component) hook ($($Spec.Event)) (-Remove $($Spec.Component))" }
+}
+
+# Dashboard wraps the user-level status line: the whole original object (or null) is saved, and the tap, which
+# records plan usage and then runs the original's command, takes its place. padding and refreshInterval are
+# kept on the tap, since Claude Code reads them from the setting, not from the command. The tap is found by its
+# file name and is never saved as the original (it would run itself).
+$tapCmd = "node `"$((Join-Path $claude 'dashboard/statusline-tap.mjs') -replace '\\', '/')`""
+$originalPath = Join-Path $claude 'dashboard/statusline-original.json'
+$retireOriginal = $false
+function Test-Tap($Value) { $Value -is [Collections.IDictionary] -and "$($Value['command'])" -match 'statusline-tap\.mjs' }
+
 if (-not $settingsOk) {
-  Miss "settings.json isn't valid JSON, so PLANNOTATOR_BROWSER$(if ($Components -contains 'Rigor') { ' and the Rigor hook' }) weren't set: fix or remove $settingsPath, then rerun"
+  $what = @('PLANNOTATOR_BROWSER')
+  if ($Components -contains 'Rigor') { $what += 'the Rigor hook' }
+  if ($Components -contains 'Dashboard') { $what += 'the Dashboard hooks and status line' }
+  Miss "settings.json isn't valid JSON, so $($what -join ' and ') weren't set: fix or remove $settingsPath, then rerun"
 } else {
   $changes = @()
   if ($settings['env'] -isnot [Collections.IDictionary]) { $settings['env'] = @{} }
@@ -247,41 +319,87 @@ if (-not $settingsOk) {
     $settings['env']['PLANNOTATOR_BROWSER'] = $opener
     $changes += "set PLANNOTATOR_BROWSER = $opener"
   } else { Ok 'PLANNOTATOR_BROWSER already set' }
-  if ($Components -contains 'Rigor') {
-    # One UserPromptSubmit entry that runs the pushback check; any other hooks are left as they are. Found again
-    # on a rerun by the script's file name, so it is never added twice.
-    $hookCmd = "node `"$((Join-Path $claude 'hooks/pushback-check.mjs') -replace '\\', '/')`""
-    if ($settings['hooks'] -isnot [Collections.IDictionary]) { $settings['hooks'] = [ordered]@{} }
-    $groups = @($settings['hooks']['UserPromptSubmit'] | Where-Object { $_ })
-    $existing = @($groups | ForEach-Object { $_['hooks'] } | Where-Object { "$($_['command'])" -match 'pushback-check\.mjs' })
-    if ($existing.Count -and $existing[0]['command'] -eq $hookCmd) { Ok 'Rigor hook (UserPromptSubmit) already set' }
-    elseif ($existing.Count) {
-      $existing[0]['command'] = $hookCmd
-      $changes += 'updated the Rigor hook command'
+  foreach ($spec in $hookSpecs) {
+    if ($Components -contains $spec.Component) { $changes += @(Set-Hook $spec) }
+    elseif ($Remove -contains $spec.Component) { $changes += @(Remove-Hook $spec) }
+  }
+  $current = $settings['statusLine']
+  if ($Components -contains 'Dashboard') {
+    if (Test-Tap $current) {
+      if ($current['command'] -eq $tapCmd) { Ok 'status line wrapped by the Dashboard tap' }
+      else { $current['command'] = $tapCmd; $changes += 'updated the Dashboard status-line tap command' }
+    } elseif ($installedBefore['Dashboard'] -and (Test-Path $originalPath) -and $Replace -notcontains 'statusLine') {
+      # Something rewrote it after install. Wrapping it again silently would take over a choice someone just made.
+      Miss "statusLine is no longer the Dashboard's tap (something rewrote it), so plan usage is unavailable on the dashboard. To wrap it again: $rerun -Replace statusLine"
     } else {
-      $settings['hooks']['UserPromptSubmit'] = @($groups) + @([ordered]@{ hooks = @([ordered]@{ type = 'command'; command = $hookCmd }) })
-      $changes += 'added the Rigor hook (UserPromptSubmit)'
+      New-Item -ItemType Directory -Force (Split-Path $originalPath) | Out-Null
+      ConvertTo-Json -InputObject $current -Depth 50 | Set-Content $originalPath -Encoding utf8NoBOM
+      $tap = [ordered]@{ type = 'command'; command = $tapCmd }
+      foreach ($k in 'padding', 'refreshInterval') {
+        if ($current -is [Collections.IDictionary] -and $current.Contains($k)) { $tap[$k] = $current[$k] }
+      }
+      $settings['statusLine'] = $tap
+      $changes += if ($null -eq $current) { 'set the status line to the Dashboard tap (there was none)' }
+      else { 'wrapped the status line with the Dashboard tap (original saved in dashboard/statusline-original.json)' }
     }
-    if (-not $SkipToolCheck -and -not (Get-Command node -ErrorAction SilentlyContinue)) {
-      Miss 'Node.js (`node`) not on PATH, so the Rigor hook cannot run: install Node.js, then start a new session'
-    }
-  } elseif ($Remove -contains 'Rigor' -and $settings['hooks'] -is [Collections.IDictionary] -and $settings['hooks']['UserPromptSubmit']) {
-    # -Remove Rigor: take out its hook, keep every other one.
-    $isRigor = { "$($_['command'])" -match 'pushback-check\.mjs' }
-    $groups = @($settings['hooks']['UserPromptSubmit'] | Where-Object { $_ })
-    if (@($groups | ForEach-Object { $_['hooks'] } | Where-Object $isRigor).Count) {
-      $kept = @(foreach ($g in $groups) {
-          $g['hooks'] = @($g['hooks'] | Where-Object { -not (& $isRigor) })
-          if ($g['hooks'].Count) { $g }
-        })
-      if ($kept.Count) { $settings['hooks']['UserPromptSubmit'] = $kept } else { $settings['hooks'].Remove('UserPromptSubmit') }
-      $changes += 'removed the Rigor hook (-Remove Rigor)'
+  } elseif ($Remove -contains 'Dashboard') {
+    if (Test-Tap $current) {
+      $original = $null
+      $known = Test-Path $originalPath
+      if ($known) { try { $original = Get-Content -Raw $originalPath | ConvertFrom-Json -AsHashtable } catch { $known = $false } }
+      if ($null -eq $original) { $settings.Remove('statusLine') } else { $settings['statusLine'] = $original }
+      if (-not $known) { Miss "statusLine was the Dashboard tap, but the original saved in $originalPath is missing or unreadable, so the tap was removed and no status line restored" }
+      elseif ($null -eq $original) { $changes += 'removed the Dashboard tap from the status line (there was none before)' }
+      else { $changes += 'restored the original status line' }
+      $retireOriginal = $known
+    } elseif ($null -ne $current) {
+      Miss "statusLine was changed after the Dashboard wrapped it, so it was left as it is (the status line from before the Dashboard is in $originalPath)"
     }
   }
   if ($changes.Count) {
     $note = if (Test-Path $settingsPath) { "; backup: $(Backup $settingsPath)" } else { '' }
     $settings | ConvertTo-Json -Depth 50 | Set-Content $settingsPath -Encoding utf8NoBOM
     Done "$($changes -join '; ') (other settings kept$note)"
+  }
+  if ($retireOriginal) { Move-Item $originalPath "$originalPath.retired" -Force }
+}
+$needNode = @('Rigor', 'Dashboard' | Where-Object { $Components -contains $_ })
+if ($needNode.Count -and -not $SkipToolCheck -and -not (Get-Command node -ErrorAction SilentlyContinue)) {
+  Miss "Node.js (``node``) not on PATH, so the $($needNode -join ' and ') hooks cannot run: install Node.js, then start a new session"
+}
+
+# Dashboard's Start menu shortcut runs Node (its absolute path, resolved now) on the launcher with --open. With
+# -SkipToolCheck and no -ShortcutDir, none is made or deleted, so tests never reach the real Start menu.
+$scDir = if ($ShortcutDir) { $ShortcutDir } elseif (-not $SkipToolCheck) { [Environment]::GetFolderPath('Programs') }
+if ($scDir -and ($Components -contains 'Dashboard' -or $Remove -contains 'Dashboard')) {
+  Step 'Start menu shortcut'
+  $lnk = Join-Path $scDir 'Claude Dashboard.lnk'
+  $dashDir = [IO.Path]::GetFullPath((Join-Path $claude 'dashboard'))
+  $wsh = New-Object -ComObject WScript.Shell
+  if ($Components -contains 'Dashboard') {
+    $node = (Get-Command node -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+    if (-not $node) { Miss 'Claude Dashboard.lnk not made: Node.js (`node`) not on PATH; install Node.js, then rerun' }
+    else {
+      $scArgs = "`"$(Join-Path $dashDir 'launcher.mjs')`" --open"
+      $had = Test-Path $lnk
+      $sc = $wsh.CreateShortcut($lnk)
+      if ($had -and $sc.TargetPath -eq $node -and $sc.Arguments -eq $scArgs) { Ok 'Claude Dashboard.lnk' }
+      else {
+        New-Item -ItemType Directory -Force $scDir | Out-Null
+        $sc.TargetPath = $node
+        $sc.Arguments = $scArgs
+        $sc.WorkingDirectory = $dashDir
+        $sc.Description = 'Open the live dashboard of Claude Code work on this computer'
+        $sc.WindowStyle = 7   # minimized: Node is a console program; the launcher exits at once
+        $sc.Save()
+        Done "$(if ($had) { 'updated' } else { 'written' })  Claude Dashboard.lnk ($scDir)"
+      }
+    }
+  } elseif (Test-Path $lnk) {
+    # Only ours: one whose arguments run the dashboard launcher.
+    if ($wsh.CreateShortcut($lnk).Arguments -match 'dashboard[\\/]launcher\.mjs') {
+      Remove-Item $lnk -Force; Done 'deleted  Claude Dashboard.lnk (-Remove Dashboard)'
+    } else { Miss "$lnk was left in place: it doesn't run the dashboard launcher, so it isn't this installer's" }
   }
 }
 
