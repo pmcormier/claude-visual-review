@@ -242,6 +242,14 @@ function subagentView(a, parent, now, th, sampler) {
   if (v.state === 'stuck' && !parent.waitsOnAgent) {
     v = { state: 'idle', evidence: null, hint: v.hint, since: a.lastWriteMs };
   }
+  // Quiet since before the parent's current Agent call started, it is not the one being waited on, and its CPU
+  // (every process the parent started after its tool did) is not its own (seen live 2026-11-19: a subagent with a
+  // Bash call pending 4 days read Working while its parent waited on a newer subagent). It is history.
+  const quiet = Number.isFinite(a.lastWriteMs) && now - a.lastWriteMs >= th.subagentQuiet * 60000;
+  const beforeCall = !parent.waitsOnAgent || !Number.isFinite(parent.agentSinceMs) || a.lastWriteMs < parent.agentSinceMs;
+  if (quiet && beforeCall && a.finished !== true && (v.state === 'working' || v.state === 'stuck')) {
+    v = { state: 'idle', evidence: null, hint: v.hint, since: a.lastWriteMs };
+  }
   return {
     agentId: a.agentId, description: a.description, model: a.model, effort: a.effort, finished: a.finished,
     lastWriteMs: a.lastWriteMs, life: a.minutes, tokens: a.signals.tokens, pendingTool: toolView(a.signals.pendingTool),
@@ -259,7 +267,8 @@ function sessionView(s, now, th, sampler) {
     kind: 'session', status: s.status, alive, signals, cpuPct, outputIdleMs: idleOf(tool, now), finished: null, now,
     statusUpdatedAt: s.statusUpdatedAt,
   }, th);
-  const parent = { alive, pid: s.pid, waitsOnAgent: !!tool && (tool.name === 'Agent' || tool.name === 'Task') };
+  const waitsOnAgent = !!tool && (tool.name === 'Agent' || tool.name === 'Task');
+  const parent = { alive, pid: s.pid, waitsOnAgent, agentSinceMs: waitsOnAgent ? tool.startedMs ?? null : null };
   let subs = [];
   try { subs = s.transcriptPath ? readSubagents(s.transcriptPath, now, th, { cache: subagentCache }) : []; } catch { subs = []; }
   const views = subs.map((a) => subagentView(a, parent, now, th, sampler)); // newest first (readSubagents order)

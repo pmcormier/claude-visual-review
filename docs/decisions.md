@@ -321,6 +321,15 @@ like Rigor it is never removed by leaving it out of `-Components`. Where the bui
 - **"Show all history" shows everything loaded** (R26): projects active in the last 7 days, with all their plans
   and commits. The design meant all history; projects quiet for longer than 7 days are not reachable from the
   page, because finding them means reading every old transcript. The control's tooltip says so.
+- **A subagent quiet since before its parent's current Agent call reads idle** (R28, found in the live check). Its
+  parent waits on a newer subagent, and every process the parent started since the old tool began would count as
+  its CPU: one with a Bash call pending 4 days read Working.
+- **The status-line wrap never takes Windows' `System32ash.exe` for Git Bash.** It is the WSL launcher, which
+  fails without a Linux distribution.
+- **A background job is recognised only from the start of a `run_in_background` call's result** (found in the live
+  check). A command whose output quoted Claude Code's background message read as a job running for 12 hours.
+  A job ended with `TaskStop` (or the older `KillShell`) gets no completion note, so a successful stop ends it;
+  one stopped that way read as running for a day and a half.
 
 Measurements, this PC, 2026-11-18/19 (one core = 100%):
 - Process sampler: 2.32% at 5 s with the full query, 1.17% with the restricted query, 0.56% at 15 s.
@@ -331,9 +340,10 @@ Measurements, this PC, 2026-11-18/19 (one core = 100%):
 - One API reply is often several transcript entries repeating the same usage (239 distinct requests over 505
   entries), so tokens are summed once per request.
 
-Still waiting on the owner: sign-off on the rule file's text, and two choices built as provisional: whether a
-finished plan nobody marked folds away after 7 days untouched with no live session, and whether commits name the
-plan and task (asked in the rule text).
+The owner approved the rule text and chose both ways for finished plans nobody marked: commits name the plan and
+task, and a plan untouched for 7 days with no live session folds into "Done earlier". Folding is worked out on
+every refresh, so a plan comes back when one of its tasks starts again. A one-off catch-up for projects older than
+the dashboard is a follow-up.
 
 Known limits: removal leaves the runtime files (`config.json`, `usage.json`, the work log) and doesn't stop a
 running server (it stops itself after 30 minutes with no live session, or from the page's Stop). The shortcut stores the Node path

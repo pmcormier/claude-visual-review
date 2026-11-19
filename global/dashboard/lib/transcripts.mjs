@@ -7,7 +7,11 @@ import { loadConfig } from './config.mjs';
 const MIN = 60000;
 const KEEP_REFS = 200;
 const KEEP_EVENTS = 500;
-const BG_RE = /Command running in background with ID: .*?Output is being written to: (.+?\.output)/s;
+// Claude Code's reply to a run_in_background call starts with this line. It is matched only at the start of the
+// result of such a call: a command whose output quotes it (a transcript excerpt) has finished, not left a job running.
+const BG_RE = /^\s*Command running in background with ID: (\S+?)\.?\s+Output is being written to: (.+?\.output)/;
+// Tools that end a background job by its ID. A stopped job gets no completion note, so a successful stop ends it.
+const STOP_TOOLS = new Set(['TaskStop', 'KillShell', 'KillBash']);
 const TASK_RE = /\bTask (\d+)\b/g;
 // Same patterns as plan-hook.mjs: case-insensitive (Windows paths), either separator.
 const PLAN_RE = /(?:^|[\\/])docs[\\/]superpowers[\\/]plans[\\/][^\\/]+\.md$/i;
@@ -94,9 +98,12 @@ function ingest(st, e) {
       if (!isObj(b) || b.type !== 'tool_result') continue;
       const p = st.pending.get(b.tool_use_id);
       if (!p) continue;
-      const m = BG_RE.exec(resultText(b.content));
-      if (m) p.outputFile = m[1]; // job still running: stays pending
+      const m = p.bg ? BG_RE.exec(resultText(b.content)) : null;
+      if (m) { p.jobId = m[1]; p.outputFile = m[2]; } // job still running: stays pending
       else st.pending.delete(b.tool_use_id);
+      if (p.stops && b.is_error !== true) {
+        for (const [id, q] of st.pending) if (q.jobId === p.stops) st.pending.delete(id);
+      }
     }
   }
 }
@@ -112,7 +119,8 @@ function toolUse(st, b, ms, hasMs) {
   const name = typeof b.name === 'string' ? b.name : 'unknown';
   const file = typeof input.file_path === 'string' ? input.file_path : null;
   const command = typeof input.command === 'string' ? input.command : file;
-  if (typeof b.id === 'string') st.pending.set(b.id, { name, command, startedMs: hasMs ? ms : null, outputFile: null });
+  const stops = STOP_TOOLS.has(name) ? [input.task_id, input.shell_id, input.bash_id].find((v) => typeof v === 'string') ?? null : null;
+  if (typeof b.id === 'string') st.pending.set(b.id, { name, command, startedMs: hasMs ? ms : null, outputFile: null, bg: input.run_in_background === true, jobId: null, stops });
   if (hasMs) {
     if (name === 'Bash' && typeof input.command === 'string') {
       st.events.push({ key: 'B\0' + input.command, command: input.command, ms });

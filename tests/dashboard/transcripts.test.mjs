@@ -50,6 +50,44 @@ test('background bash stays pending with its output file', () => withDir((d) => 
   assert.equal(s.pendingTool.outputFile, out);
 }));
 
+// Seen live 2026-11-19: a job ended with TaskStop gets no completion note; it read "running" for a day and a half.
+test('a background job stopped with TaskStop is no longer pending', () => withDir((d) => {
+  const p = join(d, 't.jsonl');
+  const bg = (id, job) => [
+    toolUse(id, 'Bash', { command: `watch ${job}`, run_in_background: true }),
+    result(id, [{ type: 'text', text: `Command running in background with ID: ${job}. Output is being written to: ${join(d, job)}.output` }]),
+  ];
+  writeFileSync(p, lines(
+    ...bg('toolu_a', 'jobA'),
+    ...bg('toolu_b', 'jobB'),
+    toolUse('toolu_s', 'TaskStop', { task_id: 'jobB' }),
+    result('toolu_s', [{ type: 'text', text: '{"message":"Successfully stopped task: jobB (watch jobB)"}' }]),
+    toolUse('toolu_k', 'KillShell', { shell_id: 'jobA' }),
+    { type: 'user', timestamp: iso(1), message: { content: [{ type: 'tool_result', tool_use_id: 'toolu_k', is_error: true, content: 'No such shell' }] } },
+  ));
+  // jobB is gone; the failed KillShell leaves jobA running.
+  assert.equal(scanTranscript(p, NOW).pendingTool?.command, 'watch jobA');
+  appendFileSync(p, lines(
+    toolUse('toolu_k2', 'KillShell', { shell_id: 'jobA' }),
+    result('toolu_k2', [{ type: 'text', text: 'Shell jobA killed' }]),
+  ));
+  assert.equal(scanTranscript(p, NOW).pendingTool, null);
+}));
+
+// Seen live 2026-11-19: a foreground command printed a transcript excerpt quoting that message, and the dashboard
+// showed it "running" for 12 hours.
+test('a foreground result that quotes the background message is finished', () => withDir((d) => {
+  const p = join(d, 't.jsonl');
+  const quoted = 'match: "Command running in background with ID: job9. Output is being written to: x/job9.output"';
+  writeFileSync(p, lines(
+    toolUse('toolu_f', 'Bash', { command: 'grep background t.jsonl' }),
+    result('toolu_f', [{ type: 'text', text: quoted }]),
+    toolUse('toolu_g', 'Bash', { command: 'grep again', run_in_background: true }),
+    result('toolu_g', [{ type: 'text', text: `found it\n${quoted}` }]),
+  ));
+  assert.equal(scanTranscript(p, NOW).pendingTool, null);
+}));
+
 test('api error as last entry', () => withDir((d) => {
   const p = join(d, 't.jsonl');
   writeFileSync(p, lines({ type: 'user', timestamp: iso(3), message: { content: 'hello' } },

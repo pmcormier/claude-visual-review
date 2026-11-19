@@ -137,7 +137,7 @@ test('subagent never-reports rule needs the parent to be waiting on it', async (
     writeFileSync(join(dir1, 'agent-w.jsonl'), JSON.stringify(toolAt(now - 3 * 1440 * MIN, 'wb', 'Bash', { command: 'sleep 9' })) + '\n');
     utimesSync(join(dir1, 'agent-w.jsonl'), new Date(now - 3 * 1440 * MIN), new Date(now - 3 * 1440 * MIN));
     // Parent waits on an Agent call: the quiet subagent looks stuck.
-    transcript(w, root, 's2', [toolAt(now - 10000, 'a1', 'Agent', { prompt: 'go' })]);
+    transcript(w, root, 's2', [toolAt(now - 31 * MIN, 'a1', 'Agent', { prompt: 'go' })]);
     sub('s2', 'y', false);
     session(w, 202, root, 's2', 'busy');
     // Parent died with a tool pending: it is gone, its finished subagent is idle.
@@ -255,6 +255,12 @@ test('stall CPU is the pending tool\'s own processes, not Claude Code or its MCP
       writeFileSync(join(dir, 'agent-s.jsonl'), JSON.stringify(toolAt(toolStart, 'sb', 'Bash', { command: 'make' })) + '\n');
       utimesSync(join(dir, 'agent-s.jsonl'), new Date(now - 25 * MIN), new Date(now - 25 * MIN));
       writeFileSync(join(dir, 'agent-s.meta.json'), JSON.stringify({ description: 'build', finished: false }));
+      // Same parent, an older subagent left with a Bash call pending for 3 days (seen live 2026-11-19): every
+      // process the parent started since then reads as its CPU, yet the parent waits on a newer call, not on it.
+      const days3 = now - 3 * 1440 * MIN;
+      writeFileSync(join(dir, 'agent-o.jsonl'), JSON.stringify(toolAt(days3, 'ob', 'Bash', { command: 'sleep 9' })) + '\n');
+      utimesSync(join(dir, 'agent-o.jsonl'), new Date(days3), new Date(days3));
+      writeFileSync(join(dir, 'agent-o.meta.json'), JSON.stringify({ description: 'old review', finished: false }));
       const { buildModel } = await import('../../global/dashboard/lib/model.mjs');
       const m = await buildModel(now, { sampler: { alive: () => true, descendants: table(toolChildCpu) } });
       const by = Object.fromEntries(m.projects[0].sessions.map((s) => [s.sessionId, s]));
@@ -268,12 +274,15 @@ test('stall CPU is the pending tool\'s own processes, not Claude Code or its MCP
   assert.match(quietTool.h1.evidence, /0% CPU/);
   assert.equal(quietTool.q1.cpuPct, null); // nothing pending: CPU not consulted
   assert.equal(quietTool.q1.state, 'stuck');
-  assert.equal(quietTool.a1.subagents[0].state, 'stuck');
+  const subs = (by) => Object.fromEntries(by.a1.subagents.map((a) => [a.agentId, a.state]));
+  assert.equal(subs(quietTool).s, 'stuck');
+  assert.equal(subs(quietTool).o, 'idle'); // quiet since before the parent's Agent call: history
 
   const busyTool = await run(40);
   assert.equal(busyTool.h1.cpuPct, 40);
   assert.equal(busyTool.h1.state, 'working');
-  assert.equal(busyTool.a1.subagents[0].state, 'working');
+  assert.equal(subs(busyTool).s, 'working');
+  assert.equal(subs(busyTool).o, 'idle'); // later processes are not its CPU
 });
 
 test('toolCpu: unknown when the sampler has no figure, 0 when the tool started a quiet process', async () => {
