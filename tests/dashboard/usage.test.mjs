@@ -145,3 +145,48 @@ test('readUsage converts seconds to ms, flags stale, handles missing file', asyn
   assert.equal(u.stale, true);
   rmSync(home, { recursive: true, force: true });
 });
+
+// R23: Claude Code starts the status line in bash (Git Bash on Windows), so a bash-only original must keep
+// working behind the tap. Skipped when no bash is found.
+function findBash() {
+  if (process.env.SHELL && existsSync(process.env.SHELL)) return process.env.SHELL;
+  const exts = process.platform === 'win32' ? ['.exe', ''] : [''];
+  for (const dir of String(process.env.PATH || '').split(process.platform === 'win32' ? ';' : ':')) {
+    for (const e of exts) { const p = join(dir, 'bash' + e); if (dir && existsSync(p)) return p; }
+  }
+  return null;
+}
+const BASH = findBash();
+// $((…)), single quotes and a pipe: none of these mean the same thing in cmd.exe.
+const BASH_ONLY = `printf '%s|' "$((40+2))"; tr 'a-z' 'A-Z'`;
+
+test('tap runs a bash-only original in the SHELL Claude Code used', { skip: !BASH && 'no bash here' }, () => {
+  const { home } = setup({ type: 'command', command: BASH_ONLY });
+  const env = { ...process.env, CVR_DASH_CLAUDE_HOME: home, SHELL: BASH };
+  const r = spawnSync(process.execPath, [TAP], { input: 'abc', env });
+  assert.equal(r.status, 0, String(r.stderr));
+  assert.equal(r.stdout.toString(), '42|ABC');
+  rmSync(home, { recursive: true, force: true });
+});
+
+test('tap finds bash on PATH under Git Bash when SHELL is not set', { skip: (!BASH || process.platform !== 'win32') && 'Windows with bash only' }, () => {
+  const { home } = setup({ type: 'command', command: BASH_ONLY });
+  const env = { ...process.env, CVR_DASH_CLAUDE_HOME: home, MSYSTEM: 'MINGW64' };
+  delete env.SHELL;
+  env.PATH = `${dirname(BASH)};${env.PATH ?? env.Path ?? ''}`;
+  delete env.Path;
+  const r = spawnSync(process.execPath, [TAP], { input: 'abc', env });
+  assert.equal(r.status, 0, String(r.stderr));
+  assert.equal(r.stdout.toString(), '42|ABC');
+  rmSync(home, { recursive: true, force: true });
+});
+
+test('tap falls back to the platform shell with no SHELL and no Git Bash', () => {
+  const { home } = setup({ type: 'command', command: ECHO });
+  const env = { ...process.env, CVR_DASH_CLAUDE_HOME: home };
+  delete env.SHELL; delete env.MSYSTEM;
+  const r = spawnSync(process.execPath, [TAP], { input: 'plain', env });
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout.toString(), 'plain');
+  rmSync(home, { recursive: true, force: true });
+});

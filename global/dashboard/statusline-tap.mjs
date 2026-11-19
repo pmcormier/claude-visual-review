@@ -1,8 +1,8 @@
 // Status-line tap: records plan-usage numbers, then runs the user's original status line unchanged.
 // Runs on every refresh: node built-ins only, no config load. Never throws; any error still runs the original.
 import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync, renameSync, unlinkSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, writeFileSync, renameSync, unlinkSync, mkdirSync, statSync } from 'node:fs';
+import { join, isAbsolute, delimiter } from 'node:path';
 import { dashHome } from './lib/paths.mjs';
 
 function readStdin() {
@@ -40,6 +40,29 @@ function originalCommand(dir) {
   } catch { return null; }
 }
 
+const isFile = (p) => { try { return statSync(p).isFile(); } catch { return false; } };
+
+// `bash` from PATH (absolute entries only), with Windows' executable extensions.
+function bashOnPath() {
+  const exts = process.platform === 'win32' ? ['.exe', '.cmd', '.bat', ''] : [''];
+  for (const dir of String(process.env.PATH || '').split(delimiter)) {
+    if (!dir || !isAbsolute(dir)) continue;
+    for (const e of exts) { const p = join(dir, 'bash' + e); if (isFile(p)) return p; }
+  }
+  return null;
+}
+
+// Run the original the way Claude Code ran this tap (R23): Claude Code starts status lines in the user's shell
+// (bash on Windows when Git Bash is installed), so `~`, `$HOME`, `$(...)`, single quotes and pipes must mean
+// what they meant before the tap was installed. SHELL naming an existing program wins; else a `bash` on PATH
+// when the environment is Git Bash's (MSYSTEM set); else the platform shell (cmd.exe on Windows).
+function shellArgs(command, env = process.env) {
+  const sh = env.SHELL;
+  if (typeof sh === 'string' && sh && isFile(sh)) return { file: sh, args: ['-c', command], shell: false };
+  if (env.MSYSTEM) { const b = bashOnPath(); if (b) return { file: b, args: ['-c', command], shell: false }; }
+  return { file: command, args: [], shell: true };
+}
+
 async function main() {
   const input = await readStdin().catch(() => Buffer.alloc(0));
   process.stdout.on('error', () => {}); // EPIPE if the reader closed early
@@ -52,7 +75,8 @@ async function main() {
   if (!command) return 0;
 
   return new Promise((resolve) => {
-    const child = spawn(command, { shell: true, stdio: ['pipe', 'pipe', 'inherit'] });
+    const how = shellArgs(command);
+    const child = spawn(how.file, how.args, { shell: how.shell, stdio: ['pipe', 'pipe', 'inherit'], windowsHide: true });
     child.stdout.on('data', (c) => process.stdout.write(c));
     child.stdin.on('error', () => {}); // original may exit without reading
     child.stdin.end(input);

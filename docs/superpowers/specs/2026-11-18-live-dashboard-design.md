@@ -166,7 +166,8 @@ TodoWrite calls in any transcript), so that list is not a usable source.
 - **The tap:** the installer replaces the `statusLine` command with `node ~/.claude/dashboard/statusline-tap.mjs`,
   storing the original command in its manifest. The tap reads stdin, writes `rate_limits` (when present) with a
   timestamp to `~/.claude/dashboard/usage.json`, then runs the original command with the same stdin and prints
-  its output unchanged. With no original command it prints nothing. Removal restores the original command.
+  its output unchanged. It runs the original in the shell Claude Code used for the tap (bash, when Claude Code
+  runs under Git Bash), so a command written for that shell keeps working. With no original command it prints nothing. Removal restores the original command.
 - **Limits:** the numbers exist only for Pro, Max and Ultra subscribers, after a session's first reply. Otherwise
   the meters read "Usage not available". Team/Enterprise behaviour is not documented.
 - **Tokens:** per session and per day, summed from transcripts' `message.usage`, shown in session hover details.
