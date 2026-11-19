@@ -353,3 +353,37 @@ Known limits: removal leaves the runtime files (`config.json`, `usage.json`, the
 running server (it stops itself after 30 minutes with no live session, or from the page's Stop). The shortcut stores the Node path
 found at install time, so rerun the installer after switching Node versions. Usage numbers need a Pro, Max or
 Ultra plan and appear after a session's first reply.
+
+## 32. Older projects: a starting line at install, and `Status:` lines in the repo (2026-11-19)
+Projects older than the dashboard had plans whose finished tasks were never ticked, so the page showed them as
+work left: one project here had 82 plans with 2,086 unticked boxes. The owner leaves projects idle for months and
+comes back, so old plans must not disappear for good. Task status also belongs in each repo, not in the
+dashboard.
+
+Considered:
+- **Ticking every old box from git history.** Accurate, but Claude would have to read each plan's code, and the
+  repo would get large diffs. Not built; ticking a project's plans by hand is still possible, and the rule covers it.
+- **Keeping "still open" picks in a dashboard file.** Cheap, but that is task status stored outside the repo. The
+  owner rejected it.
+- **Chosen:** a starting line at install, plus an optional catch-up that writes `Status: done` or
+  `Status: dropped` into old plans in the repo.
+
+How it works:
+- The installer writes `~/.claude/dashboard/installed.json` once, the first time Dashboard is installed. A
+  reinstall keeps it.
+- A plan added to its repo before that date (its git add date, or its file's creation time when it has no
+  history), with no change since, folds under "Before the dashboard (N)" and leaves work left and Up next. The
+  date only folds plans; it never marks anything done.
+- The plan comes back by itself when any of these happens: some of its boxes are ticked but not all, one of its
+  tasks starts or is linked to a live session, or the file changes. A checkout after the install also counts as a
+  change; that is accepted.
+- A `Status: done` line marks the whole plan finished. `Status: dropped` hides it outside "Show all history".
+- `/dashboard catch-up` lists the candidates, the person picks the plans still open, and Claude writes the line
+  into the rest. It commits only after the person's yes and never pushes.
+
+The owner also settled:
+- **Small tasks outside any plan get no record in the repo.** The work log is live activity, and the commit is
+  the lasting record.
+- **A repo's own commit-message format wins** over the rule's "plan name + Task N" subject, because the owner's
+  work machine has repos shared with other people.
+- **Seeing teammates' live work** (for example, GitHub Issues assigned to people) is a later build.

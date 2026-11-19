@@ -19,7 +19,10 @@ nothing, and it never fails a session.
 - **Plans:** when you finish a task from a plan, tick its checkboxes in the plan file. When you commit work for a
   plan task, start the commit's first line with the plan's name and the task, for example
   `live-dashboard Task 3: transcript signals`. The dashboard marks a plan task done from a commit only when
-  the first line names both, so other commits are never misread.
+  the first line names both, so other commits are never misread. When the repo's CLAUDE.md or AGENTS.md sets its
+  own commit-message format, follow that instead. To close a whole plan, add `Status: done` (or
+  `Status: dropped`) on the line after its title; `/dashboard catch-up` does this for plans from before the
+  dashboard.
 
 This file is installed by claude-visual-review's Dashboard component and removed with it. To change how it
 works for you, add a rule file of your own in `~/.claude/rules/`; updates never touch it.

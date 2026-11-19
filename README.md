@@ -32,7 +32,7 @@ The installer asks which components you want (or takes `-Components`):
 | Bmad | `bmad/interactive-review.md`, `bmad/write_overrides.py` | The review layer for BMAD workflows, and the script that writes personal (gitignored) overrides into a BMAD project. |
 | Fable | `rules/fable.md`, `bmad/fable-final-review.md` | A final review on the Fable model before a BMAD planning doc is final. Needs access to Fable. |
 | Rigor | `rules/rigor.md`, `rigor/pushback.md`, `hooks/pushback-check.mjs` | Verification rules (label claims verified, recalled or inferred; check premises; run the experiment), and a short pushback check that a `UserPromptSubmit` hook sends with every message, so Claude holds a correct position under pushback unless you bring new evidence. Needs Node.js. |
-| Dashboard | `dashboard/` (server, page, work-log tool), `commands/dashboard.md`, `rules/dashboard.md` | Opt-in. A local page (`http://127.0.0.1:47800/` by default) showing every Claude Code session on the machine: what is moving, done and next, and what has quietly stopped, each stall with its evidence. A `SessionStart` hook starts its server, a `PostToolUse` hook notes plan files Claude touches, and it wraps your status line to read the 5-hour and weekly usage limits (your original is saved and restored on removal). Adds a Start menu shortcut and `/dashboard`. The rule asks Claude to log each task with `note.mjs`. It writes only under `~/.claude/dashboard/`, never into your projects. Needs Node.js. |
+| Dashboard | `dashboard/` (server, page, work-log tool), `commands/dashboard.md`, `rules/dashboard.md` | Opt-in. A local page (`http://127.0.0.1:47800/` by default) showing every Claude Code session on the machine: what is moving, done and next, and what has quietly stopped, each stall with its evidence. A `SessionStart` hook starts its server, a `PostToolUse` hook notes plan files Claude touches, and it wraps your status line to read the 5-hour and weekly usage limits (your original is saved and restored on removal). Adds a Start menu shortcut and `/dashboard`. The rule asks Claude to log each task with `note.mjs`. Plans already in your repos when you install it fold under "Before the dashboard" until they show progress; `/dashboard catch-up` marks a project's older plans `Status: done` or `Status: dropped` in the repo, after you choose and approve. It writes only under `~/.claude/dashboard/`, never into your projects. Needs Node.js. |
 
 It also sets `PLANNOTATOR_BROWSER` in `~/.claude/settings.json`, and with Rigor or Dashboard adds their hooks there (other
 settings and hooks are kept), checks that
@@ -88,7 +88,7 @@ loads every file in `rules/`, and the installer never touches yours. Plannotator
 - BMAD's resolver has no global layer, so each BMAD project needs its own overrides (`-BmadProject`, or
   `python -I ~/.claude/bmad/write_overrides.py <project>` after `bmad setup`).
 - Dashboard: usage numbers need a Pro, Max or Ultra plan and appear after a session's first reply. Removal
-  leaves its runtime files in `~/.claude/dashboard/` (`config.json`, `usage.json`, the work log) and doesn't stop
+  leaves its runtime files in `~/.claude/dashboard/` (`config.json`, `usage.json`, `installed.json`, the work log) and doesn't stop
   a running server; the server stops itself after 30 minutes with no live session, or use Stop on the page.
 - Opening in a VS Code tab needs the Plannotator WebView extension and a session started in a VS Code
   terminal. Anywhere else, reviews open in the browser.

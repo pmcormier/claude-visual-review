@@ -17,6 +17,8 @@ them. Ask before anything that changes my machine beyond what's listed here, and
    - Which components: Review (always), Methods, Bmad, Fable, Rigor, Dashboard. Explain each in a line, from the README.
    - For Rigor and Dashboard: whether Node.js is installed (they run on `node`). Dashboard is opt-in: it wraps
      the status line (saved and restored on removal) and adds a Start menu shortcut, so say so when I choose it.
+     Plans already in my repos fold as "Before the dashboard"; `/dashboard catch-up` in a project marks the
+     finished ones, so mention it when I choose Dashboard.
    - Whether I have access to the Fable model (Fable is pointless without it).
    - Whether I want superpowers and/or BMAD. Methods is written for them; skip it if I want neither.
 3. **Install superpowers and BMAD if I said yes**, from their official instructions: look them up now (the
