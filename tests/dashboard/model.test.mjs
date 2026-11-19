@@ -101,6 +101,9 @@ test('model orders projects stuck, waiting, working, then others', async () => {
     assert.equal(a.sessions[0].life.length, 60);
     const g = m.projects[2].sessions[0];
     assert.equal(g.linkedTask?.title, 'Second');
+    const tasks = m.projects[2].tree.epics.flatMap((e) => e.tasks);
+    assert.equal(tasks.length, 2);
+    assert.ok(tasks.every((t) => !('ticked' in t))); // plan steps never reach the page
     assert.equal(m.projects[2].quietSince, null);
     const d = m.projects[3];
     assert.equal(d.open, false);
@@ -126,6 +129,10 @@ test('subagent never-reports rule needs the parent to be waiting on it', async (
     transcript(w, root, 's1', [toolAt(now - 10000, 'b1', 'Bash', { command: 'npm test' })]);
     sub('s1', 'x', false);
     session(w, 201, root, 's1', 'busy');
+    // Same parent, a subagent left with a tool pending for days: still idle (nobody waits on it).
+    const dir1 = join(w.claude, 'projects', enc(root), 's1', 'subagents');
+    writeFileSync(join(dir1, 'agent-w.jsonl'), JSON.stringify(toolAt(now - 3 * 1440 * MIN, 'wb', 'Bash', { command: 'sleep 9' })) + '\n');
+    utimesSync(join(dir1, 'agent-w.jsonl'), new Date(now - 3 * 1440 * MIN), new Date(now - 3 * 1440 * MIN));
     // Parent waits on an Agent call: the quiet subagent looks stuck.
     transcript(w, root, 's2', [toolAt(now - 10000, 'a1', 'Agent', { prompt: 'go' })]);
     sub('s2', 'y', false);
@@ -138,7 +145,7 @@ test('subagent never-reports rule needs the parent to be waiting on it', async (
     const { buildModel } = await import('../../global/dashboard/lib/model.mjs');
     const m = await buildModel(now, { sampler: sampler((pid) => pid !== 203) });
     const by = Object.fromEntries(m.projects[0].sessions.map((s) => [s.sessionId, s]));
-    assert.equal(by.s1.subagents[0].state, 'idle');
+    assert.deepEqual(by.s1.subagents.map((a) => [a.agentId, a.state]).sort(), [['w', 'idle'], ['x', 'idle']]);
     assert.equal(by.s2.subagents[0].state, 'stuck');
     assert.equal(by.s3.state, 'gone');
     assert.equal(by.s3.subagents[0].state, 'idle');

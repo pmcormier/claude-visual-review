@@ -13,8 +13,8 @@
 //    for GONE_KEEP_MS after its last transcript write; otherwise it closed normally and is dropped.
 //  - A session record without a pid counts as not alive (Claude Code names the file after the pid).
 //  - Subagents: status null, alive = the parent's, CPU = the parent's tree (subagents run in its process).
-//    A finished subagent of a gone parent shows idle. The "never reports" stall needs the parent to be
-//    waiting on it actively (its pending tool is an Agent/Task call); otherwise the quiet subagent shows idle.
+//    A finished subagent of a gone parent shows idle. Any "stuck" subagent verdict needs the parent to be
+//    waiting on it actively (its pending tool is an Agent/Task call); otherwise the subagent shows idle.
 //  - Finished/idle subagents collapse to the last KEEP_DONE_SUBAGENTS plus a count (subagentsHidden).
 //  - Commits are read for the last `commitDays` (30) days, and events.jsonl lines older than that are ignored:
 //    commit matching clauses b/c (plan birth from a real add, session-linked commits) only see adds and
@@ -169,8 +169,10 @@ function subagentView(a, parent, now, th) {
     outputIdleMs: idleOf(a.signals.pendingTool, now), finished: a.finished, now,
   }, th);
   if (v.state === 'gone' && a.finished === true) v = { state: 'idle', evidence: null, hint: null, since: a.lastWriteMs };
-  // "Never reports" needs the parent to be waiting on it actively; stall.mjs leaves that clause to this layer.
-  if (v.state === 'stuck' && !parent.waitsOnAgent && !a.signals.pendingTool && !/^Last reply was an API error/.test(v.evidence ?? '')) {
+  // A subagent is only "stuck" while its parent waits on it actively (stall.mjs leaves that clause here). It
+  // gates every stuck rule, not just "never reports": a subagent left with a tool pending after its parent moved
+  // on (measured 2026-11-19: one 4 days old) is history, not a stall.
+  if (v.state === 'stuck' && !parent.waitsOnAgent) {
     v = { state: 'idle', evidence: null, hint: v.hint, since: a.lastWriteMs };
   }
   return {
@@ -222,6 +224,13 @@ export function orderProjects(projects) {
     || String(a.name).localeCompare(String(b.name)));
 }
 
+// Plan steps never appear on the page, so each task's `ticked` counts are dropped (they were ~10% of a large
+// project's tree).
+function trimTree(tree) {
+  for (const e of tree.epics) for (const t of e.tasks) delete t.ticked;
+  return tree;
+}
+
 function findTask(tree, id) {
   for (const e of tree?.epics ?? []) {
     const t = e.tasks.find((x) => x.id === id);
@@ -242,11 +251,11 @@ async function buildProject(root, sessions, lastSeenMs, events, now, th, sinceMs
   let error = null;
   try {
     const [bmad, commits] = await Promise.all([readBmad(root), readCommits(root, sinceMs)]);
-    tree = buildTree(root, {
+    tree = trimTree(buildTree(root, {
       worklog: readWorklog(root), plans: readPlans(root), bmad, inbox: readInbox(root), commits,
       sessions: sessions.filter((s) => s.alive).map((s) => ({ sessionId: s.sessionId, signals: s._signals })),
       events: events.filter((e) => inside(rootKey, e.file)), now,
-    }, th);
+    }, th));
     for (const s of sessions) {
       const id = tree.links?.[s.sessionId];
       s.linkedTask = id ? findTask(tree, id) : null;
