@@ -6,7 +6,7 @@
 import {
   STATE_LABEL, STATE_CLASS, formatDuration, agoWords, updatedText, shortId, shortDate, lifePath, foldEpics,
   effortLeft, liveIds, usageView, detailText, sessionWhat, nowLine, triage, epicDone, epicLastActivity, sizeSummary,
-  filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder,
+  filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, spendLine, projectSpend,
 } from '/render.mjs';
 
 const MIN = 60000;
@@ -158,9 +158,13 @@ function buildDetails(m) {
   details.clear();
   for (const p of arr(m?.projects)) {
     details.set(keyOf('p', p.root), { kind: 'project', project: p });
+    const ps = projectSpend(p.spend);
+    if (ps) details.set(keyOf('$', p.root), { kind: 'spend', text: ps.tip });
     const byId = new Map(arr(p.sessions).map((s) => [s.sessionId, s]));
     for (const s of arr(p.sessions)) {
       details.set(keyOf('s', p.root, s.sessionId), { kind: 'session', session: s, project: p });
+      const sl = spendLine(s.spend);
+      if (sl) details.set(keyOf('$', p.root, s.sessionId), { kind: 'spend', text: sl.tip });
       for (const a of arr(s.subagents)) details.set(keyOf('a', p.root, s.sessionId, a.agentId), { kind: 'subagent', subagent: a, session: s, project: p });
     }
     for (const e of arr(p.tree?.epics)) {
@@ -186,6 +190,8 @@ function sessionBlock(p, s, now) {
   const keys = alertKeys({ sessions: [{ ...s, subagents: [] }] });
   const sub = h('div', { class: 'sub' }, STATE_LABEL[s.state] ?? 'Unknown',
     line ? [' · ', `${line.prefix} `, since(line.from, now), line.suffix ?? ''] : null);
+  const sl = spendLine(s.spend);
+  const spendRow = sl ? h('div', { class: 'spend', data: { dk: keyOf('$', p.root, s.sessionId) }, text: sl.text }) : null;
   const onTask = link
     ? h('div', { class: 'on-task' }, 'Working on ', h('button', { type: 'button', class: 'go', data: { go: link, fk: `go|${s.sessionId}` }, text: cur.title || 'a task' }))
     : h('div', { class: 'on-task none', text: 'Not linked to a task yet' });
@@ -200,7 +206,7 @@ function sessionBlock(p, s, now) {
       finished ? h('div', { class: 'subs', text: `${finished} ${finished === 1 ? 'subagent' : 'subagents'} finished` }) : null)
     : null;
   return h('div', { class: `sess s-${cls}`, data: { dk: keyOf('s', p.root, s.sessionId), link, alerts: keys.join(',') || null } },
-    h('div', { class: 'what' }, h('b', { text: `Session ${shortId(s.sessionId)}` }), ' · ', what, sub, onTask),
+    h('div', { class: 'what' }, h('b', { text: `Session ${shortId(s.sessionId)}` }), ' · ', what, sub, spendRow, onTask),
     life(s.life),
     s.evidence ? h('div', { class: 'evidence', text: s.evidence }) : null,
     s.hint ? h('div', { class: 'hint', text: s.hint }) : null,
@@ -330,6 +336,7 @@ function panelFor(p, now) {
       fresh ? h('span', { class: 'newbadge', text: 'New' }) : null,
       p.state !== 'quiet' ? chip(p.state) : null,
       h('span', { class: 'meta' }, h('span', { text: leftText(p, shown, true) }),
+        projectSpend(p.spend) ? h('span', { class: 'spend', data: { dk: keyOf('$', p.root) }, text: projectSpend(p.spend).text }) : null,
         p.tree?.spentMin > 0 ? h('span', { class: 't', text: formatDuration(p.tree.spentMin * MIN) }) : null),
       arr(p.tree?.epics).length ? foldActs(p) : null),
     p.error ? h('div', { class: 'err', text: p.error }) : null,

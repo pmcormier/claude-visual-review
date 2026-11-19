@@ -191,7 +191,42 @@ export function groupEpics(epics, now, liveSessionIds, stateOf) {
   return out;
 }
 
-const PANEL_RANK = { stuck: 0, waiting: 1, working: 2 };
+// ---- session spend (decision 34) -----------------------------------------------------------------------------
+
+const SPEND_NOTE = 'Estimated at API prices from Claude Code\'s own count; your plan may bill differently.';
+
+/** Dollars: cents under $100, whole dollars above, "<$0.01" for a tiny non-zero cost. */
+export function formatSpend(usd) {
+  if (!num(usd) || usd < 0) return '';
+  if (usd > 0 && usd < 0.005) return '<$0.01';
+  if (usd < 100) return `$${usd.toFixed(2)}`;
+  return `$${Math.round(usd).toLocaleString('en-US')}`;
+}
+
+/** A session's always-visible spend line and its tooltip. */
+export function spendLine(spend) {
+  if (!spend || typeof spend !== 'object') return null;
+  const tin = num(spend.tokensIn) ? spend.tokensIn : 0;
+  const tout = num(spend.tokensOut) ? spend.tokensOut : 0;
+  const tokens = `${formatTokens(tin + tout)} tokens`;
+  const split = `${formatTokens(tin)} in, ${formatTokens(tout)} out.`;
+  if (!num(spend.costUsd)) {
+    return { text: tokens, tip: `${split} No cost shown: this session's status line has not reported one (for example a headless run).` };
+  }
+  return { text: `${formatSpend(spend.costUsd)} · ${tokens}`, tip: `${SPEND_NOTE} ${split}` };
+}
+
+/** A project's spend for its header: this week's total; all time in the tooltip. Null when nothing is recorded. */
+export function projectSpend(s) {
+  if (!s || typeof s !== 'object' || !(s.sessions > 0)) return null;
+  const n = s.sessions;
+  return {
+    text: `${formatSpend(num(s.weekUsd) ? s.weekUsd : 0)} this week`,
+    tip: `${formatTokens(num(s.weekTokens) ? s.weekTokens : 0)} tokens this week. ${formatSpend(num(s.totalUsd) ? s.totalUsd : 0)} in all, across ${n} ${n === 1 ? 'session' : 'sessions'}, kept for a year. ${SPEND_NOTE}`,
+  };
+}
+
+const PANEL_RANK ={ stuck: 0, waiting: 1, working: 2 };
 /** Open project panels: by state (stuck, waiting, working, the rest), then by name, so busy projects never swap. */
 export function panelOrder(projects) {
   const r = (p) => PANEL_RANK[p?.state] ?? 3;
@@ -363,6 +398,7 @@ export function detailText(item) {
       case 'subagent': return subagentText(item);
       case 'epic': return epicText(item);
       case 'project': return projectText(item);
+      case 'spend': return typeof item.text === 'string' ? item.text : '';
       default: return '';
     }
   } catch {

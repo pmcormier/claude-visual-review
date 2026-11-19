@@ -438,3 +438,25 @@ How it works:
 
 Live check on the owner's machine (2026-11-19): in the largest active project, the default view shows 79 rows
 and Expand all shows 361. Collapse all leaves 6 group headers.
+
+## 34. Session spend comes from the status line and is kept for a year (2026-11-19)
+The owner wanted each session's spend, in dollars and tokens, on its card all the time, and kept after the
+session ends ("a nice to know over time"). Tokens were only in the hover text and only for live sessions; dollars
+were nowhere. Claude Code deletes transcripts after 30 days by default (`cleanupPeriodDays`).
+
+Considered:
+- **Dollars from tokens times a price table.** Works for any transcript, but the table goes stale and gives a
+  second number that disagrees with Claude Code's own. Not built.
+- **Chosen:** the status-line tap, which already reads Claude Code's status-line input for the usage limits, also
+  records `cost.total_cost_usd` and the context-window token totals, one file per session under
+  `~/.claude/dashboard/spend/<session id>.json`. The model reads them (re-reading only files that changed), and the
+  server deletes files untouched for a year when it starts.
+
+What the page shows:
+- Each session card: `$1.24 · 3.1M tokens`, always visible. The note that the dollars are an API-price estimate
+  that the plan may bill differently is in its tooltip only, at the owner's request.
+- Each project header: `$X this week`; the tooltip has the all-time total and the number of sessions. Finished
+  sessions count here, which is how spend is kept over time.
+
+Costs of this choice: a session whose status line never ran (a headless run) shows tokens only, from its
+transcript. Spend is recorded only from when this tap was installed; earlier sessions have none.

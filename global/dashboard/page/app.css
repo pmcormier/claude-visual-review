@@ -244,3 +244,7 @@ main > section { display: grid; gap: 32px; min-width: 0; }
 .keypop ul { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
 .keypop li { display: flex; align-items: center; gap: 8px; }
 .keypop p { margin: 0; font-size: .8rem; }
+
+/* Session spend (decision 34): always on the card; the note about API prices is in its tooltip. */
+.sess .spend { font: 500 .8rem var(--mono); color: var(--muted); margin-top: 2px; width: fit-content; }
+.ph .meta .spend { font: 500 .8rem var(--mono); }

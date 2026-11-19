@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
-  sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder,
+  sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, formatSpend, spendLine, projectSpend,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -326,4 +326,40 @@ test('panelOrder sorts by state, then by name, ignoring activity', () => {
   const out = panelOrder([p('zeta', 'working', 9), p('Alpha', 'working', 1), p('beta', 'stuck', 0), p('gamma', 'idle', 5), p('delta', 'waiting', 2)]);
   assert.deepEqual(out.map((x) => x.name), ['beta', 'delta', 'Alpha', 'zeta', 'gamma']);
   assert.deepEqual(panelOrder(null), []);
+});
+
+// Session spend (decision 34): always on the card; the "API-price equivalent" note only in the tooltip.
+test('formatSpend', () => {
+  assert.equal(formatSpend(0.04), '$0.04');
+  assert.equal(formatSpend(1.236), '$1.24');
+  assert.equal(formatSpend(312.4), '$312');
+  assert.equal(formatSpend(1240), '$1,240');
+  assert.equal(formatSpend(0.001), '<$0.01');
+  assert.equal(formatSpend(0), '$0.00');
+  assert.equal(formatSpend(null), '');
+});
+
+test('spendLine: cost and tokens, tokens only without a status line', () => {
+  const a = spendLine({ costUsd: 1.24, tokensIn: 3_000_000, tokensOut: 100_000, source: 'statusline' });
+  assert.equal(a.text, '$1.24 · 3.1M tokens');
+  assert.match(a.tip, /API prices/);
+  assert.match(a.tip, /3M in, 100k out/);
+  const b = spendLine({ costUsd: null, tokensIn: 500, tokensOut: 20, source: 'transcript' });
+  assert.equal(b.text, '520 tokens');
+  assert.match(b.tip, /no cost/i);
+  assert.equal(spendLine(null), null);
+});
+
+test('projectSpend: week total on the header, all-time in the tooltip', () => {
+  const p = projectSpend({ weekUsd: 12.5, totalUsd: 80, weekTokens: 2_000_000, sessions: 9 });
+  assert.equal(p.text, '$12.50 this week');
+  assert.match(p.tip, /\$80\.00 in all, across 9 sessions/);
+  assert.match(p.tip, /API prices/);
+  assert.equal(projectSpend({ weekUsd: 0, totalUsd: 0, weekTokens: 0, sessions: 0 }), null);
+  assert.equal(projectSpend(undefined), null);
+});
+
+test('detailText shows a spend tooltip', () => {
+  assert.equal(detailText({ kind: 'spend', text: 'Estimated at API prices.' }), 'Estimated at API prices.');
+  assert.equal(detailText({ kind: 'spend' }), '');
 });
