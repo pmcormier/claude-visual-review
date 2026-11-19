@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
-  sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask,
+  sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -318,4 +318,12 @@ test('currentTask drops a linked task that is already done', () => {
   assert.equal(currentTask({ linkedTask: { id: 't', title: 'T', status: 'done' } }), null);
   assert.equal(currentTask({ linkedTask: null }), null);
   assert.equal(currentTask(null), null);
+});
+
+// Owner's pick 2026-11-19: projects in the same state keep a fixed order by name, so busy projects don't swap.
+test('panelOrder sorts by state, then by name, ignoring activity', () => {
+  const p = (name, state, lastActivityMs) => ({ name, state, lastActivityMs });
+  const out = panelOrder([p('zeta', 'working', 9), p('Alpha', 'working', 1), p('beta', 'stuck', 0), p('gamma', 'idle', 5), p('delta', 'waiting', 2)]);
+  assert.deepEqual(out.map((x) => x.name), ['beta', 'delta', 'Alpha', 'zeta', 'gamma']);
+  assert.deepEqual(panelOrder(null), []);
 });

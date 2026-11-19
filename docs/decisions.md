@@ -427,7 +427,8 @@ How it works:
 - A project's tree is not rebuilt while the mouse is over it, so rows never move while being read; it catches up
   when the mouse leaves. Only the tree is held: the session blocks above it stay live (the whole-branch review
   found that holding the whole panel froze them). Projects keep their order while the mouse is over the grid,
-  after the owner saw busy projects swapping places. The mouse is tracked by its last position, not `:hover`,
+  after the owner saw busy projects swapping places, and projects in the same state sort by name, not by
+  latest activity (the owner's pick), so two busy projects never trade places. A change of state still moves one. The mouse is tracked by its last position, not `:hover`,
   which goes stale in Chrome once the node under a still mouse is swapped (measured: 9 rebuilds while "hovered").
   Renders the person causes (the fold buttons) apply at once.
 - A task that is done is never shown as a session's current work, even if the session's last link points to it

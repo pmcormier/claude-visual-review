@@ -6,7 +6,7 @@
 import {
   STATE_LABEL, STATE_CLASS, formatDuration, agoWords, updatedText, shortId, shortDate, lifePath, foldEpics,
   effortLeft, liveIds, usageView, detailText, sessionWhat, nowLine, triage, epicDone, epicLastActivity, sizeSummary,
-  filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask,
+  filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder,
 } from '/render.mjs';
 
 const MIN = 60000;
@@ -416,7 +416,7 @@ function renderByUser() {
 
 function renderProjects(now) {
   const projects = arr(model?.projects);
-  const open = projects.filter(isOpen);
+  const open = panelOrder(projects.filter(isOpen)); // by state, then name: busy projects never swap
   const quiet = projects.filter((p) => !isOpen(p));
   sync($('#v-projects .grid'), panels, open, panelFor, now, 'panel');
   const shownQuiet = showAllQuiet ? quiet : quiet.slice(0, QUIET_SHOWN);
