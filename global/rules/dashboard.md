@@ -11,6 +11,8 @@ nothing, and it never fails a session.
   on the person, `dropped` when a step no longer applies). Finish with `note.mjs done`, or
   `note.mjs drop "<reason>"` when the task is abandoned. Starting a new task closes an unfinished one as
   not done, so log `done` when you finish.
+- **Subagents don't write the log.** The session that talks to the person logs the task, including work it
+  delegates.
 - **An Inbox checklist is mirrored here.** When you keep a `steps` checklist in a Plannotator thread, start a
   work-log entry with the same steps and update both together. The log works without Plannotator; the
   checklist is for the person, the log is for the dashboard.

@@ -89,7 +89,7 @@ loads every file in `rules/`, and the installer never touches yours. Plannotator
   `python -I ~/.claude/bmad/write_overrides.py <project>` after `bmad setup`).
 - Dashboard: usage numbers need a Pro, Max or Ultra plan and appear after a session's first reply. Removal
   leaves its runtime files in `~/.claude/dashboard/` (`config.json`, `usage.json`, the work log) and doesn't stop
-  a running server; the server stops itself after 30 idle minutes, or use Stop on the page.
+  a running server; the server stops itself after 30 minutes with no live session, or use Stop on the page.
 - Opening in a VS Code tab needs the Plannotator WebView extension and a session started in a VS Code
   terminal. Anywhere else, reviews open in the browser.
 

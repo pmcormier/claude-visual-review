@@ -296,12 +296,31 @@ like Rigor it is never removed by leaving it out of `-Components`. Where the bui
 - **Stuck subagents count in the headline,** not only stuck sessions.
 - **A heartbeat event every 5 s,** so "updated Ns ago" means "the server was last heard from", and the page says
   "Server not responding" after 60 s of silence.
-- **Light-mode stuck red darkened to `#ab241d`.** The approved token measured 4.30:1, under WCAG AA's 4.5:1.
+- **Light-mode stuck red darkened.** The approved colour fell short of WCAG AA's text contrast.
 - **A new `start` in the work log closes the session's unfinished task as not done** (doing goes back to next),
   rather than claiming it finished. A session running two tasks in parallel on purpose sees the first demoted.
-- **A background job's end is read from Claude Code's queued task notifications,** or it looked stuck forever.
+- **A background job's end is read from Claude Code's own note that it finished,** or it looked stuck forever.
 - **Child processes never run with a project as their working directory** (Windows searches it for executables
-  first, so a planted binary would run), and git runs with fsmonitor off and `GIT_*` variables cleared.
+  first, so a planted binary would run), and git runs so that a repo's own settings can't start another program
+  or point it at another repo.
+- **BMAD status runs the project's own `_bmad/scripts/config_utils.py`** (through the bmad-ticket skill's
+  script), the same trust the user's BMAD skills already give that project. Its result is reused for 5 minutes
+  while the project's BMAD files are unchanged, because each run costs about a tenth of a second of CPU.
+- **Stall CPU counts only what the pending tool started** (R22). Claude Code and its MCP servers keep a session's
+  process tree busy even when nothing happens (measured 5% to 102% for idle sessions), so the whole tree could
+  never read as quiet. With no tool pending, CPU isn't consulted: a busy session whose transcript has been quiet
+  long enough looks stuck on that alone.
+- **The status-line wrap runs the original command in the shell Claude Code used** (R23), bash under Git Bash,
+  so a status line written for bash keeps working.
+- **Subagents don't write the work log** (R24). They share their parent's session id, so a subagent starting an
+  entry would close the parent's task, and parallel subagents would overwrite each other.
+- **Plans are dated by their file when nothing else dates them, and commits are read over the whole history**
+  (R25). Without a date a finished plan nobody ticked never folded away, and a 30-day window let commit-marked
+  tasks fall back to "next". A plan file's date is when it last changed on this disk, so a fresh clone dates every
+  plan to the clone. A work-log task left in progress by a session that has ended reads as next.
+- **"Show all history" shows everything loaded** (R26): projects active in the last 7 days, with all their plans
+  and commits. The design meant all history; projects quiet for longer than 7 days are not reachable from the
+  page, because finding them means reading every old transcript. The control's tooltip says so.
 
 Measurements, this PC, 2026-11-18/19 (one core = 100%):
 - Process sampler: 2.32% at 5 s with the full query, 1.17% with the restricted query, 0.56% at 15 s.
@@ -317,6 +336,6 @@ finished plan nobody marked folds away after 7 days untouched with no live sessi
 plan and task (asked in the rule text).
 
 Known limits: removal leaves the runtime files (`config.json`, `usage.json`, the work log) and doesn't stop a
-running server (it stops itself after 30 idle minutes, or from the page's Stop). The shortcut stores the Node path
+running server (it stops itself after 30 minutes with no live session, or from the page's Stop). The shortcut stores the Node path
 found at install time, so rerun the installer after switching Node versions. Usage numbers need a Pro, Max or
 Ultra plan and appear after a session's first reply.
