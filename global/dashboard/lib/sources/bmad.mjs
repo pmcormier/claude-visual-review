@@ -11,7 +11,9 @@ import { claudeHome, dashHome } from '../paths.mjs';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const TIMEOUT_MS = 10_000;
-const TTL_MS = 30_000; // directory mtimes miss edits inside nested folders, so the cache also expires
+// Directory mtimes miss edits inside nested folders, so the cache also expires. 5 min, not 30 s: each run costs
+// ~0.12 s of python CPU per project (measured 2026-11-19), and a changed signature refreshes at once anyway.
+const TTL_MS = 5 * 60_000;
 
 // BMAD ticket `state` -> task status. 'dropped' is hidden. 'review' is what the script reports for in-review.
 const STATE = {
@@ -97,13 +99,13 @@ const lastLogged = new Map(); // resolved root -> last failure message written t
 
 const copy = (epics) => structuredClone(epics); // callers may mutate what they get
 
-async function fetchEpics(key, sig, opts) {
+async function fetchEpics(key, sig, opts, clock) {
   const failures = [];
   for (const { cmd, args } of opts.commands || defaultCommands()) {
     try {
       const out = await run(cmd, [...args, '--project-root', key, 'status']);
       const epics = mapBmadStatus(JSON.parse(out));
-      cache.set(key, { sig, at: Date.now(), epics });
+      cache.set(key, { sig, at: clock(), epics });
       lastLogged.delete(key);
       return epics;
     } catch (e) {
@@ -113,14 +115,14 @@ async function fetchEpics(key, sig, opts) {
   }
   const msg = `status failed for a project: ${failures.join('; ')}`;
   if (lastLogged.get(key) !== msg) { lastLogged.set(key, msg); log(msg); }
-  cache.set(key, { sig, at: Date.now(), epics: [] });
+  cache.set(key, { sig, at: clock(), epics: [] });
   return [];
 }
 
 /**
  * @param {string} root project root
- * @param {{commands?: {cmd: string, args: string[]}[]}} [opts] commands to try in order; each gets
- *   `--project-root <root> status` appended
+ * @param {{commands?: {cmd: string, args: string[]}[], now?: () => number}} [opts] commands to try in order; each
+ *   gets `--project-root <root> status` appended. now: clock for the cache (tests).
  * @returns {Promise<import('../types.mjs').Epic[]>}
  */
 export async function readBmad(root, opts = {}) {
@@ -129,10 +131,11 @@ export async function readBmad(root, opts = {}) {
     if (!existsSync(join(key, '_bmad'))) return [];
     const sig = signature(key);
     const hit = cache.get(key);
-    if (hit && hit.sig === sig && Date.now() - hit.at < TTL_MS) return copy(hit.epics);
+    const clock = typeof opts.now === 'function' ? opts.now : Date.now;
+    if (hit && hit.sig === sig && clock() - hit.at < TTL_MS) return copy(hit.epics);
     let p = inflight.get(key);
     if (!p) {
-      p = fetchEpics(key, sig, opts).finally(() => inflight.delete(key));
+      p = fetchEpics(key, sig, opts, clock).finally(() => inflight.delete(key));
       inflight.set(key, p);
     }
     return copy(await p);

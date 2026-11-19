@@ -9,10 +9,23 @@ const KEEP_REFS = 200;
 const KEEP_EVENTS = 500;
 const BG_RE = /Command running in background with ID: .*?Output is being written to: (.+?\.output)/s;
 const TASK_RE = /\bTask (\d+)\b/g;
-const PLAN_RE = /(?:^|[\\/])docs[\\/]superpowers[\\/]plans[\\/][^\\/]+\.md$/;
-const BMAD_RE = /(?:^|[\\/])_bmad-output[\\/].*\.md$/;
+// Same patterns as plan-hook.mjs: case-insensitive (Windows paths), either separator.
+const PLAN_RE = /(?:^|[\\/])docs[\\/]superpowers[\\/]plans[\\/][^\\/]+\.md$/i;
+const BMAD_RE = /(?:^|[\\/])_bmad-output[\\/](?:[^\\/]+[\\/])*[^\\/]+\.md$/i;
 
+// path -> running state. A path not scanned for PRUNE_AFTER_MS (its session closed long ago) is dropped, swept
+// at most once a minute.
 const states = new Map();
+const PRUNE_AFTER_MS = 60 * MIN;
+let sweptAt = -Infinity;
+function sweep(now) {
+  if (now - sweptAt < MIN && now >= sweptAt) return;
+  sweptAt = now;
+  for (const [p, st] of states) if (!(now - st.seenAt < PRUNE_AFTER_MS)) states.delete(p);
+}
+
+/** Number of transcripts tracked (tests). */
+export const trackedTranscripts = () => states.size;
 
 function fresh() {
   return {
@@ -135,6 +148,8 @@ export function scanTranscript(path, now = Date.now(), thresholds = loadConfig()
   let st = states.get(path);
   if (size === null) { states.delete(path); st = null; }
   else if (!st || st.endByte > size) { st = fresh(); states.set(path, st); }
+  if (st) st.seenAt = now;
+  sweep(now);
 
   if (st) {
     const { records, endByte } = readJsonl(path, { fromByte: st.endByte });

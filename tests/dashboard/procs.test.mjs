@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, appendFileSync, utimesSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseProcessTable, createSamplerState, outputGrowth } from '../../global/dashboard/lib/procs.mjs';
+import { parseProcessTable, createSamplerState, outputGrowth, growthTracked } from '../../global/dashboard/lib/procs.mjs';
 
 const csv = (rows) => '"ProcessId","ParentProcessId","KernelModeTime","UserModeTime","Created"\r\n'
   + rows.map((r) => r.map((c) => `"${c}"`).join(',')).join('\r\n') + '\r\n';
@@ -129,4 +129,16 @@ test('stale sampler sample falls back to kill(0) and unknown CPU', async () => {
     assert.deepEqual(s.descendants(me), [{ pid: me, cpuPct: null }]);
     assert.deepEqual(s.descendants(dead), []);
   } finally { s.stop(); }
+});
+
+test('outputGrowth forgets files not asked about for an hour', () => {
+  const d = mkdtempSync(join(tmpdir(), 'cvr-growth-'));
+  try {
+    writeFileSync(join(d, 'a.output'), 'x');
+    writeFileSync(join(d, 'b.output'), 'y');
+    const later = Date.now() + 30 * 86400000;
+    outputGrowth(join(d, 'a.output'), later);
+    outputGrowth(join(d, 'b.output'), later + 90 * 60000);
+    assert.equal(growthTracked(), 1);
+  } finally { rmSync(d, { recursive: true, force: true }); }
 });

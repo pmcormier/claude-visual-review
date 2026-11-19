@@ -188,12 +188,26 @@ export function startCpuSampler(intervalMs = 15000, { spawnFn = spawn, restartMs
   };
 }
 
-const growth = new Map(); // path -> { size, grewAt }
+// path -> { size, grewAt, seenAt }. A path not asked about for an hour (its tool finished) is dropped, swept at
+// most once a minute.
+const growth = new Map();
+const GROWTH_KEEP_MS = 3600000;
+let growthSweptAt = -Infinity;
 export function outputGrowth(path, now = Date.now()) {
+  if (!(now - growthSweptAt < 60000 && now >= growthSweptAt)) {
+    growthSweptAt = now;
+    for (const [p, g] of growth) if (!(now - g.seenAt < GROWTH_KEEP_MS)) growth.delete(p);
+  }
   let st;
-  try { st = statSync(path); } catch { return { idleMs: null }; }
+  try { st = statSync(path); } catch { growth.delete(path); return { idleMs: null }; }
   const g = growth.get(path);
-  if (!g) growth.set(path, { size: st.size, grewAt: st.mtimeMs });
-  else if (st.size > g.size) { g.size = st.size; g.grewAt = now; } else if (st.size < g.size) { g.size = st.size; }
+  if (!g) growth.set(path, { size: st.size, grewAt: st.mtimeMs, seenAt: now });
+  else {
+    g.seenAt = now;
+    if (st.size > g.size) { g.size = st.size; g.grewAt = now; } else if (st.size < g.size) { g.size = st.size; }
+  }
   return { idleMs: Math.max(0, now - growth.get(path).grewAt) };
 }
+
+/** Number of output files tracked (tests). */
+export const growthTracked = () => growth.size;

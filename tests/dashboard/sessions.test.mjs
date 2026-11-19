@@ -48,6 +48,13 @@ test("unknown status value becomes 'unknown'", () => withHome((d) => {
   assert.equal(readSessions()[0].status, 'unknown');
 }));
 
+// Seen on a real machine (2026-11-19): a session record with status 'shell'. Not one of the three the dashboard
+// judges, so it reads 'unknown' (working only while its transcript moves).
+test("status 'shell' reads unknown", () => withHome((d) => {
+  put(d, '1.json', rec({ status: 'shell' }));
+  assert.equal(readSessions()[0].status, 'unknown');
+}));
+
 test('missing fields do not throw', () => withHome((d) => {
   put(d, '9.json', { pid: 9 });
   put(d, '10.json', {});

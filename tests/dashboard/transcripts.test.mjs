@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, appendFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { scanTranscript } from '../../global/dashboard/lib/transcripts.mjs';
+import { scanTranscript, trackedTranscripts } from '../../global/dashboard/lib/transcripts.mjs';
 
 const NOW = Date.parse('2026-11-18T12:00:00.000Z');
 const iso = (minAgo) => new Date(NOW - minAgo * 60000).toISOString();
@@ -188,4 +188,23 @@ test('a notification for another tool id leaves the pending tool alone', () => w
   writeFileSync(p, bgStart(join(d, 'job1.output')));
   appendFileSync(p, lines({ type: 'queue-operation', operation: 'enqueue', timestamp: iso(5), content: notif('toolu_other') }));
   assert.equal(scanTranscript(p, NOW).pendingTool.name, 'Bash');
+}));
+
+test('plan and BMAD paths match in any case, like the plan hook', () => withDir((d) => {
+  const p = join(d, 't.jsonl');
+  const plan = ['X:', 'Work', 'Docs', 'SuperPowers', 'Plans', 'Checkout.MD'].join(String.fromCharCode(92));
+  const ticket = 'work/_BMAD-output/tickets/T-1.Md';
+  writeFileSync(p, lines(toolUse('t1', 'Read', { file_path: plan }, 3), toolUse('t2', 'Read', { file_path: ticket }, 2)));
+  assert.deepEqual(scanTranscript(p, NOW).planRefs.map((r) => r.file), [plan, ticket]);
+}));
+
+test('transcripts not scanned for an hour are forgotten', () => withDir((d) => {
+  const a = join(d, 'a.jsonl');
+  const b = join(d, 'b.jsonl');
+  writeFileSync(a, lines(toolUse('x', 'Read', { file_path: 'f' }, 1)));
+  writeFileSync(b, lines(toolUse('y', 'Read', { file_path: 'f' }, 1)));
+  const later = NOW + 30 * 86400000; // after every other test's scans
+  scanTranscript(a, later);
+  scanTranscript(b, later + 90 * 60000);
+  assert.equal(trackedTranscripts(), 1);
 }));

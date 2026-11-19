@@ -112,6 +112,21 @@ test('bmad runs the script through an injected command and caches by mtime', asy
   assert.deepEqual(again, epics);
 });
 
+test('bmad cache lives 5 min while the signature is unchanged, then runs again', async () => {
+  const { root } = setup();
+  mkdirSync(join(root, '_bmad'));
+  const fake = join(root, 'fake.cjs');
+  writeFileSync(fake, `process.stdout.write(require('node:fs').readFileSync(${JSON.stringify(FIXTURE)}, 'utf8'));`);
+  const { readBmad } = await mod('bmad.mjs');
+  const t0 = Date.now();
+  const ok = { cmd: process.execPath, args: [fake] };
+  const broken = { cmd: 'no-such-program-xyz', args: [] };
+  const first = await readBmad(root, { commands: [ok], now: () => t0 });
+  assert.equal(first.length, 3);
+  assert.deepEqual(await readBmad(root, { commands: [broken], now: () => t0 + 4 * 60000 }), first); // cached
+  assert.deepEqual(await readBmad(root, { commands: [broken], now: () => t0 + 6 * 60000 }), []); // expired: ran
+});
+
 test('bmad missing python returns []', async () => {
   const { claude, root } = setup();
   mkdirSync(join(root, '_bmad'));

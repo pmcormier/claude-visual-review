@@ -81,11 +81,11 @@ Every reader must tolerate missing fields and unknown values and show "unknown" 
 
 | What | Where | Used for |
 |---|---|---|
-| Open sessions | `~/.claude/sessions/<pid>.json`: `pid`, `procStart`, `sessionId`, `cwd`, `name`, `status` (`busy`/`idle`/`waiting`), `statusUpdatedAt` | Which sessions exist, their project, their state; process liveness via `pid` + `procStart` |
+| Open sessions | `~/.claude/sessions/<pid>.json`: `pid`, `procStart`, `sessionId`, `cwd`, `name`, `status` (`busy`/`idle`/`waiting`; any other value, such as `shell`, reads unknown), `statusUpdatedAt` | Which sessions exist, their project, their state; process liveness via `pid` + `procStart` |
 | Transcripts | `~/.claude/projects/<encoded cwd>/<sessionId>.jsonl` | Last activity time, tool calls (pending `tool_use` without `tool_result`), API errors (`"isApiErrorMessage":true`), token usage per message (`message.usage`), repeated commands (looping), plan files read or edited |
 | Subagents | `~/.claude/projects/<encoded cwd>/<sessionId>/subagents/agent-<id>.jsonl` and `.meta.json`: `description`, `model`, `effort`, `finished` | Nesting under the parent session, running vs finished, last write |
 | Background shells | `<scratchpad>/../tasks/<id>.output` (path found from the transcript's background-command result) | Output still growing = sign of life for long jobs |
-| Processes | Windows process list with CPU time, sampled by one long-lived helper | Child process of a session alive and using CPU |
+| Processes | Windows process list with CPU time and start time, sampled by one long-lived helper | Liveness; CPU of the processes a pending tool started (not Claude Code's own or its MCP servers') |
 | Plans and tickets | `docs/superpowers/plans/*.md` (`### Task N:` headings); BMAD ticket stores | The tree |
 | Inbox checklists | `~/.plannotator/inbox/projects/<project>/steps.jsonl`, `messages.jsonl` | The tree (fallback), session ↔ task link |
 | Dashboard events | `~/.claude/dashboard/events.jsonl`, written by its `PostToolUse` hook | Session ↔ plan link |
