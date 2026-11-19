@@ -610,4 +610,22 @@ Test 'DashboardNoShortcutUnderSkipToolCheck' {
   Assert-True ($r.Out -notmatch 'Claude Dashboard\.lnk') "no shortcut step: $($r.Out)"
 }
 
+Test 'DashboardInstallRecordsInstallDateOnce' {
+  $h = New-TempDir
+  $r = Invoke-Install $h @('-Components', 'Review,Dashboard')
+  Assert-Equal 0 $r.Code "exit code ($($r.Out))"
+  $f = "$h/dashboard/installed.json"
+  Assert-True (Test-Path $f) 'install date written'
+  $at = (Get-Content -Raw $f | ConvertFrom-Json -AsHashtable).installedAt
+  Assert-True ($null -ne ([datetimeoffset]::Parse([string]$at))) "parsable: $at"
+  Set-File $f '{ "installedAt": "2020-01-01T00:00:00Z" }'
+  $r2 = Invoke-Install $h @('-Components', 'Review,Dashboard')
+  Assert-Equal 0 $r2.Code "rerun exit code ($($r2.Out))"
+  Assert-True ((Get-Content -Raw $f) -match '2020-01-01T00:00:00Z') 'kept on reinstall'
+  $h2 = New-TempDir
+  $r3 = Invoke-Install $h2 @('-Components', 'Review')
+  Assert-Equal 0 $r3.Code "exit code ($($r3.Out))"
+  Assert-True (-not (Test-Path "$h2/dashboard/installed.json")) 'no install date without Dashboard'
+}
+
 Complete-Tests

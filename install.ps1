@@ -392,6 +392,17 @@ if ($needNode.Count -and -not $SkipToolCheck -and -not (Get-Command node -ErrorA
   Miss "Node.js (``node``) not on PATH, so the $($needNode -join ' and ') hooks cannot run: install Node.js, then start a new session"
 }
 
+# Dashboard's install date, written once and never changed (a reinstall keeps it; -Remove leaves it, like the other
+# runtime files). Plans added to a repo before it fold as "Before the dashboard" until they show progress
+# (decision 32). It marks nothing done.
+$installedPath = Join-Path $claude 'dashboard/installed.json'
+if ($Components -contains 'Dashboard' -and -not (Test-Path $installedPath)) {
+  New-Item -ItemType Directory -Force (Split-Path $installedPath) | Out-Null
+  $stamp = [DateTime]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
+  Set-Content -Path $installedPath -Value (@{ installedAt = $stamp } | ConvertTo-Json -Compress) -NoNewline
+  Done "written  dashboard/installed.json (install date $stamp)"
+}
+
 # Dashboard's Start menu shortcut runs Node (its absolute path, resolved now) on the launcher with --open. With
 # -SkipToolCheck and no -ShortcutDir, none is made or deleted, so tests never reach the real Start menu.
 $scDir = if ($ShortcutDir) { $ShortcutDir } elseif (-not $SkipToolCheck) { [Environment]::GetFolderPath('Programs') }

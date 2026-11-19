@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadConfig } from '../../global/dashboard/lib/config.mjs';
+import { loadConfig, readInstalledAt } from '../../global/dashboard/lib/config.mjs';
 import { claudeHome, plannotatorHome, dashHome } from '../../global/dashboard/lib/paths.mjs';
 
 function withHome(fn) {
@@ -48,4 +48,19 @@ test('paths honour the env overrides', () => withHome((d) => {
   try { assert.equal(plannotatorHome(), d); } finally {
     if (saved === undefined) delete process.env.CVR_DASH_PLANNOTATOR_HOME; else process.env.CVR_DASH_PLANNOTATOR_HOME = saved;
   }
+}));
+
+test('readInstalledAt reads installed.json', () => withHome((d) => {
+  mkdirSync(join(d, 'dashboard'), { recursive: true });
+  writeFileSync(join(d, 'dashboard', 'installed.json'), JSON.stringify({ installedAt: '2026-11-19T12:00:00Z' }));
+  assert.equal(readInstalledAt(), Date.parse('2026-11-19T12:00:00Z'));
+}));
+
+test('readInstalledAt is null when missing or broken', () => withHome((d) => {
+  assert.equal(readInstalledAt(), null);
+  mkdirSync(join(d, 'dashboard'), { recursive: true });
+  writeFileSync(join(d, 'dashboard', 'installed.json'), '{ broken');
+  assert.equal(readInstalledAt(), null);
+  writeFileSync(join(d, 'dashboard', 'installed.json'), JSON.stringify({ installedAt: 'not a date' }));
+  assert.equal(readInstalledAt(), null);
 }));

@@ -11,6 +11,20 @@ export const DEFAULTS = Object.freeze({
   }),
 });
 
+/**
+ * When the Dashboard component was first installed (ms), from <dashHome>/installed.json `{installedAt: ISO}`,
+ * which the installer writes once. Plans added before it fold as "Before the dashboard". Null when missing or
+ * unreadable: then nothing folds that way.
+ * @returns {number|null}
+ */
+export function readInstalledAt() {
+  try {
+    const at = JSON.parse(readFileSync(join(dashHome(), 'installed.json'), 'utf8'))?.installedAt;
+    const ms = typeof at === 'string' ? Date.parse(at) : NaN;
+    return Number.isFinite(ms) ? ms : null;
+  } catch { return null; }
+}
+
 export function loadConfig() {
   let user = {};
   try {
