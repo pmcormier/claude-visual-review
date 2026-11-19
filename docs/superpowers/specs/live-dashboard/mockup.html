@@ -1,0 +1,389 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Claude Dashboard · d4-calm</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<style>/* Inherits the setup guide's world: same tokens, faces, light/dark. Adds state colours and the life line. */
+:root {
+  --bg: #f3f5fa; --surface: #ffffff; --fg: #18203a; --muted: #5a6382; --rule: #dbe0ec;
+  --accent: #2f4fd0; --accent-soft: #e6ebfc; --approve: #1f7a52; --approve-soft: #e3f3ea;
+  --warn: #a3620a; --warn-soft: #fbf0dc; --stuck: #b3361f; --stuck-soft: #fbe6e1;
+  --wait: #6b3fc9; --wait-soft: #efe8fc; --idle: #8a92ad;
+  --shell: #141a2e; --shell-fg: #dfe5ff; --shell-dim: #8c96bf;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Hanken Grotesk", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1322; --surface: #171d31; --fg: #e3e7f6; --muted: #98a1c2; --rule: #2a3250;
+  --accent: #8ea4ff; --accent-soft: #212b52; --approve: #6fd3a4; --approve-soft: #16302a;
+  --warn: #f0b85a; --warn-soft: #33281a; --stuck: #ff8a73; --stuck-soft: #3a1f1d;
+  --wait: #c3a6ff; --wait-soft: #2a2148; --idle: #6c7598;
+  --shell: #0a0d18; --shell-fg: #dfe5ff; --shell-dim: #7f89b3; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1322; --surface: #171d31; --fg: #e3e7f6; --muted: #98a1c2; --rule: #2a3250;
+  --accent: #8ea4ff; --accent-soft: #212b52; --approve: #6fd3a4; --approve-soft: #16302a;
+  --warn: #f0b85a; --warn-soft: #33281a; --stuck: #ff8a73; --stuck-soft: #3a1f1d;
+  --wait: #c3a6ff; --wait-soft: #2a2148; --idle: #6c7598;
+  --shell: #0a0d18; --shell-fg: #dfe5ff; --shell-dim: #7f89b3; color-scheme: dark }
+
+* { box-sizing: border-box; }
+html { scrollbar-color: var(--rule) transparent; }
+::selection { background: var(--accent-soft); color: var(--fg); }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--body); font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+button { font: inherit; color: inherit; }
+.num, time, .t { font-family: var(--mono); font-size: 0.84em; }
+.muted { color: var(--muted); }
+
+/* Shell bar: the dark band from the guide's terminal, carrying the counts. */
+.bar { background: var(--shell); color: var(--shell-fg); display: flex; align-items: center; gap: 18px;
+  padding: 10px max(16px, 2.5vw); position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
+.brand { font: 700 1.05rem var(--display); letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; }
+.brand svg { color: #7fe0b0; }
+.counts { display: flex; gap: 6px; flex-wrap: wrap; }
+.count { display: inline-flex; align-items: center; gap: 7px; border: 1px solid rgba(140,150,191,.3); border-radius: 999px;
+  padding: 3px 11px 3px 9px; font: 500 0.82rem var(--body); background: transparent; color: var(--shell-fg); cursor: pointer; }
+.count b { font: 600 0.82rem var(--mono); }
+.count[aria-pressed="true"] { background: rgba(140,150,191,.18); border-color: rgba(223,229,255,.5); }
+.count .dot { width: 8px; height: 8px; border-radius: 50%; }
+.bar .right { margin-left: auto; display: flex; align-items: center; gap: 14px; font-size: 0.82rem; color: var(--shell-dim); }
+.bar label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.bar input { accent-color: #8ea4ff; }
+.stop { border: 1px solid rgba(140,150,191,.45); background: transparent; border-radius: 6px; padding: 4px 12px;
+  color: var(--shell-fg); cursor: pointer; font: 500 0.8rem var(--mono); }
+.stop:hover { border-color: #ff8a73; color: #ff8a73; }
+
+/* State chips and dots */
+.s-stuck { --c: var(--stuck); --cs: var(--stuck-soft); }
+.s-wait { --c: var(--wait); --cs: var(--wait-soft); }
+.s-work { --c: var(--accent); --cs: var(--accent-soft); }
+.s-done { --c: var(--approve); --cs: var(--approve-soft); }
+.s-idle { --c: var(--idle); --cs: transparent; }
+.dot { background: var(--c); display: inline-block; flex: none; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 600 0.74rem var(--body); color: var(--c);
+  background: var(--cs); border-radius: 999px; padding: 2px 9px 2px 7px; white-space: nowrap; }
+.chip .dot { width: 7px; height: 7px; border-radius: 50%; }
+.s-work .dot.live { animation: beat 2.4s cubic-bezier(.16,1,.3,1) infinite; }
+@keyframes beat { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 45%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
+@media (prefers-reduced-motion: reduce) { .s-work .dot.live { animation: none; } }
+.size { font: 600 0.68rem var(--mono); color: var(--muted); border: 1px solid var(--rule); border-radius: 4px; padding: 0 5px; }
+
+/* Signature: the life line. One tick per minute of the last hour where the session showed a sign of life.
+   Silence is visible as a gap; a stuck session's line goes flat in its state colour. */
+.life { display: block; width: 120px; height: 18px; color: var(--c, var(--accent)); flex: none; }
+.life .flat { stroke: var(--c); stroke-dasharray: 2 3; }
+
+/* Tree */
+.tree { list-style: none; margin: 0; padding: 0; }
+.tree .tree { padding-left: 22px; border-left: 1px solid var(--rule); margin-left: 8px; }
+.node { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 8px; padding: 5px 4px; border-radius: 6px; }
+.node:hover { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
+.node .name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.node .name span.label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node .meta { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 0.82rem; }
+.tw { width: 18px; height: 18px; border: 0; background: none; padding: 0; cursor: pointer; color: var(--muted); display: grid; place-items: center; }
+.tw svg { transition: transform .2s cubic-bezier(.16,1,.3,1); }
+.tw[aria-expanded="false"] svg { transform: rotate(-90deg); }
+.ic { width: 14px; height: 14px; color: var(--c); flex: none; }
+.now { font: 500 0.8rem var(--body); color: var(--accent); display: flex; align-items: center; gap: 6px; }
+.now::before { content: ""; width: 12px; height: 1px; background: var(--accent); }
+.done-label { color: var(--muted); }
+[hidden] { display: none !important; }
+
+/* Evidence line for a stall */
+.evidence { font: 0.8rem var(--mono); color: var(--stuck); background: var(--stuck-soft); border-radius: 6px; padding: 6px 10px; }
+.s-wait .evidence { color: var(--wait); background: var(--wait-soft); }
+.subs { font-size: 0.8rem; color: var(--muted); }
+.mocknote { font: 0.75rem var(--mono); color: var(--muted); text-align: center; padding: 18px; }
+
+
+main { padding: 24px max(16px, 2.5vw) 8px; display: grid; gap: 28px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; align-items: start; }
+.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 14px 14px 10px; display: grid; gap: 10px; min-width: 0;
+  box-shadow: 0 1px 2px rgba(20,26,46,.04), 0 6px 18px -12px rgba(20,26,46,.18); }
+.panel.s-stuck { border-color: color-mix(in srgb, var(--stuck) 45%, var(--rule)); }
+.panel.s-wait { border-color: color-mix(in srgb, var(--wait) 40%, var(--rule)); }
+.ph { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ph h2 { font: 700 1.12rem var(--display); margin: 0; letter-spacing: -0.01em; }
+.ph .meta { margin-left: auto; font-size: .82rem; color: var(--muted); display: flex; gap: 12px; }
+.sess { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--cs) 70%, transparent); flex-wrap: wrap; }
+.sess .what { flex: 1; min-width: 180px; } .sess .what b { font-weight: 600; }
+.quiet h3 { font: 600 .82rem var(--body); color: var(--muted); margin: 0 0 6px; }
+.qrow { display: grid; grid-template-columns: 18px 220px 1fr auto; gap: 10px; align-items: center; padding: 7px 8px; border-top: 1px solid var(--rule); font-size: .88rem; }
+.qrow:hover { background: var(--surface); }
+
+
+:root { --bg:#c5d2e3; --surface:#e8ecf1; --fg:#0f1724; --muted:#3d4858; --rule:#b4c1d2; --accent:#1d4fd8; --accent-soft:#d3dff8;
+  --approve:#0b6b63; --approve-soft:#d2e8e5; --stuck:#c42d24; --stuck-soft:#f5dcd9; --wait:#5b3bcc; --wait-soft:#e0d9f7; --idle:#6b7586;
+  --shell:#c5d2e3; --shell-fg:#0f1724; --shell-dim:#3d4858; color-scheme: light;
+  --display:"Instrument Sans",system-ui,sans-serif; --body:"Instrument Sans",system-ui,sans-serif; --mono:"Geist Mono",ui-monospace,monospace; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0d1117; --surface:#151b24; --fg:#e6edf3; --muted:#9aa5b4; --rule:#252e3a;
+  --accent:#6ea8ff; --accent-soft:#16243d; --approve:#3fc5b0; --approve-soft:#0f2a28; --stuck:#ff6a5f; --stuck-soft:#3a1a19; --wait:#a993ff; --wait-soft:#241d44; --idle:#647084;
+  --shell:#0d1117; --shell-fg:#e6edf3; --shell-dim:#9aa5b4; color-scheme: dark; } }
+:root[data-theme="dark"] { --bg:#0d1117; --surface:#151b24; --fg:#e6edf3; --muted:#9aa5b4; --rule:#252e3a;
+  --accent:#6ea8ff; --accent-soft:#16243d; --approve:#3fc5b0; --approve-soft:#0f2a28; --stuck:#ff6a5f; --stuck-soft:#3a1a19; --wait:#a993ff; --wait-soft:#241d44; --idle:#647084;
+  --shell:#0d1117; --shell-fg:#e6edf3; --shell-dim:#9aa5b4; color-scheme: dark; }
+.modebtn { height: 30px; border-radius: 999px; border: 1px solid var(--rule); background: var(--surface); color: var(--fg); cursor: pointer;
+  font: 500 .8rem var(--body); padding: 0 12px; display: inline-flex; gap: 6px; align-items: center; }
+.modebtn:hover { border-color: var(--accent); }
+body { font-size: 16px; line-height: 1.55; }
+.bar { border-bottom: 1px solid var(--rule); padding-block: 14px; backdrop-filter: blur(8px); background: color-mix(in srgb, var(--bg) 88%, transparent); }
+.brand { font: 600 1.05rem var(--display); letter-spacing: -0.01em; } .brand svg { color: var(--accent); }
+.count { border: 0; background: var(--surface); color: var(--fg); box-shadow: inset 0 0 0 1px var(--rule); font: 500 .88rem var(--body); padding: 5px 12px 5px 10px; }
+.count b { font-family: var(--mono); font-weight: 500; }
+.count.s-stuck { background: var(--stuck-soft); box-shadow: none; color: var(--stuck); }
+.count.s-wait { background: var(--wait-soft); box-shadow: none; color: var(--wait); }
+.count[aria-pressed="true"] { box-shadow: inset 0 0 0 2px currentColor; }
+.count .dot { background: var(--c) !important; }
+.bar .right { color: var(--muted); font-size: .88rem; }
+.bar input { accent-color: var(--accent); }
+.stop { border-color: var(--rule); color: var(--fg); font: 500 .85rem var(--body); border-radius: 8px; } .stop:hover { border-color: var(--stuck); color: var(--stuck); }
+main { gap: 32px; padding-top: 28px; }
+.grid { gap: 20px; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); }
+.panel { border-radius: 14px; padding: 18px 18px 12px; gap: 14px; border-color: var(--rule);
+  box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px -16px rgba(0,0,0,.12); transition: box-shadow .4s cubic-bezier(.16,1,.3,1); }
+.panel.s-stuck { border-color: color-mix(in srgb, var(--stuck) 55%, var(--rule)); }
+.panel.s-wait { border-color: color-mix(in srgb, var(--wait) 45%, var(--rule)); }
+.panel.changed { box-shadow: 0 0 0 4px color-mix(in srgb, var(--stuck) 22%, transparent), 0 8px 24px -16px rgba(0,0,0,.2); }
+.ph h2 { font: 600 1.2rem var(--display); letter-spacing: -0.015em; }
+.ph .meta { font-size: .88rem; }
+.chip { font: 500 .78rem var(--body); padding: 2px 10px 2px 8px; }
+.newbadge { font: 600 .72rem var(--body); color: var(--surface); background: var(--stuck); border-radius: 999px; padding: 1px 8px; }
+.sess { background: transparent; border-radius: 0; padding: 4px 0 12px; border-bottom: 1px solid var(--rule); gap: 6px 14px; }
+.sess .what b { font-weight: 600; } .sess .what { font-size: .97rem; }
+.sess .muted { font-size: .85rem !important; }
+.evidence { background: transparent; padding: 0; font: 500 .88rem var(--body); display: flex; gap: 6px; align-items: center; }
+.evidence::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.s-wait .evidence { background: transparent; }
+.subs { font-size: .85rem; }
+.node { padding: 6px 4px; } .node .meta { font-size: .85rem; }
+.tree .tree { border-left-color: var(--rule); }
+.size { font: 500 .7rem var(--mono); border-radius: 5px; }
+.now { font-size: .85rem; }
+.t, time { font-family: var(--mono); font-size: .82em; }
+.life.ridge { width: 168px; height: 30px; }
+.life.ridge path { fill: color-mix(in srgb, var(--c, var(--accent)) 14%, transparent); stroke: var(--c, var(--accent)); stroke-width: 1.2; stroke-linejoin: round; }
+.qrow { font-size: .95rem; border-top-color: var(--rule); padding: 9px 8px; }
+.quiet h3 { font-size: .88rem; }
+.mocknote { font-family: var(--body); }
+/* Usage meters in the bar */
+.usage { display: flex; gap: 14px; align-items: center; font-size: .82rem; color: var(--muted); }
+.meter { display: grid; gap: 3px; min-width: 96px; }
+.meter .lbl { display: flex; justify-content: space-between; gap: 8px; } .meter .lbl b { color: var(--fg); font: 500 .8rem var(--mono); }
+.meter .track { height: 5px; border-radius: 3px; background: var(--rule); overflow: hidden; }
+.meter .fill { height: 100%; border-radius: 3px; background: var(--accent); transition: width .8s cubic-bezier(.16,1,.3,1); }
+.meter.hot .fill { background: var(--wait); }
+.meter .rs { font-size: .74rem; color: var(--muted); white-space: nowrap; }
+.bar .right time { display: inline-block; width: 7.5ch; text-align: right; }
+.ph .newbadge { position: relative; top: -1px; }
+.helpbtn { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--rule); background: var(--surface); cursor: pointer; font: 600 .9rem var(--body); color: var(--fg); }
+.helpbtn:hover { border-color: var(--accent); color: var(--accent); }
+/* Session to task link */
+.on-task { font-size: .85rem; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.on-task a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted currentColor; cursor: pointer; }
+.on-task.none { font-style: italic; }
+.who { font: 500 .72rem var(--mono); color: var(--c, var(--accent)); background: color-mix(in srgb, var(--c, var(--accent)) 12%, transparent); border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.node.linked { background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+.sess.linked { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+/* Hover explanation */
+.tip { position: fixed; z-index: 50; max-width: 320px; background: var(--fg); color: var(--bg); font: 400 .85rem/1.5 var(--body);
+  padding: 10px 12px; border-radius: 10px; box-shadow: 0 10px 30px -10px rgba(0,0,0,.4); pointer-events: none; opacity: 0; transform: translateY(4px);
+  transition: opacity .15s, transform .2s cubic-bezier(.16,1,.3,1); }
+.tip.show { opacity: 1; transform: none; }
+.tip b { display: block; font-weight: 600; margin-bottom: 2px; }
+/* Help tour */
+.tour { position: fixed; inset: 0; z-index: 40; background: color-mix(in srgb, #000 45%, transparent); }
+.tour .hole { position: fixed; border-radius: 10px; box-shadow: 0 0 0 3px var(--accent), 0 0 0 9999px color-mix(in srgb, #000 35%, transparent); transition: all .35s cubic-bezier(.16,1,.3,1); }
+.tour .card { position: fixed; width: 300px; background: var(--surface); color: var(--fg); border-radius: 12px; padding: 14px 16px; box-shadow: 0 20px 50px -15px rgba(0,0,0,.5); transition: all .35s cubic-bezier(.16,1,.3,1); }
+.tour .card h4 { margin: 0 0 4px; font: 600 1rem var(--display); } .tour .card p { margin: 0 0 12px; font-size: .9rem; color: var(--muted); }
+.tour .nav { display: flex; justify-content: space-between; align-items: center; font-size: .82rem; color: var(--muted); }
+.tour .nav button { border: 0; background: var(--accent); color: #fff; border-radius: 8px; padding: 6px 14px; font: 500 .85rem var(--body); cursor: pointer; }
+.tour .nav button.ghost { background: transparent; color: var(--muted); }
+</style></head><body><header class="bar">
+  <div class="brand"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8.5h3l2-5 3 9 2-4h3"/></svg> Claude Dashboard</div>
+  <div class="counts" role="group" aria-label="Filter by state">
+    <button class="count s-stuck" aria-pressed="false" data-f="stuck"><span class="dot" style="border-radius:50%"></span>Looks stuck <b>2</b></button>
+    <button class="count s-wait" aria-pressed="false" data-f="wait"><span class="dot" style="border-radius:50%"></span>Waiting on you <b>1</b></button>
+    <button class="count s-work" aria-pressed="false" data-f="work"><span class="dot" style="border-radius:50%;background:#8ea4ff"></span>Working <b>1</b></button>
+    <button class="count s-idle" aria-pressed="false" data-f="next"><span class="dot" style="border-radius:50%"></span>Up next <b>13</b></button>
+  </div>
+  <div class="right">
+    <span>updated <time>just now</time></span>
+    <label><input type="checkbox" class="hist"> Show all history</label>
+    <button class="stop" title="Stop the dashboard server">Stop</button>
+  </div>
+</header><main>
+<div class="grid"><article class="panel s-work" data-state="work next">
+  <div class="ph"><h2>claude-visual-review</h2><span class="chip s-work"><span class="dot live"></span>Working</span><span class="meta"><span>4 left · 2M 2S</span><span class="t">8h 15m</span></span></div>
+  <div class="sess s-work"><div class="what"><b>Session 4f98</b> · Designing the dashboard mockups<div class="muted" style="font-size:.8rem">running 2h 05m</div></div><svg class="life ridge" viewBox="0 0 120 18" aria-label="Signs of life over the last hour"><path d="M0 16 L1 3.6695398313317167 L3 9.670844696727976 L5 16 L7 8.667310950913146 L9 16 L11 16 L13 5.665852116474813 L15 4.548399777453579 L17 8.287744287116334 L19 5.551513931831119 L21 5.670964257847967 L23 3.655704610820722 L25 16 L27 7.114681336849314 L29 16 L31 6.010276711690368 L33 3.7436380422644504 L35 16 L37 8.615985952604555 L39 16 L41 10.16075652677601 L43 7.829428709451774 L45 3.530138645661129 L47 5.287649916735315 L49 16 L51 9.139002360701095 L53 7.150630023586858 L55 9.819573344765033 L57 16 L59 8.361833888623787 L61 5.835642247896475 L63 16 L65 10.051099095424217 L67 9.05363065037114 L69 7.8676200255600826 L71 6.957470775888055 L73 9.479201530259662 L75 16 L77 4.157552397766873 L79 6.089744614874824 L81 7.183175343127537 L83 3.5106115129592883 L85 5.465441662965082 L87 6.491035731086058 L89 8.656431391745077 L91 4.734606689952598 L93 16 L95 4.527868934500901 L97 8.012506831676003 L99 10.791880291929413 L101 16 L103 6.106522940661071 L105 7.587448078807187 L107 10.285631593426519 L109 16 L111 16 L113 16 L115 16 L117 16 L119 16 L120 16"/></svg><div><div class="node s-work" style="grid-template-columns:18px 1fr auto"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3v6a2 2 0 0 0 2 2h6"/><path d="M10 9l2 2-2 2"/></svg><span class="label">Builder check of the spec</span> <span class="size">sonnet</span></span><span class="meta"><span class="t">6m</span></span></div><div class="node s-work" style="grid-template-columns:18px 1fr auto"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3v6a2 2 0 0 0 2 2h6"/><path d="M10 9l2 2-2 2"/></svg><span class="label">Files-changed header</span> <span class="size">sonnet</span></span><span class="meta"><span class="t">2m</span></span></div><div class="subs" style="padding:2px 0 2px 30px">14 subagents finished</div></div></div>
+  <ul class="tree"><li><div class="node s-work"><button class="tw" aria-expanded="true"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5 6 7.5 9 4.5"/></svg></button><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5a5.5 5.5 0 0 1 5.5 5.5" stroke-width="2.6" stroke-linecap="round"/></svg><span class="label"><b>Live dashboard</b></span></span><span class="meta">1 of 5 · 2h 05m</span></div>
+  <ul class="tree"><li><div class="node s-work"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5a5.5 5.5 0 0 1 5.5 5.5" stroke-width="2.6" stroke-linecap="round"/></svg><span class="label">Design and mockups</span> <span class="size">M</span></span><span class="meta"><span class="t">2h 05m</span></span></div><div class="now" style="margin:0 0 4px 52px">comparing three layouts</div></li><li><div class="node s-idle"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5" stroke-dasharray="2.5 2.2"/></svg><span class="label">Session and stall scanner</span> <span class="size">M</span></span><span class="meta"></span></div></li><li><div class="node s-idle"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5" stroke-dasharray="2.5 2.2"/></svg><span class="label">Plan ticker hook</span> <span class="size">S</span></span><span class="meta"></span></div></li><li><div class="node s-idle"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5" stroke-dasharray="2.5 2.2"/></svg><span class="label">Page and live updates</span> <span class="size">M</span></span><span class="meta"></span></div></li><li><div class="node s-idle"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5" stroke-dasharray="2.5 2.2"/></svg><span class="label">Installer component and docs</span> <span class="size">S</span></span><span class="meta"></span></div></li></ul></li><li><div class="node s-done"><button class="tw" aria-expanded="false"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5 6 7.5 9 4.5"/></svg></button><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label"><b>Rigor component</b></span></span><span class="meta">4 tasks · 1h 15m</span></div>
+  <ul class="tree" hidden><li><div class="node s-done"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label done-label">Pushback hook</span> <span class="size">S</span></span><span class="meta"><span class="t">0h 40m</span></span></div></li><li><div class="node s-done"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label done-label">Label claims that matter</span> <span class="size">S</span></span><span class="meta"><span class="t">0h 15m</span></span></div></li><li><div class="node s-done"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label done-label">-Remove cleanup</span> <span class="size">S</span></span><span class="meta"><span class="t">0h 10m</span></span></div></li><li><div class="node s-done"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label done-label">Tests clean up temp folders</span> <span class="size">S</span></span><span class="meta"><span class="t">0h 10m</span></span></div></li></ul></li><li><div class="node s-done"><button class="tw" aria-expanded="false"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5 6 7.5 9 4.5"/></svg></button><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label"><b>Shareable repo</b></span></span><span class="meta">5 tasks · 6h 10m</span></div>
+  <ul class="tree" hidden><li><div class="node s-done"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label done-label">Personal-data check</span> <span class="size">S</span></span><span class="meta"><span class="t">0h 45m</span></span></div></li><li><div class="node s-done"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label done-label">Fable component</span> <span class="size">S</span></span><span class="meta"><span class="t">0h 50m</span></span></div></li><li><div class="node s-done"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label done-label">Installer components</span> <span class="size">L</span></span><span class="meta"><span class="t">2h 40m</span></span></div></li><li><div class="node s-done"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label done-label">Journal to vault</span> <span class="size">S</span></span><span class="meta"><span class="t">0h 30m</span></span></div></li><li><div class="node s-done"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label done-label">Public docs</span> <span class="size">M</span></span><span class="meta"><span class="t">1h 25m</span></span></div></li></ul></li><li class="histrow" hidden><div class="node s-done"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label done-label">Setup guide restyle · 12 Nov · 1h 05m</span></span><span></span></div><div class="node s-done"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label done-label">Visual review rules · 11 Nov · 2h 20m</span></span><span></span></div></li>
+  <li class="histhint"><div class="node"><span></span><span class="name muted" style="font-size:.82rem">Done earlier (2)</span><span></span></div></li></ul></article><article class="panel s-stuck" data-state="stuck">
+  <div class="ph"><h2>billing-api</h2><span class="chip s-stuck"><span class="dot"></span>Looks stuck</span><span class="meta"><span>3 left · 1L 2S</span><span class="t">5h 40m</span></span></div>
+  <div class="sess s-stuck"><div class="what"><b>Session 34d4</b> · Running the test suite<div class="muted" style="font-size:.8rem">pytest 52m</div></div><svg class="life ridge" viewBox="0 0 120 18" aria-label="Signs of life over the last hour"><path d="M0 16 L1 8.115517070570736 L3 8.273219155740561 L5 5.899384626582911 L7 11.140779427388114 L9 4.65553508790002 L11 6.73279496807735 L13 10.573596998128853 L15 6.472100098953629 L17 11.254850979547413 L19 9.755549278904475 L21 10.940311741661425 L23 16 L25 16 L27 6.542355488190594 L29 3.3231543057240334 L31 10.574818430829243 L33 16 L35 4.796816610613286 L37 9.690324225761149 L39 16 L41 16 L43 3.227202276711912 L45 5.1875642500294195 L47 16 L49 9.252429583157614 L51 16 L53 3.888059896132006 L55 16 L57 16 L59 16 L61 16 L63 16 L65 16 L67 16 L69 16 L71 16 L73 16 L75 16 L77 16 L79 16 L81 16 L83 16 L85 16 L87 16 L89 16 L91 16 L93 16 L95 16 L97 16 L99 16 L101 16 L103 16 L105 16 L107 16 L109 16 L111 16 L113 16 L115 16 L117 16 L119 16 L120 16"/></svg><div class="evidence" style="flex-basis:100%">pytest running 52 min · 0% CPU · no output for 31 min</div><div><div class="subs" style="padding:2px 0 2px 30px">3 subagents finished</div></div></div><div class="sess s-stuck"><div class="what"><b>Subagent</b> · Background subagent: migrate fixtures<div class="muted" style="font-size:.8rem">started 1h 10m ago</div></div><svg class="life ridge" viewBox="0 0 120 18" aria-label="Signs of life over the last hour"><path d="M0 16 L1 5.892528450951227 L3 16 L5 5.840584219335851 L7 9.462364964937962 L9 8.099726853403135 L11 16 L13 16 L15 10.141714126752557 L17 9.19124591936881 L19 16 L21 11.12475163257902 L23 16 L25 10.711217579157658 L27 3.465736839298968 L29 16 L31 6.087259146984323 L33 9.17192384287339 L35 7.1746973847154045 L37 4.597132823288968 L39 9.444624295851508 L41 16 L43 16 L45 4.84165696855246 L47 16 L49 16 L51 3.7372504074532777 L53 16 L55 16 L57 16 L59 16 L61 16 L63 16 L65 16 L67 16 L69 16 L71 16 L73 16 L75 16 L77 16 L79 16 L81 16 L83 16 L85 16 L87 16 L89 16 L91 16 L93 16 L95 16 L97 16 L99 16 L101 16 L103 16 L105 16 L107 16 L109 16 L111 16 L113 16 L115 16 L117 16 L119 16 L120 16"/></svg><div class="evidence" style="flex-basis:100%">Not marked finished · transcript unchanged for 48 min</div></div>
+  <ul class="tree"><li><div class="node s-stuck"><button class="tw" aria-expanded="true"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5 6 7.5 9 4.5"/></svg></button><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 2.5 14 13.5H2Z" stroke-linejoin="round"/><path d="M8 7v3M8 12v.01"/></svg><span class="label"><b>Invoice export</b></span></span><span class="meta">2 of 5 · 3h 30m</span></div>
+  <ul class="tree"><li><div class="node s-done"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label done-label">CSV writer</span> <span class="size">S</span></span><span class="meta"><span class="t">0h 50m</span></span></div></li><li><div class="node s-done"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label done-label">Currency rounding</span> <span class="size">S</span></span><span class="meta"><span class="t">0h 40m</span></span></div></li><li><div class="node s-stuck"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 2.5 14 13.5H2Z" stroke-linejoin="round"/><path d="M8 7v3M8 12v.01"/></svg><span class="label">Fixture migration</span> <span class="size">L</span></span><span class="meta"><span class="t">1h 52m</span></span></div><div class="now" style="margin:0 0 4px 52px">pytest, silent 31 min</div></li><li><div class="node s-idle"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5" stroke-dasharray="2.5 2.2"/></svg><span class="label">PDF layout</span> <span class="size">S</span></span><span class="meta"></span></div></li><li><div class="node s-idle"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="5.5" stroke-dasharray="2.5 2.2"/></svg><span class="label">Email delivery</span> <span class="size">S</span></span><span class="meta"></span></div></li></ul></li></ul></article><article class="panel s-wait" data-state="wait">
+  <div class="ph"><h2>docs-site</h2><span class="chip s-wait"><span class="dot"></span>Waiting on you</span><span class="meta"><span>1 left · 1S</span><span class="t">1h 20m</span></span></div>
+  <div class="sess s-wait"><div class="what"><b>Session bd5e</b> · Asked to run npm publish<div class="muted" style="font-size:.8rem">prompt open 10m</div></div><svg class="life ridge" viewBox="0 0 120 18" aria-label="Signs of life over the last hour"><path d="M0 16 L1 7.673562592092697 L3 11.068470237715388 L5 16 L7 7.077202922863513 L9 7.459399077486898 L11 9.603481897317565 L13 16 L15 8.236522326472459 L17 16 L19 16 L21 10.734453591673846 L23 5.237014022649738 L25 16 L27 16 L29 9.465927815048921 L31 4.721970123365509 L33 9.818232454321455 L35 16 L37 16 L39 8.20369221123573 L41 16 L43 16 L45 6.290628681211093 L47 16 L49 3.833075014610344 L51 5.3877355834412075 L53 16 L55 16 L57 10.04134847665734 L59 16 L61 16 L63 16 L65 16 L67 16 L69 9.294832442814872 L71 16 L73 3.4063201734825608 L75 16 L77 4.062848164868935 L79 5.820545754451558 L81 16 L83 16 L85 16 L87 16 L89 16 L91 3.6118680536336587 L93 16 L95 4.595023459007509 L97 16 L99 11.04524666322174 L101 16 L103 16 L105 16 L107 16 L109 16 L111 16 L113 16 L115 16 L117 16 L119 16 L120 16"/></svg><div class="evidence" style="flex-basis:100%">Permission prompt open for 10 min in a terminal</div></div>
+  <ul class="tree"><li><div class="node s-wait"><button class="tw" aria-expanded="true"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5 6 7.5 9 4.5"/></svg></button><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/></svg><span class="label"><b>Release 2.4</b></span></span><span class="meta">3 of 4 · 1h 20m</span></div>
+  <ul class="tree"><li><div class="node s-done"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label done-label">Changelog</span> <span class="size">S</span></span><span class="meta"><span class="t">0h 20m</span></span></div></li><li><div class="node s-done"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label done-label">Search index</span> <span class="size">M</span></span><span class="meta"><span class="t">0h 45m</span></span></div></li><li><div class="node s-done"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg><span class="label done-label">Broken links</span> <span class="size">S</span></span><span class="meta"><span class="t">0h 15m</span></span></div></li><li><div class="node s-wait"><span></span><span class="name"><svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/></svg><span class="label">Publish</span> <span class="size">S</span></span><span class="meta"></span></div><div class="now" style="margin:0 0 4px 52px">waiting on your OK to publish</div></li></ul></li></ul></article></div>
+<section class="quiet"><h3>Nothing running</h3>
+<div class="qrow s-idle"><button class="tw" aria-expanded="false"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5 6 7.5 9 4.5"/></svg></button><b>web-shop</b><span class="muted">4 left · 2M 2S</span><span class="t muted">quiet 2 days</span></div><div class="qrow s-idle"><button class="tw" aria-expanded="false"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5 6 7.5 9 4.5"/></svg></button><b>infra-scripts</b><span class="muted">nothing planned</span><span class="t muted">quiet 6 days</span></div>
+<div class="qrow"><span></span><span class="muted">81 more projects</span><span></span><span></span></div></section></main><p class="mocknote">Mockup · all data is invented</p><script>
+document.querySelectorAll('.tw').forEach(b => b.addEventListener('click', () => {
+  const list = b.closest('li, section, article').querySelector(':scope > ul.tree, :scope > .body');
+  const open = b.getAttribute('aria-expanded') !== 'true'; b.setAttribute('aria-expanded', open); if (list) list.hidden = !open; }));
+document.querySelectorAll('.hist').forEach(c => c.addEventListener('change', () => {
+  document.querySelectorAll('.histrow').forEach(r => r.hidden = !c.checked);
+  document.querySelectorAll('.histhint').forEach(r => r.hidden = c.checked); }));
+document.querySelectorAll('.count').forEach(b => b.addEventListener('click', () => {
+  const on = b.getAttribute('aria-pressed') !== 'true';
+  document.querySelectorAll('.count').forEach(x => x.setAttribute('aria-pressed', 'false'));
+  b.setAttribute('aria-pressed', on);
+  document.querySelectorAll('[data-state]').forEach(el => el.style.opacity = !on || el.dataset.state.includes(b.dataset.f) ? '' : '.35'); }));
+document.querySelectorAll('.stop').forEach(b => b.addEventListener('click', () => { b.textContent = 'Stopped (mock)'; }));
+</script><script>
+// Live demo: working life lines advance, timers tick, "updated" counts, and a fresh stall stays lit until seen.
+const R = () => Math.random();
+document.querySelectorAll('.s-work .life.ridge path').forEach(p => {
+  let ys = [...p.getAttribute('d').matchAll(/L(\d+) ([\d.]+)/g)].map(m => +m[2]).slice(0, 60);
+  setInterval(() => {
+    ys.shift(); ys.push(R() < .75 ? 16 - (0.35 + R() * 0.65) * 13 : 16);
+    p.setAttribute('d', 'M0 16 ' + ys.map((y, i) => 'L' + (i * 2 + 1) + ' ' + y.toFixed(1)).join(' ') + ' L120 16');
+  }, 1500);
+});
+let secs = 0; const up = document.querySelector('.bar time'); up.textContent = '0s ago';
+setInterval(() => { secs = (secs + 1) % 5; up.textContent = secs + 's ago'; }, 1000);
+const stuck = document.querySelector('.panel.s-stuck');
+if (stuck) { stuck.classList.add('changed');
+  const b = document.createElement('span'); b.className = 'newbadge'; b.textContent = 'New'; stuck.querySelector('.ph h2').after(b);
+  stuck.addEventListener('mouseenter', () => { stuck.classList.remove('changed'); b.remove(); }, { once: true }); }
+
+// ---- Usage meters (Claude plan limits) and the help button, in the bar ----
+const right = document.querySelector('.bar .right');
+const usage = document.createElement('div'); usage.className = 'usage';
+usage.innerHTML = '<div class="meter" id="u5"><span class="lbl">5-hour <b>42%</b></span><span class="track"><span class="fill" style="width:42%"></span></span><span class="rs">resets in <span class="t">1h 12m</span></span></div>'
+  + '<div class="meter" id="uw"><span class="lbl">Week <b>18%</b></span><span class="track"><span class="fill" style="width:18%"></span></span><span class="rs">resets in <span class="t">4d 6h</span></span></div>';
+right.prepend(usage);
+// Light / dark: follows the system until you pick; your pick is remembered on this computer.
+const modes = ['System', 'Light', 'Dark']; const modeBtn = document.createElement('button'); modeBtn.className = 'modebtn'; modeBtn.title = 'Light or dark';
+const applyMode = (m) => { if (m === 'System') document.documentElement.removeAttribute('data-theme'); else document.documentElement.dataset.theme = m.toLowerCase(); modeBtn.textContent = m === 'System' ? 'Auto' : m; };
+let mode = 'System'; try { mode = localStorage.getItem('dash-mode') || 'System'; } catch (e) {}
+applyMode(mode); modeBtn.addEventListener('click', () => { mode = modes[(modes.indexOf(mode) + 1) % 3]; applyMode(mode); try { localStorage.setItem('dash-mode', mode); } catch (e) {} });
+right.append(modeBtn);
+const help = document.createElement('button'); help.className = 'helpbtn'; help.textContent = '?'; help.title = 'Show me around'; right.append(help);
+let u5 = 42; setInterval(() => { u5 = Math.min(99, u5 + 1); const m = document.getElementById('u5'); m.querySelector('b').textContent = u5 + '%'; m.querySelector('.fill').style.width = u5 + '%'; m.classList.toggle('hot', u5 >= 75); }, 4000);
+
+// ---- Which task each session is on ----
+const links = { '4f98': 'Design and mockups', '34d4': 'Fixture migration', 'bd5e': 'Publish', 'Subagent': 'Fixture migration' };
+const taskNode = (name) => [...document.querySelectorAll('.node')].find(n => (n.querySelector('.label') || {}).textContent === name);
+document.querySelectorAll('.sess').forEach(s => {
+  const head = s.querySelector('.what b').textContent; const id = head.replace('Session ', '');
+  const task = links[id]; const tn = task && taskNode(task);
+  const line = document.createElement('div'); line.className = 'on-task' + (tn ? '' : ' none');
+  line.innerHTML = tn ? 'Working on <a>' + task + '</a>' : 'Not linked to a task yet';
+  s.querySelector('.what').append(line);
+  if (tn) {
+    const pill = document.createElement('span'); pill.className = 'who'; pill.textContent = id === 'Subagent' ? 'subagent' : 'session ' + id;
+    tn.querySelector('.meta').prepend(pill);
+    const on = () => { tn.classList.add('linked'); s.classList.add('linked'); }, off = () => { tn.classList.remove('linked'); s.classList.remove('linked'); };
+    s.addEventListener('mouseenter', on); s.addEventListener('mouseleave', off);
+    tn.addEventListener('mouseenter', on); tn.addEventListener('mouseleave', off);
+    line.querySelector('a').addEventListener('click', () => tn.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  }
+});
+
+// ---- Details on the work and the workers: rest the mouse on a task, session, helper or project ----
+// One plain paragraph about that item. Appears after a short still pause, sits beside the panel (not over the row),
+// and goes away as soon as the mouse moves on.
+const details = {
+  'Design and mockups': 'Designing what this dashboard looks like. Session 4f98 has been on it for 2 hours 5 minutes and is comparing layouts with you. It is a medium task, the first of five in Live dashboard.',
+  'Session and stall scanner': 'Not started. The part that reads Claude Code\'s own files to tell working sessions from stuck ones. Medium sized.',
+  'Plan ticker hook': 'Not started. A small hook that ticks plan tasks off when a commit or a session says they are done.',
+  'Page and live updates': 'Not started. The page itself, and keeping it current without reloading.',
+  'Installer component and docs': 'Not started. Adding the dashboard to this repo\'s installer so anyone can set it up.',
+  'Fixture migration': 'Moving the test fixtures to the new invoice format. Session 34d4 started the test run 52 minutes ago and it has printed nothing for 31 minutes with no CPU use, which is why it looks stuck. A background helper on the same task has also gone quiet.',
+  'CSV writer': 'Done in 50 minutes. Writes invoices out as CSV files.',
+  'Currency rounding': 'Done in 40 minutes. Fixed rounding of amounts in other currencies.',
+  'PDF layout': 'Not started. Small task.', 'Email delivery': 'Not started. Small task.',
+  'Publish': 'Publishing release 2.4. Session bd5e is waiting for you to allow the publish command in its terminal; it has been asking for 10 minutes.',
+  'Changelog': 'Done in 20 minutes.', 'Search index': 'Done in 45 minutes.', 'Broken links': 'Done in 15 minutes.',
+  'Live dashboard': 'The feature being built now: a live page showing all Claude Code work on this computer. 1 of 5 tasks done so far, 2 hours 5 minutes spent.',
+  'Rigor component': 'Finished. Four small tasks, 1 hour 15 minutes in total. Click the arrow to see them.',
+  'Shareable repo': 'Finished. Five tasks, 6 hours 10 minutes in total.',
+  'Invoice export': 'Exporting invoices as CSV and PDF. 2 of 5 tasks done. One task looks stuck.',
+  'Release 2.4': 'Getting release 2.4 out. 3 of 4 tasks done; the last one is waiting on you.',
+  'Builder check of the spec': 'A helper started by session 4f98 six minutes ago, reading the design document for gaps. Still active.',
+  'Files-changed header': 'A helper started by session 4f98 two minutes ago, writing the summary of changed files. Still active.',
+};
+const sessDetails = {
+  '4f98': 'A Claude Code window in claude-visual-review, busy for 2 hours 5 minutes. It is active almost every minute, has two helpers running, and 14 that already finished.',
+  '34d4': 'A Claude Code window in billing-api. It started the test suite 52 minutes ago; the test process has used no CPU and printed nothing for 31 minutes. Probably hung: check its terminal.',
+  'bd5e': 'A Claude Code window in docs-site, waiting for you to approve a command (npm publish) in its terminal. It has been waiting 10 minutes.',
+  'Subagent': 'A background helper in billing-api, started 1 hour 10 minutes ago to migrate fixtures. It never reported back and its log has not changed for 48 minutes.',
+};
+const projDetails = {
+  'claude-visual-review': 'One session working, 4 tasks left (2 medium, 2 small), 8 hours 15 minutes spent so far across 3 features.',
+  'billing-api': 'Something looks stuck here: a test run and a helper have both gone quiet. 3 tasks left, 5 hours 40 minutes spent.',
+  'docs-site': 'Waiting on you to approve a publish. 1 small task left.',
+};
+const tip = document.createElement('div'); tip.className = 'tip'; document.body.append(tip);
+document.querySelectorAll('.node').forEach(n => { const l = n.querySelector('.label'); if (l && details[l.textContent.trim()]) n.dataset.detail = details[l.textContent.trim()]; });
+document.querySelectorAll('.sess').forEach(s => { const id = s.querySelector('.what b').textContent.replace('Session ', ''); if (sessDetails[id]) s.dataset.detail = sessDetails[id]; });
+document.querySelectorAll('.ph').forEach(p => { const n = p.querySelector('h2').textContent; if (projDetails[n]) p.dataset.detail = projDetails[n]; });
+let timer = null, anchor = null, x0 = 0, y0 = 0;
+const hide = () => { clearTimeout(timer); tip.classList.remove('show'); anchor = null; };
+document.addEventListener('mousemove', e => {
+  if (document.querySelector('.tour')) return hide();
+  const el = e.target.closest('[data-detail]');
+  if (tip.classList.contains('show') && (Math.hypot(e.clientX - x0, e.clientY - y0) > 8 || el !== anchor)) hide();
+  if (!el) { clearTimeout(timer); return; }
+  if (el !== anchor || !tip.classList.contains('show')) {
+    clearTimeout(timer); anchor = el; x0 = e.clientX; y0 = e.clientY;
+    timer = setTimeout(() => {
+      tip.textContent = el.dataset.detail;
+      const box = (el.closest('.panel') || el).getBoundingClientRect(), r = el.getBoundingClientRect(), w = 320;
+      const left = box.right + 12 + w < innerWidth ? box.right + 12 : Math.max(8, box.left - w - 12);
+      tip.style.left = left + 'px'; tip.style.top = Math.min(Math.max(8, r.top), innerHeight - tip.offsetHeight - 8) + 'px';
+      tip.classList.add('show');
+    }, 650);
+  }
+});
+document.addEventListener('scroll', hide, true);
+
+// ---- Help tour: spotlight each feature in turn ----
+const steps = [
+  ['.counts', 'The big picture', 'How many sessions look stuck, are waiting on you, or are working, and what is up next. Click one to focus on it.'],
+  ['.usage', 'Your Claude usage', 'Plan limits at a glance: the five-hour window, the week, and when the window resets.'],
+  ['.panel.s-stuck', 'A project that needs a look', 'Projects with something wrong get a coloured edge, and a New badge until you have seen them.'],
+  ['.panel.s-stuck .sess', 'A session and its life line', 'Each Claude Code window, what it is doing, and its last hour as a line. Flat means it went quiet.'],
+  ['.panel.s-stuck .evidence', 'Why we think it is stuck', 'Always the facts, never just a timer: CPU, output, and how long it has been silent.'],
+  ['.panel.s-stuck .on-task', 'What it is working on', 'The task this session is on. Hover it to light up the task in the tree below.'],
+  ['.panel .tree', 'The plan', 'Each project as epics and tasks, with sizes and time spent. Finished work folds away.'],
+  ['.quiet', 'Quiet projects', 'Projects with nothing running, folded to one line each so they do not crowd the page.'],
+  ['.helpbtn', 'Hover for more', 'Hover over almost anything for a short plain-English explanation. Click ? to see this tour again.'],
+];
+help.addEventListener('click', () => {
+  let i = 0; const ov = document.createElement('div'); ov.className = 'tour';
+  ov.innerHTML = '<div class="hole"></div><div class="card"><h4></h4><p></p><div class="nav"><span></span><span><button class="ghost">Close</button> <button class="next">Next</button></span></div></div>';
+  document.body.append(ov);
+  const hole = ov.querySelector('.hole'), card = ov.querySelector('.card');
+  const show = () => {
+    const [sel, t, d] = steps[i]; const el = document.querySelector(sel);
+    el.scrollIntoView({ block: 'center', behavior: 'instant' });
+    const r = el.getBoundingClientRect(), pad = 6;
+    Object.assign(hole.style, { left: r.left - pad + 'px', top: r.top - pad + 'px', width: r.width + pad * 2 + 'px', height: r.height + pad * 2 + 'px' });
+    card.querySelector('h4').textContent = t; card.querySelector('p').textContent = d;
+    card.querySelector('.nav span').textContent = (i + 1) + ' of ' + steps.length;
+    card.querySelector('.next').textContent = i === steps.length - 1 ? 'Done' : 'Next';
+    let top = r.bottom + 14; if (top + 170 > innerHeight) top = Math.max(10, r.top - 184);
+    card.style.top = top + 'px'; card.style.left = Math.min(Math.max(10, r.left), innerWidth - 320) + 'px';
+  };
+  ov.querySelector('.next').onclick = () => { if (++i >= steps.length) ov.remove(); else show(); };
+  ov.querySelector('.ghost').onclick = () => ov.remove();
+  document.addEventListener('keydown', function k(e) { if (e.key === 'Escape') { ov.remove(); document.removeEventListener('keydown', k); } });
+  show();
+});
+</script></body></html>

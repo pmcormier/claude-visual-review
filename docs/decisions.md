@@ -257,3 +257,22 @@ instead of letting `-Remove` win silently (a bare `-Remove Rigor` on an update, 
 components, is not a conflict). Each test file now deletes its own temp folders (`Complete-Tests` in
 `tests/lib.ps1`), so running one file alone leaves nothing behind; `tests/run.ps1` still sweeps folders its
 run made, as a backstop for a file that crashes.
+
+## 30. A live dashboard, designed (2026-11-18)
+The owner wanted one live view of all Claude Code work on the machine: what is moving, done, next, and what has
+quietly stopped. The Plannotator Inbox hears from sessions that ask; it can't see the ones that stall without
+asking. Design: `docs/superpowers/specs/2026-11-18-live-dashboard-design.md`. The main choices and why:
+- **A local Node server started by a `SessionStart` hook, one per machine.** A stall is the absence of events, so
+  hooks alone rewriting a page can't notice one; something has to keep watching. Node is already required by
+  Rigor, and it starts in 34–60 ms here against 211–282 ms for pwsh.
+- **An external page, not embedded in the Inbox.** Tested: the Inbox's CSP allows only `https:` for fetch and
+  frames, and an attached HTML file is a snapshot. An https/mkcert embed is a possible add-on.
+- **Stalls judged by signs of life, never by time alone,** and each one shows its evidence: a multi-hour build
+  that still uses CPU or prints output is working.
+- **The dashboard never writes into projects.** It computes status itself; a hook writing ticks into repos would
+  leave uncommitted changes in projects the user wasn't touching. It writes only under `~/.claude/dashboard/`.
+- **Its own work log as the primary tree source,** so it works without Plannotator; plans, BMAD tickets and Inbox
+  checklists fill in work not yet started and work a session forgot to log.
+- **Usage through a status-line tap,** because the status line's input is the only documented source of the
+  5-hour and weekly limits (checked against the docs on 2026-11-18).
+- **Its own look, not the setup guide's:** a tool kept open all day; chosen over several rounds of mockups.
