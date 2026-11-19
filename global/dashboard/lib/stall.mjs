@@ -20,9 +20,12 @@
 //    caller has no status timestamp. Evidence appears once waiting >= thresholds.waiting.
 //  - Unknown CPU (null) never makes anything stuck by itself: the other signs must also be
 //    quiet (no output growth, no transcript write), and evidence says "CPU unknown".
-//    "0% CPU" means under 1% (rounds to 0).
+//    "0% CPU" means under 0.5%, so evidence never reads "1% CPU" when stuck (rounds to 0).
 //  - Hung tool, foreground: pending >= hungTool min, no output for >= hungTool min, low CPU.
-//    With no outputFile there is no output signal, so "no output" is measured from tool start.
+//    With no outputFile output is never observed, so "no output" is measured from the
+//    transcript's last write (null lastWriteMs: never judged). Known outputIdleMs is clamped to
+//    the tool's age. Agent/Task calls are never judged here (their subagent is classified
+//    separately). An idle session does not judge a pending tool at all.
 //  - Hung tool, background (outputFile set): such a job stays pending while it runs (a finished
 //    one is cleared by its task-notification in transcripts.mjs), and a long job is normal,
 //    so age is never a sign. Judged only on output idle (outputIdleMs; null means
@@ -33,7 +36,7 @@
 
 const MIN = 60000;
 const mins = (ms) => Math.max(0, Math.floor(ms / MIN));
-const cpuLow = (cpu) => cpu == null || cpu < 1;
+const cpuLow = (cpu) => cpu == null || cpu < 0.5; // same rule as Math.round(cpu) === 0
 
 function label(tool) {
   const first = typeof tool.command === 'string' ? tool.command.trim().split(/\s+/)[0] : '';
@@ -71,22 +74,29 @@ export function classify(input, thresholds) {
   const quietMs = signals.lastWriteMs == null ? 0 : now - signals.lastWriteMs;
 
   if (tool) {
-    const background = !!tool.outputFile;
-    const ageMs = now - tool.startedMs;
-    const judgeable = background ? (outputIdleMs != null && status !== 'idle') : true;
-    if (judgeable) {
-      const idleMs = background ? outputIdleMs : (outputIdleMs ?? ageMs);
-      const old = background || ageMs >= th.hungTool * MIN;
-      const noOutput = idleMs >= th.hungTool * MIN;
-      const noLife = cpuPct == null ? quietMs >= th.hungTool * MIN : cpuLow(cpuPct);
-      if (old && noOutput && noLife) {
-        return result('stuck',
-          `${label(tool)} running ${mins(ageMs)} min · ${cpuText} · no output for ${mins(idleMs)} min`,
-          background ? now - idleMs : tool.startedMs, hint);
+    // A subagent call is judged through its own transcript, never here.
+    if (tool.name === 'Agent' || tool.name === 'Task') return result('working', null, null, hint);
+    // An idle session's leftover tool is not a stall: fall through to its status.
+    if (status !== 'idle') {
+      const background = !!tool.outputFile;
+      const ageMs = now - tool.startedMs;
+      // Output idle time: observed (outputIdleMs) when there is an output file; otherwise the
+      // best proxy is the transcript's last write. Never measured -> never judged.
+      const rawIdle = background ? outputIdleMs
+        : (outputIdleMs ?? (signals.lastWriteMs == null ? null : quietMs));
+      if (rawIdle != null) {
+        const idleMs = Math.min(rawIdle, ageMs);
+        const old = background || ageMs >= th.hungTool * MIN;
+        const noOutput = idleMs >= th.hungTool * MIN;
+        const noLife = cpuPct == null ? quietMs >= th.hungTool * MIN : cpuLow(cpuPct);
+        if (old && noOutput && noLife) {
+          return result('stuck',
+            `${label(tool)} running ${mins(ageMs)} min · ${cpuText} · no output for ${mins(idleMs)} min`,
+            background ? now - idleMs : tool.startedMs, hint);
+        }
       }
+      return result('working', null, null, hint);
     }
-    // An idle session's leftover background job is not a stall: fall through to its status.
-    if (!(background && status === 'idle')) return result('working', null, null, hint);
   }
 
   if (kind === 'subagent') {

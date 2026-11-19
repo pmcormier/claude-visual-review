@@ -22,7 +22,7 @@ test('busy build with CPU and no output for 60 min is working', () => {
 });
 
 test('tool pending, 0% CPU, no output 31 min is stuck with evidence', () => {
-  const r = classify(inp({ signals: sig({ pendingTool: tool(52) }), cpuPct: 0, outputIdleMs: 31 * MIN }), T);
+  const r = classify(inp({ signals: sig({ lastWriteMs: ago(31), pendingTool: tool(52) }), cpuPct: 0 }), T);
   assert.equal(r.state, 'stuck');
   assert.equal(r.evidence, 'pytest running 52 min · 0% CPU · no output for 31 min');
   assert.equal(r.since, ago(52));
@@ -88,9 +88,9 @@ test('unknown CPU alone never makes a tool stuck', () => {
 });
 
 test('unknown CPU with no output and no transcript write is stuck, saying CPU unknown', () => {
-  const r = classify(inp({ cpuPct: null, outputIdleMs: 31 * MIN, signals: sig({ lastWriteMs: ago(40), pendingTool: tool(52) }) }), T);
+  const r = classify(inp({ cpuPct: null, signals: sig({ lastWriteMs: ago(40), pendingTool: tool(52) }) }), T);
   assert.equal(r.state, 'stuck');
-  assert.equal(r.evidence, 'pytest running 52 min · CPU unknown · no output for 31 min');
+  assert.equal(r.evidence, 'pytest running 52 min · CPU unknown · no output for 40 min');
 });
 
 test('unknown CPU: quiet rule rests on the transcript, not the CPU', () => {
@@ -121,15 +121,59 @@ test('background job with no output and 0% CPU is stuck; idle session is not jud
 });
 
 test('evidence names the tool when there is no command', () => {
-  const r = classify(inp({ signals: sig({ pendingTool: tool(52, { name: 'WebFetch', command: null }) }), outputIdleMs: 31 * MIN }), T);
+  const r = classify(inp({ signals: sig({ lastWriteMs: ago(31), pendingTool: tool(52, { name: 'WebFetch', command: null }) }) }), T);
   assert.equal(r.evidence, 'WebFetch running 52 min · 0% CPU · no output for 31 min');
 });
 
 test('precedence: gone > waiting > api error > hung tool > quiet', () => {
   const hung = sig({ pendingTool: tool(52), lastEntryIsApiError: true, lastEntryMs: ago(10), lastWriteMs: ago(40) });
-  assert.equal(classify(inp({ alive: false, status: 'waiting', signals: hung, outputIdleMs: 31 * MIN }), T).state, 'gone');
-  assert.equal(classify(inp({ status: 'waiting', statusUpdatedAt: ago(9), signals: hung, outputIdleMs: 31 * MIN }), T).state, 'waiting');
-  assert.match(classify(inp({ signals: hung, outputIdleMs: 31 * MIN }), T).evidence, /^Last reply was an API error/);
+  assert.equal(classify(inp({ alive: false, status: 'waiting', signals: hung }), T).state, 'gone');
+  assert.equal(classify(inp({ status: 'waiting', statusUpdatedAt: ago(9), signals: hung }), T).state, 'waiting');
+  assert.match(classify(inp({ signals: hung }), T).evidence, /^Last reply was an API error/);
   const noErr = sig({ pendingTool: tool(52), lastWriteMs: ago(40) });
-  assert.match(classify(inp({ signals: noErr, outputIdleMs: 31 * MIN }), T).evidence, /^pytest running/);
+  assert.match(classify(inp({ signals: noErr }), T).evidence, /^pytest running/);
+});
+
+test('a pending Agent call for 60 min with 0% CPU stays working', () => {
+  const r = classify(inp({ cpuPct: 0, signals: sig({ lastWriteMs: ago(50), pendingTool: tool(60, { name: 'Agent', command: null }) }) }), T);
+  assert.equal(r.state, 'working');
+  assert.equal(classify(inp({ cpuPct: 0, signals: sig({ lastWriteMs: ago(50), pendingTool: tool(60, { name: 'Task', command: null }) }) }), T).state, 'working');
+});
+
+test('foreground WebFetch: recent transcript write is working, quiet 25 min is stuck (M = 25)', () => {
+  const wf = tool(60, { name: 'WebFetch', command: null });
+  assert.equal(classify(inp({ cpuPct: 0, signals: sig({ lastWriteMs: ago(2), pendingTool: wf }) }), T).state, 'working');
+  const r = classify(inp({ cpuPct: 0, signals: sig({ lastWriteMs: ago(25), pendingTool: wf }) }), T);
+  assert.equal(r.state, 'stuck');
+  assert.equal(r.evidence, 'WebFetch running 60 min · 0% CPU · no output for 25 min');
+});
+
+test('foreground tool with no lastWriteMs and no outputIdleMs is never stuck', () => {
+  const r = classify(inp({ cpuPct: 0, signals: sig({ lastWriteMs: null, pendingTool: tool(60) }) }), T);
+  assert.equal(r.state, 'working');
+});
+
+test('idle session with a stale foreground tool is idle', () => {
+  const r = classify(inp({ status: 'idle', cpuPct: 0, signals: sig({ lastWriteMs: ago(60), pendingTool: tool(60) }) }), T);
+  assert.equal(r.state, 'idle');
+});
+
+test('known outputIdleMs is clamped to the tool age', () => {
+  const t = tool(25, { command: 'npm run watch', outputFile: 'bg-out.txt' });
+  const r = classify(inp({ cpuPct: 0, outputIdleMs: 90 * MIN, signals: sig({ lastWriteMs: ago(30), pendingTool: t }) }), T);
+  assert.equal(r.state, 'stuck');
+  assert.equal(r.evidence, 'npm running 25 min · 0% CPU · no output for 25 min');
+});
+
+test('CPU rounding boundary: 0.4% is stuck and reads 0%; 0.5% is working', () => {
+  const s = sig({ lastWriteMs: ago(30), pendingTool: tool(52) });
+  const low = classify(inp({ cpuPct: 0.4, signals: s }), T);
+  assert.equal(low.state, 'stuck');
+  assert.match(low.evidence, /· 0% CPU ·/);
+  assert.equal(classify(inp({ cpuPct: 0.5, signals: s }), T).state, 'working');
+});
+
+test("status 'unknown': working while the transcript moves, idle once it is quiet", () => {
+  assert.equal(classify(inp({ status: 'unknown', signals: sig({ lastWriteMs: ago(3) }) }), T).state, 'working');
+  assert.equal(classify(inp({ status: 'unknown', signals: sig({ lastWriteMs: ago(30) }) }), T).state, 'idle');
 });
