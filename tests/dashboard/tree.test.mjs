@@ -92,11 +92,11 @@ test('commit naming plan stem ticks that task', async () => {
   writePlan(root, 'checkout.md', [{ n: 1, title: 'Cart', steps: [0] }, { n: 2, title: 'Pay', steps: [0] }]);
   writePlan(root, 'billing-api.md', [{ n: 1, title: 'Invoices', steps: [0] }, { n: 2, title: 'Refunds', steps: [0] }]);
   commit(root, 'Plans', T0);
-  commit(root, 'checkout: Task 2 done\n\nMulti-line body\nwith Task 1 of nothing else', T0 + 10 * MIN);
+  commit(root, 'checkout: Task 2 done\n\nMulti-line body\nTask 1 is next', T0 + 10 * MIN);
   const commits = await readCommits(root, T0 - 60 * MIN);
   const tree = buildTree(root, { ...empty(), plans: readPlans(root), commits }, TH);
   assert.equal(taskOf(tree, planId('checkout.md'), 2).status, 'done');
-  assert.equal(taskOf(tree, planId('checkout.md'), 1).status, 'done', 'body names Task 1 too, plan still named');
+  assert.equal(taskOf(tree, planId('checkout.md'), 1).status, 'next', 'Task N in the body does not count');
   assert.equal(taskOf(tree, planId('billing-api.md'), 2).status, 'next');
 });
 
@@ -106,12 +106,16 @@ test('only one unfinished plan makes Task N unambiguous', async () => {
   const { buildTree } = await mod('tree.mjs');
   writePlan(root, 'checkout.md', [{ n: 1, title: 'Cart', steps: [1] }]); // finished
   writePlan(root, 'billing-api.md', [{ n: 1, title: 'Invoices', steps: [0] }, { n: 2, title: 'Refunds', steps: [0] }]);
-  const commits = [{ sha: 'a1', ms: T0, message: 'Task 2: refunds', files: ['src/refunds.js'] }];
+  const commits = [
+    { sha: 'p', ms: T0 - 60 * MIN, message: 'Plans', files: ['docs/superpowers/plans/checkout.md', 'docs/superpowers/plans/billing-api.md'] },
+    { sha: 'f', ms: T0 - 30 * MIN, message: 'Tick checkout', files: ['docs/superpowers/plans/checkout.md'] },
+    { sha: 'a1', ms: T0, message: 'Task 2: refunds', files: ['src/refunds.js'] },
+  ];
   const tree = buildTree(root, { ...empty(), plans: readPlans(root), commits }, TH);
   assert.equal(taskOf(tree, planId('billing-api.md'), 2).status, 'done');
   assert.equal(taskOf(tree, planId('billing-api.md'), 1).status, 'next');
   // "Task 22" is not "Task 2"
-  const tree2 = buildTree(root, { ...empty(), plans: readPlans(root), commits: [{ ...commits[0], message: 'Task 22' }] }, TH);
+  const tree2 = buildTree(root, { ...empty(), plans: readPlans(root), commits: [...commits.slice(0, 2), { ...commits[2], message: 'Task 22' }] }, TH);
   assert.equal(taskOf(tree2, planId('billing-api.md'), 2).status, 'next');
 });
 
@@ -226,12 +230,13 @@ test('commit by a session linked to the plan ticks that task', async () => {
   const a = writePlan(root, 'checkout.md', [{ n: 1, title: 'Cart', steps: [0] }]);
   writePlan(root, 'billing-api.md', [{ n: 1, title: 'Invoices', steps: [0] }]);
   const events = [{ session: 's-1', file: a, at: T0 }, { session: 's-1', file: 'src/cart.js', at: T0 + 20 * MIN }];
-  const commits = [{ sha: 'a', ms: T0 + 25 * MIN, message: 'Task 1 done', files: [] }];
+  const added = { sha: 'p', ms: T0 - 60 * MIN, message: 'Plans', files: ['docs/superpowers/plans/checkout.md', 'docs/superpowers/plans/billing-api.md'] };
+  const commits = [added, { sha: 'a', ms: T0 + 25 * MIN, message: 'Task 1 done', files: [] }];
   const tree = buildTree(root, { ...empty(), plans: readPlans(root), commits, events }, TH);
   assert.equal(taskOf(tree, planId('checkout.md'), 1).status, 'done');
   assert.equal(taskOf(tree, planId('billing-api.md'), 1).status, 'next');
   // a commit long after that session went quiet is not attributed to it
-  const late = buildTree(root, { ...empty(), plans: readPlans(root), commits: [{ ...commits[0], ms: T0 + 300 * MIN }], events }, TH);
+  const late = buildTree(root, { ...empty(), plans: readPlans(root), commits: [added, { ...commits[1], ms: T0 + 300 * MIN }], events }, TH);
   assert.equal(taskOf(late, planId('checkout.md'), 1).status, 'next');
 });
 
@@ -282,4 +287,135 @@ test('two unfinished plans keep Task N ambiguous even when only one has it', asy
   const commits = [{ sha: 'a', ms: T0, message: 'Task 2', files: [] }];
   const tree = buildTree(root, { ...empty(), plans: readPlans(root), commits }, TH);
   assert.equal(taskOf(tree, planId('billing-api.md'), 2).status, 'next');
+});
+
+// ---- fix round 1 (R15)
+
+const PLANS = 'docs/superpowers/plans/';
+
+test("a finished plan's old Task N commits do not tick the plan left open (R15a)", async () => {
+  const { root } = setup();
+  const { readPlans } = await mod('sources/plans.mjs');
+  const { buildTree } = await mod('tree.mjs');
+  writePlan(root, 'checkout.md', [{ n: 1, title: 'Cart', steps: [1] }, { n: 2, title: 'Pay', steps: [1] }]);
+  writePlan(root, 'billing-api.md', [{ n: 1, title: 'Invoices', steps: [0] }, { n: 2, title: 'Refunds', steps: [0] }]);
+  const commits = [
+    { sha: 'p', ms: T0, message: 'Plans', files: [PLANS + 'billing-api.md', PLANS + 'checkout.md'] },
+    { sha: 'a', ms: T0 + 10 * MIN, message: 'Task 1', files: ['src/cart.js'] },
+    { sha: 'b', ms: T0 + 20 * MIN, message: 'Task 2', files: ['src/pay.js'] },
+    { sha: 't', ms: T0 + 30 * MIN, message: 'Tick checkout', files: [PLANS + 'checkout.md'] },
+  ];
+  const tree = buildTree(root, { ...empty(), plans: readPlans(root), commits }, TH);
+  assert.equal(taskOf(tree, planId('billing-api.md'), 1).status, 'next');
+  assert.equal(taskOf(tree, planId('billing-api.md'), 2).status, 'next');
+  // after checkout was finished, billing-api is the only open plan
+  const later = buildTree(root, { ...empty(), plans: readPlans(root), commits: [...commits, { sha: 'c', ms: T0 + 40 * MIN, message: 'Task 2', files: [] }] }, TH);
+  assert.equal(taskOf(later, planId('billing-api.md'), 2).status, 'done');
+  // a finished plan whose finishing commit is unknown still counts as open
+  const unknown = buildTree(root, { ...empty(), plans: readPlans(root), commits: [
+    { ...commits[0], files: [PLANS + 'billing-api.md'] }, { sha: 'c', ms: T0 + 40 * MIN, message: 'Task 2', files: [] }] }, TH);
+  assert.equal(taskOf(unknown, planId('billing-api.md'), 2).status, 'next');
+  // ...and so does one whose only commit added it (its ticks were never committed)
+  const addOnly = buildTree(root, { ...empty(), plans: readPlans(root), commits: commits.slice(0, 3) }, TH);
+  assert.equal(taskOf(addOnly, planId('billing-api.md'), 1).status, 'next');
+  assert.equal(taskOf(addOnly, planId('billing-api.md'), 2).status, 'next');
+});
+
+test('an uncommitted plan is never ticked through b or c and blocks c (R15b)', async () => {
+  const { root } = setup();
+  const { readPlans } = await mod('sources/plans.mjs');
+  const { buildTree } = await mod('tree.mjs');
+  const fresh = writePlan(root, 'billing-api.md', [{ n: 1, title: 'Invoices', steps: [0] }]);
+  const task1 = { sha: 'a', ms: T0, message: 'Task 1', files: [] };
+  let tree = buildTree(root, { ...empty(), plans: readPlans(root), commits: [task1] }, TH);
+  assert.equal(taskOf(tree, planId('billing-api.md'), 1).status, 'next', 'c: only plan, but uncommitted');
+  const events = [{ session: 's-1', file: fresh, at: T0 - 5 * MIN }];
+  tree = buildTree(root, { ...empty(), plans: readPlans(root), events, commits: [task1] }, TH);
+  assert.equal(taskOf(tree, planId('billing-api.md'), 1).status, 'next', 'b: linked, but uncommitted');
+  tree = buildTree(root, { ...empty(), plans: readPlans(root), commits: [{ ...task1, message: 'billing-api Task 1' }] }, TH);
+  assert.equal(taskOf(tree, planId('billing-api.md'), 1).status, 'done', 'a: naming the plan still ticks');
+  writePlan(root, 'checkout.md', [{ n: 1, title: 'Cart', steps: [0] }]);
+  tree = buildTree(root, { ...empty(), plans: readPlans(root), commits: [
+    { sha: 'p', ms: T0 - 60 * MIN, message: 'Plan', files: [PLANS + 'checkout.md'] }, task1] }, TH);
+  assert.equal(taskOf(tree, planId('checkout.md'), 1).status, 'next', 'the uncommitted plan makes c ambiguous');
+});
+
+test("another project's plan of the same name is not a touch of ours (R15c)", async () => {
+  const { root } = setup();
+  const { readPlans } = await mod('sources/plans.mjs');
+  const { buildTree } = await mod('tree.mjs');
+  writePlan(root, 'checkout.md', [{ n: 1, title: 'Cart', steps: [0] }]);
+  writePlan(root, 'billing-api.md', [{ n: 1, title: 'Invoices', steps: [0] }]);
+  const other = join(root, '..', 'other-shop', 'docs', 'superpowers', 'plans', 'checkout.md');
+  const now = T0 + 60 * MIN;
+  const events = [{ session: 's-1', file: other, at: now - 5 * MIN }];
+  const commits = [
+    { sha: 'p', ms: T0, message: 'Plans', files: [PLANS + 'checkout.md', PLANS + 'billing-api.md'] },
+    { sha: 'a', ms: now - 2 * MIN, message: 'Task 1', files: [] },
+  ];
+  const sessions = [{ sessionId: 's-2', planRefs: [{ file: other, ms: now - 4 * MIN }], taskRefs: [{ n: 1, ms: now - 3 * MIN }], minutes: [], lastWriteMs: now }];
+  const tree = buildTree(root, { ...empty(), plans: readPlans(root), events, commits, sessions, now }, TH);
+  assert.equal(taskOf(tree, planId('checkout.md'), 1).status, 'next');
+  assert.equal(tree.links['s-2'] ?? null, null);
+  // the same plan in our project (different case on Windows) does match
+  const ours = join(root, 'docs', 'superpowers', 'plans', 'checkout.md');
+  const mine = buildTree(root, { ...empty(), plans: readPlans(root), commits,
+    events: [{ session: 's-1', file: process.platform === 'win32' ? ours.toUpperCase() : ours, at: now - 5 * MIN }] }, TH);
+  assert.equal(taskOf(mine, planId('checkout.md'), 1).status, 'done');
+});
+
+test('Task N and the plan name count only on the subject line (R15d)', async () => {
+  const { root } = setup();
+  const { readPlans } = await mod('sources/plans.mjs');
+  const { buildTree } = await mod('tree.mjs');
+  writePlan(root, 'checkout.md', [{ n: 1, title: 'Cart', steps: [0] }, { n: 2, title: 'Pay', steps: [0] }]);
+  writePlan(root, 'billing-api.md', [{ n: 2, title: 'Refunds', steps: [0] }]);
+  const commits = [
+    { sha: 'a', ms: T0, message: 'checkout: Task 1 done\n\nTask 2 is next', files: [] },
+    { sha: 'b', ms: T0, message: 'Task 2 done\r\n\r\nPart of billing-api', files: [] },
+  ];
+  const tree = buildTree(root, { ...empty(), plans: readPlans(root), commits }, TH);
+  assert.equal(taskOf(tree, planId('checkout.md'), 1).status, 'done');
+  assert.equal(taskOf(tree, planId('checkout.md'), 2).status, 'next');
+  assert.equal(taskOf(tree, planId('billing-api.md'), 2).status, 'next');
+});
+
+test('a session idle at the commit does not attribute it, and waiting work-log tasks link', async () => {
+  const { root } = setup();
+  const { readPlans } = await mod('sources/plans.mjs');
+  const { buildTree } = await mod('tree.mjs');
+  const a = writePlan(root, 'checkout.md', [{ n: 1, title: 'Cart', steps: [0] }]);
+  writePlan(root, 'billing-api.md', [{ n: 1, title: 'Invoices', steps: [0] }]);
+  // active T0..T0+5, idle, active again at T0+100: a commit at T0+60 falls in the idle gap
+  const events = [{ session: 's-1', file: a, at: T0 }, { session: 's-1', file: 'x', at: T0 + 5 * MIN }, { session: 's-1', file: 'x', at: T0 + 100 * MIN }];
+  const commits = [
+    { sha: 'p', ms: T0 - 60 * MIN, message: 'Plans', files: [PLANS + 'checkout.md', PLANS + 'billing-api.md'] },
+    { sha: 'c', ms: T0 + 60 * MIN, message: 'Task 1', files: [] },
+  ];
+  const tree = buildTree(root, { ...empty(), plans: readPlans(root), events, commits }, TH);
+  assert.equal(taskOf(tree, planId('checkout.md'), 1).status, 'next');
+  const worklog = [{ id: 'wl-1', source: 'worklog', title: 'Ask owner', file: null, tasks: [
+    { id: 'wl-1-1', n: null, title: 'Ask owner', status: 'waiting', size: null, sessionId: 's-9', startedMs: T0, doneMs: null, ticked: null }] }];
+  const linked = buildTree(root, { ...empty(), worklog, sessions: [{ sessionId: 's-9' }], now: T0 + 10 * MIN }, TH);
+  assert.equal(linked.links['s-9'], 'wl-1-1');
+  assert.equal(taskOf(linked, 'wl-1', null).status, 'waiting');
+});
+
+test('git child env drops repo-location variables', async () => {
+  const { root } = setup();
+  const { readCommits } = await mod('git.mjs');
+  initRepo(root);
+  commit(root, 'Task 1 one', T0);
+  const elsewhere = mkdtempSync(join(tmpdir(), 'cvr-tree-billing-api-'));
+  initRepo(elsewhere);
+  commit(elsewhere, 'other repo', T0);
+  commit(elsewhere, 'other repo again', T0 + MIN);
+  const saved = process.env.GIT_DIR;
+  process.env.GIT_DIR = join(elsewhere, '.git');
+  try {
+    const got = await readCommits(root, T0 - MIN);
+    assert.deepEqual(got.map((c) => c.message), ['Task 1 one']);
+  } finally {
+    if (saved === undefined) delete process.env.GIT_DIR; else process.env.GIT_DIR = saved;
+  }
 });

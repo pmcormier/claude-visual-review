@@ -25,11 +25,19 @@ function log(msg) {
   } catch { /* logging must never throw */ }
 }
 
+// A repo-location variable inherited from the server's environment would point git at another repo.
+const DROP_ENV = new Set(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_CEILING_DIRECTORIES', 'GIT_COMMON_DIR']);
+function childEnv() {
+  const env = {};
+  for (const [k, v] of Object.entries(process.env)) if (!DROP_ENV.has(k.toUpperCase())) env[k] = v;
+  return { ...env, NoDefaultCurrentDirectoryInExePath: '1', GIT_TERMINAL_PROMPT: '0' };
+}
+
 function run(args) {
   return new Promise((res, rej) => {
     execFile('git', args, {
       cwd: HERE, windowsHide: true, timeout: TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024, encoding: 'utf8',
-      env: { ...process.env, NoDefaultCurrentDirectoryInExePath: '1', GIT_TERMINAL_PROMPT: '0' },
+      env: childEnv(),
     }, (err, stdout, stderr) => (err ? rej(Object.assign(err, { stderr })) : res(stdout)));
   });
 }

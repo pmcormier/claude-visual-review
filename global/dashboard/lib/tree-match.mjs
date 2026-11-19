@@ -24,8 +24,10 @@ export function normPath(root, file) {
 }
 
 /**
- * Index of plan epics by full path and by file name (the name is used only when it is unique).
- * @returns {{plans: object[], find: (file: string) => object|null}}
+ * Index of plan epics. `exact` matches the full normalized path only (case-insensitive on Windows); session
+ * evidence (events, transcript planRefs) uses it, so another project's plan of the same name never matches.
+ * `find` also falls back to a unique file name; only the work log's `--plan` value uses it.
+ * @returns {{plans: object[], find: (file: string) => object|null, exact: (file: string) => object|null}}
  */
 export function planIndex(root, plans) {
   const byPath = new Map();
@@ -39,10 +41,15 @@ export function planIndex(root, plans) {
   }
   return {
     plans,
-    find(file) {
+    exact(file) {
       if (typeof file !== 'string' || !file) return null;
       const k = normPath(root, file);
-      if (k && byPath.has(k)) return byPath.get(k);
+      return (k && byPath.get(k)) ?? null;
+    },
+    find(file) {
+      if (typeof file !== 'string' || !file) return null;
+      const hit = this.exact(file);
+      if (hit) return hit;
       return byName.get(basename(file.replace(/\\/g, '/')).toLowerCase()) ?? null;
     },
   };
@@ -89,7 +96,7 @@ export function activityBySession(events, live, index, now) {
   for (const e of events) {
     const a = get(e.session);
     a.spans.push([e.ms, e.ms]);
-    const plan = index.find(e.file);
+    const plan = index.exact(e.file);
     if (plan) a.touches.push({ plan, ms: e.ms });
   }
   const nowMin = Math.floor(now / MIN) * MIN;
@@ -97,7 +104,7 @@ export function activityBySession(events, live, index, now) {
     const a = get(s.id);
     for (const r of s.planRefs) {
       a.spans.push([r.ms, r.ms]);
-      const plan = index.find(r.file);
+      const plan = index.exact(r.file);
       if (plan) a.touches.push({ plan, ms: r.ms });
     }
     for (const r of s.taskRefs) { a.spans.push([r.ms, r.ms]); a.taskRefs.push(r); }
@@ -141,49 +148,79 @@ function namesPlan(message, plan) {
 const taskN = (plan, n) => plan.tasks.find((t) => t.n === n) ?? null;
 const unfinished = (plan) => plan.tasks.some((t) => t.status !== 'done');
 
+/** Bridged activity segments: spans joined across gaps up to idleMs, longer (idle) gaps left open. */
+export function segments(spans, idleMs) {
+  const out = [];
+  for (const [s, e] of [...spans].sort((a, b) => a[0] - b[0])) {
+    const last = out[out.length - 1];
+    if (last && s - last[1] <= idleMs) last[1] = Math.max(last[1], e); else out.push([s, e]);
+  }
+  return out;
+}
+
 /**
- * Which plan tasks commits mark done. Clauses, in order; the first that applies decides, and when it is
- * ambiguous nothing is marked:
- *  a. the message names plans (file stem, with or without its YYYY-MM-DD- prefix): exactly one of them has Task N;
- *  b. sessions active at the commit (inside their activity window, idle gap allowed after the last activity)
- *     had touched plans before it: exactly one of those plans has Task N;
- *  c. the repo has exactly one unfinished plan (by its own ticks) and it has Task N.
- * In b and c a plan first committed after the commit is not a candidate (its birth is the oldest commit seen
- * that lists its file; unknown birth counts as older).
+ * Which plan tasks commits mark done. Only the subject line (first line) is read: `Task N` and plan names in
+ * the body don't count. Clauses, in order; the first that applies decides, and when it is ambiguous nothing is
+ * marked (a missed tick is better than a wrong one):
+ *  a. the subject names plans (file stem, with or without its YYYY-MM-DD- prefix): exactly one of them has Task N;
+ *  b. sessions active at the commit (inside one of their bridged activity segments, or up to idleGap after its
+ *     end) had touched plans before it: exactly one of those plans has Task N;
+ *  c. exactly one plan exists and is unfinished at the commit, and it has Task N.
+ * Plan history comes from the commits seen: firstCommit = oldest commit listing the plan file, lastCommit =
+ * newest. A plan exists at C when firstCommit <= C, or when firstCommit is unknown (uncommitted, or older than
+ * the window). It is unfinished at C unless it is fully ticked now and its lastCommit (taken as when it was
+ * finished) is before C. A finished plan listed by fewer than two commits (never committed, or only added, so
+ * its ticks were never committed) has an unknown finish and counts as unfinished. In b and c a plan with
+ * an unknown firstCommit is never ticked, but in c it still counts, so it blocks ticking another plan.
  * @returns {Map<string, number>} plan task id -> commit ms (the oldest matching commit)
  */
 export function matchCommits(root, plans, commits, activity, idleMs) {
   const done = new Map();
   if (!plans.length) return done;
   const rel = new Map(plans.map((p) => [p, normPath('/', relative(String(root || ''), String(p.file || '')))]));
-  const birth = new Map();
+  const first = new Map();
+  const last = new Map();
+  const touches = new Map(); // plan -> number of commits listing its file
   for (const c of commits) {
     for (const f of c.files) {
       const k = normPath('/', f);
-      for (const p of plans) if (rel.get(p) === k && !(birth.get(p) <= c.ms)) birth.set(p, c.ms);
-    }
-  }
-  const bornBy = (p, ms) => !birth.has(p) || birth.get(p) <= ms;
-  const open = plans.filter(unfinished);
-
-  for (const c of [...commits].sort((x, y) => x.ms - y.ms)) {
-    const ns = [...new Set([...c.message.matchAll(TASK_RE)].map((m) => Number(m[1])))];
-    if (!ns.length) continue;
-    const named = plans.filter((p) => namesPlan(c.message, p));
-    let linked = null;
-    if (!named.length) {
-      linked = new Set();
-      for (const a of activity.values()) {
-        if (!a.spans.length || c.ms < a.spans[0][0] || c.ms > a.spans[a.spans.length - 1][1] + idleMs) continue;
-        for (const t of a.touches) if (t.ms <= c.ms && bornBy(t.plan, c.ms)) linked.add(t.plan);
+      for (const p of plans) {
+        if (rel.get(p) !== k) continue;
+        if (!(first.get(p) <= c.ms)) first.set(p, c.ms);
+        if (!(last.get(p) >= c.ms)) last.set(p, c.ms);
+        touches.set(p, (touches.get(p) ?? 0) + 1);
       }
     }
-    const openNow = open.filter((p) => bornBy(p, c.ms));
+  }
+  const existsAt = (p, ms) => !first.has(p) || first.get(p) <= ms;
+  const tickable = (p, ms) => first.has(p) && first.get(p) <= ms;
+  // A plan is added with its boxes unticked, so a commit that only added it is not its finish: a plan touched
+  // by a single commit has an unknown finish and counts as open.
+  const openAt = (p, ms) => unfinished(p) || (touches.get(p) ?? 0) < 2 || last.get(p) >= ms;
+  const segs = [...activity.values()].map((a) => ({ segs: segments(a.spans, idleMs), touches: a.touches }));
+
+  for (const c of [...commits].sort((x, y) => x.ms - y.ms)) {
+    const subject = c.message.split(/\r?\n/, 1)[0];
+    const ns = [...new Set([...subject.matchAll(TASK_RE)].map((m) => Number(m[1])))];
+    if (!ns.length) continue;
+    const named = plans.filter((p) => namesPlan(subject, p));
+    let pool;
+    if (named.length) {
+      pool = named;
+    } else {
+      const linked = new Set();
+      let touched = false;
+      for (const a of segs) {
+        if (!a.segs.some(([s, e]) => c.ms >= s && c.ms <= e + idleMs)) continue;
+        for (const t of a.touches) if (t.ms <= c.ms) { touched = true; if (tickable(t.plan, c.ms)) linked.add(t.plan); }
+      }
+      if (touched) pool = [...linked];
+      else {
+        const open = plans.filter((p) => existsAt(p, c.ms) && openAt(p, c.ms));
+        pool = open.length === 1 && tickable(open[0], c.ms) ? open : [];
+      }
+    }
     for (const n of ns) {
-      let pool;
-      if (named.length) pool = named;
-      else if (linked.size) pool = [...linked];
-      else pool = openNow.length === 1 ? openNow : [];
       const hits = pool.filter((p) => taskN(p, n));
       if (hits.length !== 1) continue;
       const t = taskN(hits[0], n);

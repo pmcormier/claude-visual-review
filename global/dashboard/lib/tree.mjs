@@ -74,11 +74,11 @@ function applyPlanStatus(plans, override, commitDone) {
 
 const latest = (list) => (list.length ? list[list.length - 1] : null);
 
-// Link order (spec): 0 work log, 1 Inbox checklist, 2 plan touch (events or transcript planRefs) + latest
+// Link order (spec): 0 work log (task doing or waiting), 1 Inbox checklist, 2 plan touch (events or transcript planRefs) + latest
 // `Task N` in that plan, 3 latest `Task N` alone when exactly one plan has that task unfinished.
 function linkSession(sid, ctx) {
   for (let i = ctx.worklog.length - 1; i >= 0; i--) {
-    const w = ctx.worklog[i].tasks.find((t) => t.sessionId === sid && t.status === 'doing');
+    const w = ctx.worklog[i].tasks.find((t) => t.sessionId === sid && (t.status === 'doing' || t.status === 'waiting'));
     const t = w ? ctx.target.get(w.id) ?? (ctx.listedTasks.has(w) ? w : null) : null;
     if (t && ctx.shown.has(t)) return t;
   }
@@ -132,7 +132,8 @@ function median(xs) {
  * @param {{worklog?, plans?, bmad?, inbox?, commits?, sessions?, events?, now?: number}} inputs
  *   sessions: live sessions `{sessionId, planRefs, taskRefs, minutes, lastWriteMs}` (or those under `signals`);
  *   events: events.jsonl lines `{session, file, at}`; now: the moment `minutes` ends (default Date.now()).
- * @param {{idleGap: number}} [thresholds] defaults from loadConfig() when omitted
+ * @param {{idleGap: number}} [thresholds] only idleGap is read. When omitted (not an object), buildTree calls
+ *   loadConfig() and so reads <dashHome>/config.json; that is its only I/O. Pass thresholds to keep it pure.
  * @returns {{epics: import('./types.mjs').Epic[], left: {count: number, hours: number|null}, spentMin: number,
  *   links: Record<string, string>}} links: live session id -> linked task id
  */
