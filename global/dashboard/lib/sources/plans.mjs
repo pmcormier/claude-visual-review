@@ -9,9 +9,11 @@ import { join, basename } from 'node:path';
 const TASK = /^###\s+Task\s+(\d+)\s*[:.\u2013-]\s*(.*?)\s*$/i;
 const SIZE = /\s*\[([SML])\]\s*$/;
 const TICK = /^\s*[-*]\s+\[([ xX])\]/;
-// `Status: done` or `Status: dropped` (optionally bold, quoted, or followed by a note), before the first `##`
-// heading and outside code fences: closes a whole plan (dashboard catch-up). Any other value is ignored.
-const STATUS = /^\s*(?:>\s*)?(?:\*\*)?Status:?(?:\*\*)?:?\s*(done|dropped)\b/i;
+// `Status: done`, `Status: dropped` or `Status: open` (optionally bold or quoted, and optionally followed by a
+// dash and a note), before the first `##` heading and outside code fences. done/dropped close a whole plan; open
+// keeps a plan from before the dashboard as current work (dashboard catch-up). Anything else after the word
+// (`Status: done (Tasks 1-3)`) or any other value is ignored.
+const STATUS = /^\s*(?:>\s*)?(?:\*\*)?Status(?:\*\*)?:(?:\*\*)?\s*(done|dropped|open)(?=\s*$|\s*[-–—]|\.\s*$)/i;
 
 function parsePlan(text) {
   const lines = String(text).split(/\r?\n/);

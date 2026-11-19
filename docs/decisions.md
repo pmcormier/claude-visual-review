@@ -378,8 +378,13 @@ How it works:
   tasks starts or is linked to a live session, or the file changes. A checkout after the install also counts as a
   change; that is accepted.
 - A `Status: done` line marks the whole plan finished. `Status: dropped` hides it outside "Show all history".
-- `/dashboard catch-up` lists the candidates, the person picks the plans still open, and Claude writes the line
-  into the rest. It commits only after the person's yes and never pushes.
+- `/dashboard catch-up` lists the candidates, and the person picks the plans still open. Claude writes
+  `Status: open` into those and `Status: done` or `Status: dropped` into the rest. It stages only those plan
+  files, commits them only after the person's yes, and never pushes.
+- A plan closed by the catch-up dates from its last change before the install, not from the catch-up commit.
+  Otherwise every old plan would show as just finished for a week. The whole-branch review found this, along with
+  the open plans staying folded. `Status:` must be followed by the word and then the end of the line, a dash or a
+  full stop, so `Status: done (Tasks 1-3), Task 4 open` closes nothing.
 
 The owner also settled:
 - **Small tasks outside any plan get no record in the repo.** The work log is live activity, and the commit is

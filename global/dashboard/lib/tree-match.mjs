@@ -216,13 +216,15 @@ export function matchCommits(root, plans, commits, activity, idleMs) {
 /**
  * Per plan: addedMs = its newest add commit, else the file's creation time (untracked or no history); changedMs =
  * the newer of the latest commit touching it and the file's mtime (an uncommitted edit is a change). Either may be
- * null. Commits as cleanCommits returns them.
- * @returns {Map<object, {addedMs: number|null, changedMs: number|null}>}
+ * null. changedByMs = the latest commit touching it at or before `cutMs` (the install date), or null: a plan closed
+ * by a catch-up commit dates from its last change before the dashboard, not from the catch-up.
+ * Commits as cleanCommits returns them.
+ * @returns {Map<object, {addedMs: number|null, changedMs: number|null, changedByMs: number|null}>}
  */
-export function planDates(root, plans, commits) {
+export function planDates(root, plans, commits, cutMs = null) {
   const out = new Map();
   const rel = new Map(arr(plans).map((p) => [p, normPath('/', relative(String(root || ''), String(p.file || '')))]));
-  for (const p of arr(plans)) out.set(p, { addedMs: null, changedMs: Number.isFinite(p.mtimeMs) ? p.mtimeMs : null });
+  for (const p of arr(plans)) out.set(p, { addedMs: null, changedMs: Number.isFinite(p.mtimeMs) ? p.mtimeMs : null, changedByMs: null });
   for (const c of arr(commits)) {
     const added = new Set(c.added.map((f) => normPath('/', f)));
     const files = new Set(c.files.map((f) => normPath('/', f)));
@@ -231,6 +233,7 @@ export function planDates(root, plans, commits) {
       const d = out.get(p);
       if (added.has(k) && !(d.addedMs >= c.ms)) d.addedMs = c.ms;
       if ((files.has(k) || added.has(k)) && !(d.changedMs >= c.ms)) d.changedMs = c.ms;
+      if ((files.has(k) || added.has(k)) && Number.isFinite(cutMs) && c.ms <= cutMs && !(d.changedByMs >= c.ms)) d.changedByMs = c.ms;
     }
   }
   for (const p of arr(plans)) {

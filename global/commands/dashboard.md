@@ -25,8 +25,9 @@ them are finished:
    With more than four plans, ask where there is room to choose (the Plannotator Inbox as a `:::question-multi`
    with one choice per plan, when it is available), otherwise as a numbered list in the terminal. A plan the
    person says was abandoned gets `dropped`; every other plan not picked as open gets `done`.
-4. In each of those plans, insert one line after the title (the first `# ` line):
-   `Status: done — catch-up YYYY-MM-DD` or `Status: dropped — catch-up YYYY-MM-DD`, with today's date. Change
-   nothing else. Plans picked as open stay as they are.
-5. Show the change (`git diff`) and commit only after the person says yes, in one commit. If the repo's
-   CLAUDE.md or AGENTS.md sets a commit-message format, follow it. Never push.
+4. In every listed plan, insert one line after the title (the first `# ` line), with today's date:
+   `Status: done — catch-up YYYY-MM-DD`, `Status: dropped — catch-up YYYY-MM-DD`, or, for the plans picked as
+   still open, `Status: open — catch-up YYYY-MM-DD` (it keeps them showing as current work). Change nothing else.
+5. Show the change (`git diff` of those plan files) and ask for a yes. On a yes, stage only those plan files
+   (`git add <each file>`, never `-A` or `commit -a`) and commit them in one commit. If the repo's CLAUDE.md or
+   AGENTS.md sets a commit-message format, follow it. On a no, remove the lines you inserted. Never push.

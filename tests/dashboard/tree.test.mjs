@@ -637,3 +637,20 @@ test('an untracked plan dates from its creation time', async () => {
   const b = buildTree(root, { ...empty2(), plans: [oldPlan(root, { birthtimeMs: null })], commits: [], installedAtMs: INSTALL }, TH);
   assert.equal(epicOf(b).before, false);
 });
+
+// Final review: after a catch-up, done plans read as finished long ago and open plans as current work.
+test('a caught-up done plan dates from before the install, not from the catch-up commit', async () => {
+  const { root } = setup();
+  const { buildTree } = await mod('tree.mjs');
+  const catchup = { ms: INSTALL + DAY, message: 'catch-up', files: [REL], added: [] };
+  const tree = buildTree(root, { ...empty2(), plans: [oldPlan(root, { planStatus: 'done', mtimeMs: INSTALL + DAY })], commits: [addCommit(), catchup], installedAtMs: INSTALL }, TH);
+  assert.ok(epicOf(tree).tasks.every((t) => t.status === 'done' && t.doneMs === T0));
+});
+
+test('a plan marked Status open is current work, never before', async () => {
+  const { root } = setup();
+  const { buildTree } = await mod('tree.mjs');
+  const tree = buildTree(root, { ...empty2(), plans: [oldPlan(root, { planStatus: 'open' })], commits: [addCommit()], installedAtMs: INSTALL }, TH);
+  assert.equal(epicOf(tree).before, false);
+  assert.equal(tree.left.count, 2);
+});

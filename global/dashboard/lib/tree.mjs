@@ -26,7 +26,7 @@ function cleanEpics(list, source) {
       file: typeof e.file === 'string' && e.file ? e.file : null,
       ...(Number.isFinite(e.mtimeMs) ? { mtimeMs: e.mtimeMs } : {}),
       ...(Number.isFinite(e.birthtimeMs) ? { birthtimeMs: e.birthtimeMs } : {}),
-      ...(e.planStatus === 'done' || e.planStatus === 'dropped' ? { planStatus: e.planStatus } : {}),
+      ...(['done', 'dropped', 'open'].includes(e.planStatus) ? { planStatus: e.planStatus } : {}),
       tasks: arr(e.tasks).filter(isObj).map((t, i) => ({
         id: String(t.id ?? `${e.id}#${i + 1}`), n: Number.isInteger(t.n) ? t.n : null, title: String(t.title ?? ''),
         status: STATUSES.has(t.status) ? t.status : 'next', size: t.size ?? null,
@@ -172,13 +172,19 @@ export function buildTree(root, inputs, thresholds) {
     const commitDone = matchCommits(root, plans, commits, activity, idleMs);
     const { listed, override, target } = mergeWorklog(worklog, index);
     applyPlanStatus(plans, override, commitDone);
-    const dates = planDates(root, plans, commits);
-    // A `Status: done` line closes the whole plan; `Status: dropped` takes it out of work left.
+    const installedAt = Number.isFinite(inp.installedAtMs) ? inp.installedAtMs : null;
+    const dates = planDates(root, plans, commits, installedAt);
+    const fromBefore = (d) => installedAt !== null && Number.isFinite(d?.addedMs) && d.addedMs < installedAt;
+    // A `Status: done` line closes the whole plan; `Status: dropped` takes it out of work left. A plan from before
+    // the dashboard closed by a catch-up dates from its last change before the install, not from the catch-up
+    // commit, so it folds into "Done earlier" instead of showing as just finished.
     for (const p of plans) {
       p.dropped = p.planStatus === 'dropped';
       if (p.planStatus !== 'done') continue;
+      const d = dates.get(p);
+      const doneMs = fromBefore(d) ? d.changedByMs ?? d.addedMs : d?.changedMs ?? null;
       for (const t of p.tasks) {
-        if (t.status !== 'done') { t.status = 'done'; t.doneMs = dates.get(p)?.changedMs ?? null; }
+        if (t.status !== 'done') { t.status = 'done'; t.doneMs = doneMs; }
       }
     }
 
@@ -202,14 +208,14 @@ export function buildTree(root, inputs, thresholds) {
 
     // Before the dashboard (decision 32): added before the install date and untouched since, with no progress shown
     // (no part-ticked plan, no task doing/waiting, linked to a live session or started after the install).
-    const installedAt = Number.isFinite(inp.installedAtMs) ? inp.installedAtMs : null;
+    // `Status: open` (written by the catch-up for plans the person keeps) keeps a plan current.
     for (const p of plans) {
       const d = dates.get(p);
       const ticks = p.tasks.reduce((a, t) => [a[0] + (t.ticked?.done ?? 0), a[1] + (t.ticked?.total ?? 0)], [0, 0]);
       const partTicked = ticks[0] > 0 && ticks[0] < ticks[1];
       const worked = p.tasks.some((t) => t.status === 'doing' || t.status === 'waiting' || t.sessionId
         || (Number.isFinite(t.startedMs) && t.startedMs > installedAt));
-      p.before = installedAt !== null && p.planStatus !== 'done' && Number.isFinite(d?.addedMs) && d.addedMs < installedAt
+      p.before = p.planStatus !== 'done' && p.planStatus !== 'open' && fromBefore(d)
         && !(d.changedMs > installedAt) && !partTicked && !worked;
     }
     const counted = (e) => !e.before && !e.dropped;

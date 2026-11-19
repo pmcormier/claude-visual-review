@@ -331,3 +331,11 @@ test('plan epics carry birthtimeMs', async () => {
   assert.equal(typeof b, 'number');
   assert.ok(b > 0);
 });
+
+test('plan Status open is read, and loose look-alikes are not', async () => {
+  const { root } = setup();
+  assert.equal(await statusOf(root, 'h.md', ['# H', 'Status: open — catch-up 2026-11-19', '### Task 1: x']), 'open');
+  assert.equal(await statusOf(root, 'i.md', ['# I', 'Status: done (Tasks 1-3), Task 4 open', '### Task 1: x']), null);
+  assert.equal(await statusOf(root, 'j.md', ['# J', 'Statusdone', '### Task 1: x']), null);
+  assert.equal(await statusOf(root, 'k.md', ['# K', 'Status: done.', '### Task 1: x']), 'done');
+});
