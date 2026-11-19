@@ -6,7 +6,7 @@
 import {
   STATE_LABEL, STATE_CLASS, formatDuration, agoWords, updatedText, shortId, shortDate, lifePath, foldEpics,
   effortLeft, liveIds, usageView, detailText, sessionWhat, nowLine, triage, epicDone, epicLastActivity, sizeSummary,
-  filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys,
+  filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText,
 } from '/render.mjs';
 
 const MIN = 60000;
@@ -870,7 +870,8 @@ document.addEventListener('mousemove', (e) => {
       const item = details.get(at.dataset.dk);
       const text = item ? detailText({ ...item, now: Date.now() }) : '';
       if (!text) return;
-      tip.textContent = text;
+      const lab = at.querySelector('.label');
+      tip.textContent = tipText(lab?.textContent ?? '', !!lab && lab.scrollWidth > lab.clientWidth, text);
       placeTip(at);
       tip.classList.add('show');
     }, 650);
@@ -883,6 +884,35 @@ document.documentElement.addEventListener('mouseleave', () => {
 });
 document.addEventListener('scroll', hideTip, true);
 
+// ---- symbol key: a small legend of the icons and colours -----------------------------------------------------------
+
+const KEY_ROWS = [
+  ['work', 'Working: a session is on it now'],
+  ['wait', 'Waiting on you: a question or approval'],
+  ['stuck', 'Looks stuck: hover the row for the evidence'],
+  ['idle', 'Not started, or nothing running'],
+  ['done', 'Done'],
+  ['sub', 'A subagent, under its session'],
+];
+const keyBtn = $('.keybtn');
+const keyPop = h('div', { class: 'keypop', role: 'dialog', 'aria-label': 'What the symbols mean', hidden: true },
+  h('b', { text: 'What the symbols mean' }),
+  h('ul', null, KEY_ROWS.map(([k, text]) => h('li', { class: `s-${k}` }, icon(k), h('span', { text })))),
+  h('p', { class: 'muted', text: 'A coloured left edge on a project means something there needs a look; New until you have seen it.' }));
+document.body.append(keyPop);
+function setKey(open) {
+  keyPop.hidden = !open;
+  keyBtn?.setAttribute('aria-expanded', String(open));
+  if (open && keyBtn) {
+    const r = keyBtn.getBoundingClientRect();
+    keyPop.style.top = `${r.bottom + 8}px`;
+    keyPop.style.right = `${Math.max(8, innerWidth - r.right)}px`;
+  }
+}
+keyBtn?.addEventListener('click', (e) => { e.stopPropagation(); setKey(keyPop.hidden); });
+document.addEventListener('click', (e) => { if (!keyPop.hidden && !keyPop.contains(e.target)) setKey(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !keyPop.hidden) { setKey(false); keyBtn?.focus(); } });
+
 // ---- help tour: spotlight each part in turn ---------------------------------------------------------------------------
 
 const STEPS = [
@@ -893,9 +923,10 @@ const STEPS = [
   [['.panel.s-stuck .sess', '.panel .sess'], 'A session and its life line', 'Each Claude Code window, what it is doing, and its last hour as a line. Flat means it went quiet.'],
   [['.panel.s-stuck .evidence', '.panel .evidence'], 'Why we think it is stuck', 'Always the facts, never just a timer: CPU, output, and how long it has been silent.'],
   [['.panel.s-stuck .on-task', '.panel .on-task'], 'What it is working on', 'The task this session is on. Hover it to light up the task in the tree below.'],
-  [['.panel .tree'], 'The plan', 'Each project as epics and tasks, with sizes and time spent. Finished work folds away.'],
+  [['.panel .tree'], 'The plan', 'Each project as epics and tasks, grouped: running, waiting on you, next, done. Only running and waiting work starts open; Expand all, Collapse all and Focus are at the top of each project.'],
   [['.quiet'], 'Quiet projects', 'Projects with nothing running, folded to one line each so they do not crowd the page.'],
-  [['.helpbtn'], 'Hover for more', 'Hover over almost anything for a short plain-English explanation. Click ? to see this tour again.'],
+  [['.keybtn'], 'What the symbols mean', 'Each icon and colour, in one place.'],
+  [['.helpbtn'], 'Hover for more', 'Hover over almost anything for a short plain-English explanation; a cut-off line shows in full. Key explains the symbols. Click ? to see this tour again.'],
 ];
 const visible = (el) => !!el && el.getClientRects().length > 0;
 const findStep = (sels) => { for (const s of sels) { const el = $$(s).find(visible); if (el) return el; } return null; };

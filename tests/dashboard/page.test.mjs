@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
-  sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys,
+  sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -303,4 +303,11 @@ test('foldOpen and projectFoldKeys', () => {
   assert.equal(foldOpen({}, 'k', true), true);
   assert.deepEqual(projectFoldKeys({ 'e|r1|a': true, 'g|r1|next': false, 'e|r2|a': true, 'p|r1': true }, 'r1').sort(), ['e|r1|a', 'g|r1|next']);
   assert.deepEqual(GROUPS.filter((g) => g.open).map((g) => g.id), ['running', 'waiting']);
+});
+
+test('tipText puts a cut-off label in full above the explanation', () => {
+  assert.equal(tipText('Long title', true, 'Explains'), 'Long title\n\nExplains');
+  assert.equal(tipText('Long title', false, 'Explains'), 'Explains');
+  assert.equal(tipText('', true, 'Explains'), 'Explains');
+  assert.equal(tipText('Long title', true, 'Long title. Not started.'), 'Long title. Not started.');
 });

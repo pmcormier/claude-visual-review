@@ -191,6 +191,10 @@ export function groupEpics(epics, now, liveSessionIds, stateOf) {
   return out;
 }
 
+/** The hover pop-up's text: a row label that is cut off on screen comes first, in full, unless the text already starts with it. */
+export const tipText = (fullLabel, cutOff, text) =>
+  (cutOff && fullLabel && !String(text).startsWith(fullLabel) ? `${fullLabel}\n\n${text}` : text);
+
 /** A fold the person set (a stored boolean) wins; otherwise the default. */
 export const foldOpen = (openState, key, dflt) => (typeof openState?.[key] === 'boolean' ? openState[key] : !!dflt);
 

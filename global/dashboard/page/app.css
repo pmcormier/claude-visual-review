@@ -234,3 +234,13 @@ main > section { display: grid; gap: 32px; min-width: 0; }
   text-decoration: underline dotted; text-underline-offset: 3px; }
 .fold-act:hover, .fold-act:focus-visible { color: var(--accent); }
 .ph .fold-acts { flex-basis: 100%; justify-content: flex-end; }
+
+/* Symbol key and full labels in the hover pop-up (spec 2026-11-19 wayfinding). */
+.tip { white-space: pre-line; }
+.keybtn { height: 30px; border-radius: 999px; border: 1px solid var(--rule); background: var(--surface); color: var(--fg); cursor: pointer;
+  font: 500 .82rem var(--body); padding: 0 12px; }
+.keypop { position: fixed; z-index: 60; width: min(300px, calc(100vw - 16px)); background: var(--surface); color: var(--fg);
+  border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; box-shadow: 0 8px 24px rgb(0 0 0 / .18); font-size: .85rem; }
+.keypop ul { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.keypop li { display: flex; align-items: center; gap: 8px; }
+.keypop p { margin: 0; font-size: .8rem; }
