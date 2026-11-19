@@ -51,19 +51,19 @@ lists the candidates for the catch-up command, and Claude writes the `Status:` l
 **Interfaces:**
 - Produces: each plan epic gains `planStatus: 'done'|'dropped'|null` and `birthtimeMs: number|null`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
   - `plan Status line: done and dropped are read, case-insensitive, with an optional note`: files with
     `Status: done`, `**Status:** Dropped — 2026-11-19`, `> Status: done - shipped` before the first `## ` heading
     give `planStatus` `'done'`, `'dropped'`, `'done'`.
   - `plan Status look-alikes are ignored`: `Status: approved`; `Status: done` inside a ``` fence; `Status: done`
     after the first `## ` heading; each gives `planStatus === null`.
   - `plan epics carry birthtimeMs`: a number for a real file.
-- [ ] **Step 2:** Run `node --test tests/dashboard/sources.test.mjs`. Expected: the new tests fail.
-- [ ] **Step 3:** In `parsePlan`, before the first `##` heading and outside fences, match
+- [x] **Step 2:** Run `node --test tests/dashboard/sources.test.mjs`. Expected: the new tests fail.
+- [x] **Step 3:** In `parsePlan`, before the first `##` heading and outside fences, match
   `/^\s*(?:>\s*)?(?:\*\*)?Status:?(?:\*\*)?:?\s*(done|dropped)\b/i`; the first match wins. In `readPlans`, take
   `birthtimeMs` from the same `statSync` (null when it fails or is 0).
-- [ ] **Step 4:** Run the same command. Expected: pass, with no other test changed.
-- [ ] **Step 5:** Commit: `dashboard-catch-up Task 1: plan Status line and creation time`.
+- [x] **Step 4:** Run the same command. Expected: pass, with no other test changed.
+- [x] **Step 5:** Commit: `dashboard-catch-up Task 1: plan Status line and creation time`.
 
 ### Task 2: The install date
 
@@ -75,18 +75,18 @@ lists the candidates for the catch-up command, and Claude writes the `Status:` l
 - Produces: `readInstalledAt(): number|null` in `config.mjs`, reading `<dashHome>/installed.json`
   `{"installedAt": "<ISO 8601>"}`; null when missing, broken or unparsable.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
   - Node: `readInstalledAt reads installed.json`, `readInstalledAt is null when missing or broken`.
   - Installer: `DashboardInstallRecordsInstallDateOnce`: install Dashboard into a temp home, and
     `dashboard/installed.json` exists with a parsable `installedAt`. Overwrite it with `2020-01-01T00:00:00Z`,
     install again, and it still says `2020-01-01T00:00:00Z`. An install without Dashboard writes no file.
-- [ ] **Step 2:** Run `node --test tests/dashboard/` and `pwsh -NoProfile -File tests/run.ps1`. Expected: the new
+- [x] **Step 2:** Run `node --test tests/dashboard/` and `pwsh -NoProfile -File tests/run.ps1`. Expected: the new
   tests fail.
-- [ ] **Step 3:** Implement `readInstalledAt`. In `install.ps1`, when Dashboard is installed and
+- [x] **Step 3:** Implement `readInstalledAt`. In `install.ps1`, when Dashboard is installed and
   `dashboard/installed.json` is missing, write it with the current UTC time (ISO 8601). `-Remove Dashboard` leaves
   it, like the other runtime files.
-- [ ] **Step 4:** Run both. Expected: pass.
-- [ ] **Step 5:** Commit: `dashboard-catch-up Task 2: record the install date once`.
+- [x] **Step 4:** Run both. Expected: pass.
+- [x] **Step 5:** Commit: `dashboard-catch-up Task 2: record the install date once`.
 
 ### Task 3: The tree: done, dropped and "before the dashboard"
 
@@ -104,7 +104,7 @@ lists the candidates for the catch-up command, and Claude writes the `Status:` l
     `dropped: boolean`. `left.count`, `left.hours` and the model's `counts.next` leave out tasks of epics with
     `before` or `dropped`.
 
-- [ ] **Step 1: Write the failing tests** (in `tree.test.mjs` unless noted; `installedAtMs` = a fixed date, and the
+- [x] **Step 1: Write the failing tests** (in `tree.test.mjs` unless noted; `installedAtMs` = a fixed date, and the
   plan files and commits are dated around it):
   - `Status done makes every task done`: a plan with `planStatus: 'done'` and no ticks; every task is `done`, and
     `left.count` is 0.
@@ -119,8 +119,8 @@ lists the candidates for the catch-up command, and Claude writes the `Status:` l
   - `an untracked plan dates from its creation time`: no commits; `birthtimeMs` before the install, so
     `before: true`; and no throw when `birthtimeMs` is null (then `before: false`).
   - model.test.mjs: `counts.next leaves out before-dashboard and dropped plans`.
-- [ ] **Step 2:** Run `node --test tests/dashboard/`. Expected: the new tests fail.
-- [ ] **Step 3:** Implement `planDates`. In `buildTree`, after sessions are linked:
+- [x] **Step 2:** Run `node --test tests/dashboard/`. Expected: the new tests fail.
+- [x] **Step 3:** Implement `planDates`. In `buildTree`, after sessions are linked:
   - a plan is `before` when `installedAtMs` is known, `addedMs < installedAtMs`, `changedMs` is null or `<=`
     `installedAtMs`, it is not part-ticked, and no task is doing or waiting, linked to a live session, or has
     `startedMs > installedAtMs`;
@@ -132,8 +132,8 @@ lists the candidates for the catch-up command, and Claude writes the `Status:` l
 
   Count left and next without `before` or `dropped` epics. In `model.mjs`, pass
   `installedAtMs: readInstalledAt()`.
-- [ ] **Step 4:** Run `node --test tests/dashboard/`. Expected: all pass.
-- [ ] **Step 5:** Commit: `dashboard-catch-up Task 3: before-the-dashboard and Status in the tree`.
+- [x] **Step 4:** Run `node --test tests/dashboard/`. Expected: all pass.
+- [x] **Step 5:** Commit: `dashboard-catch-up Task 3: before-the-dashboard and Status in the tree`.
 
 ### Task 4: The page
 
@@ -147,17 +147,17 @@ lists the candidates for the catch-up command, and Claude writes the `Status:` l
 - Produces: `foldEpics(epics, now, liveSessionIds) -> {shown, earlier, before, dropped}`. `before` epics and
   `dropped` epics leave `shown` and `earlier`; the 7-day rule is unchanged for the rest.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `foldEpics puts before-dashboard and dropped epics in their own groups`.
   - `effortLeft ignores them`.
   - `Up next and triage leave them out`.
-- [ ] **Step 2:** Run the render tests. Expected: fail.
-- [ ] **Step 3:** Implement. In `app.js`, render a hint row `Before the dashboard (N)` (hidden while "Show all
+- [x] **Step 2:** Run the render tests. Expected: fail.
+- [x] **Step 3:** Implement. In `app.js`, render a hint row `Before the dashboard (N)` (hidden while "Show all
   history" is on), next to `Done earlier (N)`, and with history on, list those epics like the history rows.
   Dropped epics appear only with history on, labelled `dropped`. Text goes through textContent only.
-- [ ] **Step 4:** Run the tests, then load the page against a temp home with a fixture plan before the install
+- [x] **Step 4:** Run the tests, then load the page against a temp home with a fixture plan before the install
   and check both groups at 1400 px and 390 px in light and dark. Expected: tests pass, no sideways scroll.
-- [ ] **Step 5:** Commit: `dashboard-catch-up Task 4: page groups for older and dropped plans`.
+- [x] **Step 5:** Commit: `dashboard-catch-up Task 4: page groups for older and dropped plans`.
 
 ### Task 5: `/dashboard catch-up`
 
@@ -174,13 +174,13 @@ lists the candidates for the catch-up command, and Claude writes the `Status:` l
   is every plan without a `Status:` line, and the output says `installedAt: null`. It always exits 0, and an
   error prints `{error}`. Child processes follow R9 (absolute `process.execPath`, cwd = its own folder).
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `catchup lists plans from before the install without a Status line`.
   - `catchup skips plans with Status`.
   - `catchup with no install date lists every unmarked plan`.
   - `catchup in a folder that is not a repo prints an empty list`.
-- [ ] **Step 2:** Run. Expected: fail.
-- [ ] **Step 3:** Implement `catchup.mjs`. In `dashboard.md`, when `$ARGUMENTS` is `catch-up`, give Claude these
+- [x] **Step 2:** Run. Expected: fail.
+- [x] **Step 3:** Implement `catchup.mjs`. In `dashboard.md`, when `$ARGUMENTS` is `catch-up`, give Claude these
   steps:
   1. Run the helper.
   2. If the list is empty, say so in one line and stop.
@@ -193,8 +193,8 @@ lists the candidates for the catch-up command, and Claude writes the `Status:` l
      when its CLAUDE.md or AGENTS.md sets one. Never push.
 
   With no argument the command behaves as today.
-- [ ] **Step 4:** Run the tests. Expected: pass.
-- [ ] **Step 5:** Commit: `dashboard-catch-up Task 5: catch-up helper and command`.
+- [x] **Step 4:** Run the tests. Expected: pass.
+- [x] **Step 5:** Commit: `dashboard-catch-up Task 5: catch-up helper and command`.
 
 ### Task 6: Rule text, docs and decision
 
@@ -202,24 +202,24 @@ lists the candidates for the catch-up command, and Claude writes the `Status:` l
 - Modify: `global/rules/dashboard.md`, `README.md`, `docs/setup-guide.html`, `docs/setup-prompt.md`,
   `docs/decisions.md`
 
-- [ ] **Step 1:** In the rule's Plans bullet, add: when the repo's CLAUDE.md or AGENTS.md sets a commit-message
+- [x] **Step 1:** In the rule's Plans bullet, add: when the repo's CLAUDE.md or AGENTS.md sets a commit-message
   format, that wins over the plan-and-task subject. Mention `Status: done` / `Status: dropped` as the way to
   close a whole plan.
-- [ ] **Step 2:** Docs: `/dashboard catch-up`, the install date and the "Before the dashboard" fold. Add decision
+- [x] **Step 2:** Docs: `/dashboard catch-up`, the install date and the "Before the dashboard" fold. Add decision
   32 with the approaches from the spec, the owner's choices (status stays in the repo; no record of small tasks
   in the repo; collaboration later) and why.
-- [ ] **Step 3:** Run `pwsh -NoProfile -File tests/run.ps1` and `pwsh -NoProfile -File tools/check-personal.ps1`.
+- [x] **Step 3:** Run `pwsh -NoProfile -File tests/run.ps1` and `pwsh -NoProfile -File tools/check-personal.ps1`.
   Expected: 0 failed; check passes.
-- [ ] **Step 4:** Commit: `dashboard-catch-up Task 6: rule text, docs, decision 32`.
-- [ ] **Step 5:** Send the rule-text change to the owner for sign-off (Inbox: Approve or Change) before installing.
+- [x] **Step 4:** Commit: `dashboard-catch-up Task 6: rule text, docs, decision 32`.
+- [x] **Step 5:** Send the rule-text change to the owner for sign-off (Inbox: Approve or Change) before installing.
 
 ### Task 7: Install and check live (after the rule sign-off)
 
-- [ ] **Step 1:** Run `./install.ps1 -Owner`. On this machine the dashboard was installed before this change, so
+- [x] **Step 1:** Run `./install.ps1 -Owner`. On this machine the dashboard was installed before this change, so
   `installed.json` is written now: plans already in repos fold from today.
-- [ ] **Step 2:** Restart the server. On the page, check that older plans in the owner's other projects fold under
+- [x] **Step 2:** Restart the server. On the page, check that older plans in the owner's other projects fold under
   "Before the dashboard", that a part-ticked older plan stays shown, and
   that work left and Up next drop accordingly. Record the before/after numbers in decision 32.
-- [ ] **Step 3:** Run `/dashboard catch-up` in this repo. The "Shareable Repo" plan is the candidate. Show the
+- [x] **Step 3:** Run `/dashboard catch-up` in this repo. The "Shareable Repo" plan is the candidate. Show the
   owner the result and commit only on their yes.
-- [ ] **Step 4:** Commit the decision numbers: `dashboard-catch-up Task 7: live check`.
+- [x] **Step 4:** Commit the decision numbers: `dashboard-catch-up Task 7: live check`.
