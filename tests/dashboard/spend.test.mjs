@@ -85,8 +85,7 @@ test('readSpend reads the files; spendFor sums by project and week', () => {
   assert.equal(p.weekUsd, 3);
   assert.equal(p.totalUsd, 7);
   assert.equal(p.sessions, 3);
-  assert.equal(p.weekTokens, 220);
-  assert.deepEqual(spendFor(readSpend(join(dir, 'missing')), P, now), { weekUsd: 0, totalUsd: 0, weekTokens: 0, sessions: 0 });
+  assert.deepEqual(spendFor(readSpend(join(dir, 'missing')), P, now), { weekUsd: 0, totalUsd: 0, sessions: 0 });
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -102,8 +101,12 @@ test('pruneSpend deletes files untouched for a year', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('sessionSpend uses the status-line record, else transcript tokens with no cost', () => {
-  assert.deepEqual(sessionSpend({ costUsd: 2.5, tokensIn: 900, tokensOut: 100 }, { input: 1, output: 1 }),
+// Live check 2026-11-19: the status line's context-window totals are not whole-session totals ($135 against 449k
+// tokens), so a live session's tokens come from its transcript and only the dollars from the status line.
+test('sessionSpend: dollars from the status line, tokens from the transcript', () => {
+  assert.deepEqual(sessionSpend({ costUsd: 2.5, tokensIn: 900, tokensOut: 100 }, { input: 10, cacheRead: 20, cacheCreate: 5, output: 7 }),
+    { costUsd: 2.5, tokensIn: 35, tokensOut: 7, source: 'statusline' });
+  assert.deepEqual(sessionSpend({ costUsd: 2.5, tokensIn: 900, tokensOut: 100 }, undefined),
     { costUsd: 2.5, tokensIn: 900, tokensOut: 100, source: 'statusline' });
   assert.deepEqual(sessionSpend(undefined, { input: 10, cacheRead: 20, cacheCreate: 5, output: 7 }),
     { costUsd: null, tokensIn: 35, tokensOut: 7, source: 'transcript' });

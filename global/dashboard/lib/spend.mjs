@@ -52,19 +52,23 @@ export function readSpendCached(dir) {
 }
 
 /**
- * One session's spend for the page: the status line's record when there is one (Claude Code's own cost), else
- * the transcript's token totals with no cost (a headless run has no status line).
+ * One live session's spend for the page: dollars from the status line's record (Claude Code's own cost), tokens
+ * from the transcript. The status line's context-window totals are not whole-session totals (live check
+ * 2026-11-19: $135 against 449k tokens), so they are used only when there is no transcript count. A headless run
+ * has no status line: tokens only, no cost.
  */
 export function sessionSpend(rec, tokens) {
-  if (rec) return { costUsd: rec.costUsd, tokensIn: rec.tokensIn, tokensOut: rec.tokensOut, source: 'statusline' };
-  if (!tokens || typeof tokens !== 'object') return null;
   const n = (v) => num(v) ?? 0;
-  return { costUsd: null, tokensIn: n(tokens.input) + n(tokens.cacheRead) + n(tokens.cacheCreate), tokensOut: n(tokens.output), source: 'transcript' };
+  const t = tokens && typeof tokens === 'object'
+    ? { tokensIn: n(tokens.input) + n(tokens.cacheRead) + n(tokens.cacheCreate), tokensOut: n(tokens.output) }
+    : null;
+  if (rec) return { costUsd: rec.costUsd, ...(t ?? { tokensIn: rec.tokensIn, tokensOut: rec.tokensOut }), source: 'statusline' };
+  return t ? { costUsd: null, ...t, source: 'transcript' } : null;
 }
 
 /** Totals for one project: sessions whose cwd is the root or inside it. Week = records updated in the last 7 days. */
 export function spendFor(records, root, now = Date.now()) {
-  const out = { weekUsd: 0, totalUsd: 0, weekTokens: 0, sessions: 0 };
+  const out = { weekUsd: 0, totalUsd: 0, sessions: 0 };
   let rk;
   try { rk = norm(root); } catch { return out; }
   const prefix = rk.endsWith(sep) ? rk : rk + sep;
@@ -74,10 +78,7 @@ export function spendFor(records, root, now = Date.now()) {
     if (k !== rk && !k.startsWith(prefix)) continue;
     out.sessions += 1;
     out.totalUsd += r.costUsd ?? 0;
-    if (r.at !== null && now - r.at <= WEEK_MS) {
-      out.weekUsd += r.costUsd ?? 0;
-      out.weekTokens += r.tokensIn + r.tokensOut;
-    }
+    if (r.at !== null && now - r.at <= WEEK_MS) out.weekUsd += r.costUsd ?? 0;
   }
   out.weekUsd = Math.round(out.weekUsd * 100) / 100;
   out.totalUsd = Math.round(out.totalUsd * 100) / 100;

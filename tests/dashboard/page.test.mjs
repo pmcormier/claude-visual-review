@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
-  sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, formatSpend, spendLine, projectSpend,
+  sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, formatSpend, spendLine, projectSpend, formatTokens,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -351,15 +351,22 @@ test('spendLine: cost and tokens, tokens only without a status line', () => {
 });
 
 test('projectSpend: week total on the header, all-time in the tooltip', () => {
-  const p = projectSpend({ weekUsd: 12.5, totalUsd: 80, weekTokens: 2_000_000, sessions: 9 });
+  const p = projectSpend({ weekUsd: 12.5, totalUsd: 80, sessions: 9 });
   assert.equal(p.text, '$12.50 this week');
   assert.match(p.tip, /\$80\.00 in all, across 9 sessions/);
   assert.match(p.tip, /API prices/);
-  assert.equal(projectSpend({ weekUsd: 0, totalUsd: 0, weekTokens: 0, sessions: 0 }), null);
+  assert.equal(projectSpend({ weekUsd: 0, totalUsd: 0, sessions: 0 }), null);
+  assert.doesNotMatch(p.tip, /tokens/);
   assert.equal(projectSpend(undefined), null);
 });
 
 test('detailText shows a spend tooltip', () => {
   assert.equal(detailText({ kind: 'spend', text: 'Estimated at API prices.' }), 'Estimated at API prices.');
   assert.equal(detailText({ kind: 'spend' }), '');
+});
+
+test('formatTokens shows billions as B', () => {
+  assert.equal(formatTokens(1_010_200_000), '1B');
+  assert.equal(formatTokens(2_340_000_000), '2.3B');
+  assert.equal(formatTokens(999_000_000), '999M');
 });

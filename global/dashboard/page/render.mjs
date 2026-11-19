@@ -66,7 +66,8 @@ export function formatTokens(n) {
   if (n < 1000) return String(Math.round(n));
   if (n < 10000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`;
   if (n < 1e6) return `${Math.round(n / 1000)}k`;
-  return `${(n / 1e6).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n < 999.5e6) return `${(n / 1e6).toFixed(n < 1e8 ? 1 : 0).replace(/\.0$/, '')}M`;
+  return `${(n / 1e9).toFixed(1).replace(/\.0$/, '')}B`;
 }
 
 export function shortDate(ms) {
@@ -222,7 +223,7 @@ export function projectSpend(s) {
   const n = s.sessions;
   return {
     text: `${formatSpend(num(s.weekUsd) ? s.weekUsd : 0)} this week`,
-    tip: `${formatTokens(num(s.weekTokens) ? s.weekTokens : 0)} tokens this week. ${formatSpend(num(s.totalUsd) ? s.totalUsd : 0)} in all, across ${n} ${n === 1 ? 'session' : 'sessions'}, kept for a year. ${SPEND_NOTE}`,
+    tip: `${formatSpend(num(s.totalUsd) ? s.totalUsd : 0)} in all, across ${n} ${n === 1 ? 'session' : 'sessions'}, kept for a year. ${SPEND_NOTE}`,
   };
 }
 

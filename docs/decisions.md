@@ -458,5 +458,9 @@ What the page shows:
 - Each project header: `$X this week`; the tooltip has the all-time total and the number of sessions. Finished
   sessions count here, which is how spend is kept over time.
 
+Tokens on a live session's card come from its transcript, not the status line: the live check found the status
+line's context-window totals are not whole-session totals ($135 against 449k tokens). The project header shows
+dollars only for the same reason.
+
 Costs of this choice: a session whose status line never ran (a headless run) shows tokens only, from its
 transcript. Spend is recorded only from when this tap was installed; earlier sessions have none.
