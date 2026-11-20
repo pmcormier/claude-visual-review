@@ -251,7 +251,7 @@ function taskLi(p, t, byId) {
   const st = taskState(t, s, lv);
   const link = s ? keyOf(p.root, t.id) : null;
   const nowText = s ? nowLine(s) : '';
-  const earlier = !current && t.status !== 'done' && t.sessionId && (lv === 'started' || lv === 'stale');
+  // Started or left open: one short muted note, so the task's name keeps its room; which session is in the hover.
   return h('li', null,
     h('div', { class: `node s-${st}`, data: { dk: keyOf('t', p.root, t.id), link } },
       h('span'),
@@ -259,8 +259,8 @@ function taskLi(p, t, byId) {
         t.size ? h('span', { class: 'size', text: t.size }) : null),
       h('span', { class: 'meta' },
         s ? h('span', { class: 'who', text: `session ${shortId(s.sessionId)}` }) : null,
-        earlier ? h('span', { class: 'who muted', text: `session ${shortId(t.sessionId)}, earlier` }) : null,
-        lv === 'stale' ? h('span', { class: 't muted', text: leftOpenText(t.changedMs, now) }) : null,
+        lv === 'started' && t.sessionId ? h('span', { class: 't', text: 'earlier' }) : null,
+        lv === 'stale' ? h('span', { class: 't', text: leftOpenText(t.changedMs, now) }) : null,
         t.spentMin > 0 ? h('span', { class: 't', text: formatDuration(t.spentMin * MIN) }) : null)),
     nowText ? h('div', { class: `now s-${STATE_CLASS[s.state] ?? 'work'}` }, h('span', { text: nowText })) : null);
 }

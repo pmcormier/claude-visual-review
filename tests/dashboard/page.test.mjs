@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
   sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, formatSpend, spendLine, projectSpend, formatTokens,
-  taskLiveness, leftOpenText, sessionLabel, projectOpen, STALE_AFTER_MS,
+  taskLiveness, leftOpenText, sessionLabel, projectOpen, STALE_AFTER_MS, sessionWhat,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -433,4 +433,10 @@ test('formatTokens shows billions as B', () => {
   assert.equal(formatTokens(1_010_200_000), '1B');
   assert.equal(formatTokens(2_340_000_000), '2.3B');
   assert.equal(formatTokens(999_000_000), '999M');
+});
+
+test('sessionWhat does not repeat the title as the session name', () => {
+  const s = { sessionId: 'x', state: 'idle', name: 'OneNoteMCP Started', title: 'OneNoteMCP Started', lastWriteMs: NOW - MIN };
+  assert.equal(sessionWhat(s).what, 'Your turn');
+  assert.equal(sessionWhat({ ...s, title: 'Dwm restart' }).what, 'OneNoteMCP Started');
 });

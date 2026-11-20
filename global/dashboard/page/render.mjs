@@ -475,7 +475,7 @@ export function sessionWhat(s) {
   const tool = s?.pendingTool;
   const toolLabel = tool ? (tool.command ? tool.command.split('\n')[0] : tool.name) : '';
   let what;
-  if (s?.name) what = s.name;
+  if (s?.name && s.name !== s.title) what = s.name; // a name that only repeats the bold title says nothing
   else if (s?.state === 'waiting') what = 'Waiting for your answer';
   else if (tool && tool.name !== 'Agent' && tool.name !== 'Task') what = `Running ${toolLabel}`;
   else if (tool) what = 'Waiting on a helper';
