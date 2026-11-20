@@ -8,6 +8,7 @@ import {
   effortLeft, liveIds, usageView, detailText, sessionWhat, nowLines, watchedNote, watchedAgo, watchedHover, triage, epicDone, epicLastActivity, sizeSummary,
   filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, spendLine, projectSpend,
   taskLiveness, leftOpenText, sessionLabel, projectOpen, themeLabel,
+  compactSplit, busiestSession, squareSteps, viewFromLocation,
 } from '/render.mjs';
 
 const MIN = 60000;
@@ -18,6 +19,8 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const arr = (v) => (Array.isArray(v) ? v : []);
 const token = $('meta[name="dash-token"]')?.getAttribute('content') ?? '';
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+// The compact view (decision 40): the same page at /compact, one square per active project.
+const COMPACT = location.pathname === '/compact';
 
 // ---- per-browser state (localStorage, never required) ---------------------------------------------------------
 
@@ -335,7 +338,7 @@ function foldActs(p) {
     b('focus', 'Focus', 'Back to the default: running and waiting work open, the rest folded'));
 }
 
-function panelFor(p, now) {
+function panelFor(p, now, opts = {}) {
   const byId = new Map(arr(p.sessions).map((s) => [s.sessionId, s]));
   const groups = groupsOf(p, now, byId);
   const { shown } = groups;
@@ -345,7 +348,7 @@ function panelFor(p, now) {
   const sessions = arr(p.sessions);
   return h('article', { class: `panel s-${cls}${fresh ? ' changed' : ''}`, data: { state: stateTokens(p, shown), alerts: keys.join(',') || null, root: p.root } },
     h('div', { class: 'ph', data: { dk: keyOf('p', p.root) } },
-      tw(true, keyOf('p', p.root), p.name, 'proj'),
+      opts.compact ? null : tw(true, keyOf('p', p.root), p.name, 'proj'), // no "Nothing running" list to fold into
       h('h2', { text: p.name, title: p.root }),
       fresh ? h('span', { class: 'newbadge', text: 'New' }) : null,
       p.state !== 'quiet' ? chip(p.state) : null,
@@ -429,6 +432,92 @@ function sync(container, cache, list, build, now, kind) {
   const hold = kind === 'panel' ? overTree : null;
   syncKeyed(container, cache, list.map((p) => ({ key: p.root, sig: sigOf(p, now, kind), build: () => build(p, now) })), hold, kind === 'panel' && overGrid());
 }
+
+// ---- compact view ------------------------------------------------------------------------------------------------
+
+const squares = new Map(); // root -> {sig, el}
+const lastSquareState = new Map(); // root -> state at the last build, for the brief "changed" highlight
+let oneSig = null;
+
+function squareFor(p, now) {
+  const byId = new Map(arr(p.sessions).map((s) => [s.sessionId, s]));
+  const busy = busiestSession(p);
+  const body = [];
+  if (p.error) body.push(h('div', { class: 'err', text: p.error }));
+  for (const s of arr(p.sessions)) {
+    if (!s.alive && s.state !== 'gone') continue;
+    const cur = currentTask(s);
+    const epic = cur ? arr(p.tree?.epics).find((e) => e.id === cur.epicId) ?? null : null;
+    const st = squareSteps(epic, cur?.id);
+    const stepLi = (t) => h('li', { data: { dk: keyOf('t', p.root, t.id) } },
+      icon(taskState(t, liveSession(byId, t), taskLiveness(t, byId, now, epic?.id))), h('span', { text: t.title || 'Untitled task', title: t.title || '' }));
+    body.push(h('div', { class: `sqsess s-${STATE_CLASS[s.state] ?? 'idle'}`, data: { dk: keyOf('s', p.root, s.sessionId) } },
+      h('div', { class: 'sqtask', text: epic?.title || cur?.title || `${sessionLabel(s)} · not linked to a task yet`, title: epic?.title || cur?.title || '' }),
+      st.items.length || st.done ? h('ul', { class: 'sqsteps' },
+        st.done ? h('li', { class: 'muted' }, icon('done'), h('span', { text: `${st.done} done` })) : null,
+        st.items.map(stepLi),
+        st.more ? h('li', { class: 'muted' }, h('span', { text: `+${st.more} more` })) : null) : null,
+      nowLines(s).map((text) => h('div', { class: `now s-${STATE_CLASS[s.state] ?? 'work'}` }, h('span', { text }))),
+      arr(s.pendingTools).map((t) => (watchedNote(t, now) ? h('div', { class: 'muted', title: watchedHover(t), data: { watched: t.watch.lastGrowthAt }, text: watchedNote(t, now) }) : null)),
+      arr(s.subagents).filter((a) => a.state === 'stuck').map((a) => h('div', { class: 'evidence', text: `Subagent: ${a.evidence || 'looks stuck'}` }))));
+  }
+  const g = groupsOf(p, now, byId);
+  const nextTask = arr(g.next?.[0]?.tasks).find((t) => t.status !== 'done');
+  const cls = STATE_CLASS[p.state] ?? 'idle';
+  const changed = lastSquareState.has(p.root) && lastSquareState.get(p.root) !== p.state;
+  lastSquareState.set(p.root, p.state);
+  const el = h('article', { class: `square s-${cls}${changed ? ' changed' : ''}`, tabindex: '0', role: 'button', 'aria-label': `${p.name}: open the full card`, data: { name: p.name, state: filterToken(p.state) } },
+    h('div', { class: 'sqhead' }, h('h2', { text: p.name, title: p.root }), chip(p.state), busy ? life(busy.life) : null),
+    h('div', { class: 'sqbody' }, body.length ? body : h('div', { class: 'muted', text: 'No live session' })),
+    nextTask ? h('div', { class: 'sqnext', text: `Next: ${nextTask.title || 'Untitled task'}`, title: nextTask.title || '' }) : null);
+  if (changed) setTimeout(() => el.classList.remove('changed'), 4000);
+  return el;
+}
+
+function historyBox() {
+  const box = h('input', { type: 'checkbox' });
+  box.checked = showHistory;
+  box.addEventListener('change', () => {
+    showHistory = box.checked;
+    store.set('dash-history', showHistory);
+    hist.checked = showHistory;
+    for (const r of $$('.histrow')) r.hidden = !showHistory;
+    for (const r of $$('.histhint')) r.hidden = showHistory;
+  });
+  return h('label', { class: 'histbox' }, box, ' Show history');
+}
+
+function renderCompact(now) {
+  const projects = arr(model?.projects);
+  const { project } = viewFromLocation(location.pathname, location.hash, projects);
+  const one = $('#v-compact .cone');
+  const grid = $('#v-compact .cgrid');
+  const quietEl = $('#v-compact .cquiet');
+  const empty = $('#v-compact .cempty');
+  if (project) {
+    grid.hidden = quietEl.hidden = empty.hidden = true;
+    one.hidden = false;
+    const sig = sigOf(project, now, 'one');
+    if (sig !== oneSig || !one.firstChild) {
+      oneSig = sig;
+      one.replaceChildren(h('div', { class: 'conebar' }, h('button', { type: 'button', class: 'back', data: { fk: 'back' }, text: '← Back to all' }), historyBox()),
+        panelFor(project, now, { compact: true }));
+    }
+    return;
+  }
+  oneSig = null;
+  one.hidden = true;
+  one.replaceChildren();
+  const { squares: sq, quiet } = compactSplit(projects);
+  grid.hidden = false;
+  syncKeyed(grid, squares, sq.map((p) => ({ key: p.root, sig: JSON.stringify(p), build: () => squareFor(p, now) })));
+  empty.hidden = sq.length > 0;
+  quietEl.hidden = quiet.length === 0;
+  quietEl.replaceChildren('Quiet: ', ...quiet.flatMap((p, i) => [i ? ' · ' : '', h('a', { href: `#${encodeURIComponent(p.name)}`, text: p.name })]));
+}
+
+const openSquare = (sq) => { location.hash = encodeURIComponent(sq.dataset.name); };
+const closeOne = () => { history.pushState(null, '', location.pathname); render(); };
 
 function renderByUser() {
   userRender = true;
@@ -620,7 +709,8 @@ function render() {
   const now = Date.now();
   renderCounts(now);
   renderUsage(now);
-  if (dirty[tab]) {
+  if (COMPACT) renderCompact(now);
+  else if (dirty[tab]) {
     dirty[tab] = false;
     if (tab === 'projects') renderProjects(now);
     else if (tab === 'sessions') renderSessions(now);
@@ -700,6 +790,14 @@ setInterval(tickTimes, 15000);
 
 // Fold and unfold: epics in place, projects between the panels and the quiet list.
 document.addEventListener('click', (e) => {
+  if (e.target.closest?.('.back')) { closeOne(); return; }
+  if (e.target.closest?.('.viewnew')) {
+    const href = $('.viewswitch').getAttribute('href');
+    if (COMPACT) window.open(href, '_blank'); else window.open(href, '_blank', 'width=700,height=900');
+    return;
+  }
+  const sq = e.target.closest?.('.square');
+  if (sq && !e.target.closest('a, button, input')) { openSquare(sq); return; }
   const t = e.target.closest?.('.tw');
   if (t) {
     const key = t.dataset.fk;
@@ -773,7 +871,7 @@ document.addEventListener('mouseover', (e) => {
   const k = e.target.closest?.('[data-link]')?.dataset.link ?? null;
   if (k !== litKey) setLit(k);
   const al = e.target.closest?.('[data-alerts]');
-  if (al) markSeen(al.dataset.alerts.split(','));
+  if (al && !COMPACT) markSeen(al.dataset.alerts.split(',')); // an always-open compact pane must not clear "New"
 });
 
 // Count pills filter every view.
@@ -1051,6 +1149,24 @@ helpBtn.addEventListener('click', () => {
 // ---- start --------------------------------------------------------------------------------------------------------
 
 setTab(tab);
+if (COMPACT) {
+  document.body.classList.add('compact');
+  for (const n of TABS) $(`#v-${n}`).hidden = true;
+  $('#v-compact').hidden = false;
+  const sw = $('.viewswitch');
+  sw.setAttribute('href', '/');
+  sw.textContent = 'Full page';
+  sw.title = 'The full dashboard';
+  $('.viewnew').title = 'Open the full page in a new window';
+  $('.viewnew').setAttribute('aria-label', 'Open the full page in a new window');
+  addEventListener('hashchange', () => render());
+  addEventListener('popstate', () => render());
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && location.hash) { closeOne(); return; }
+    const sq = e.target.closest?.('.square');
+    if (sq && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openSquare(sq); }
+  });
+}
 function connect() {
   events = new EventSource('/events');
   events.onmessage = (ev) => {

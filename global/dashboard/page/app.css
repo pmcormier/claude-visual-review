@@ -251,3 +251,35 @@ main > section { display: grid; gap: 32px; min-width: 0; }
 /* Session spend (decision 34): always on the card; the note about API prices is in its tooltip. */
 .sess .spend { font: 500 .8rem var(--mono); color: var(--muted); margin-top: 2px; width: fit-content; }
 .ph .meta .spend { font: 500 .8rem var(--mono); }
+
+/* ---- compact view (decision 40): same-size squares, head fixed, body scrolls inside ---- */
+.viewlinks { display: inline-flex; align-items: center; gap: 4px; }
+.viewswitch { color: inherit; }
+.viewnew { background: none; border: 0; color: inherit; cursor: pointer; padding: 0 4px; font: inherit; }
+body.compact .counts, body.compact .usage, body.compact .bar .right > label, body.compact .stop, body.compact .modebtn,
+body.compact .keybtn, body.compact .helpbtn, body.compact .tabs { display: none; }
+body.compact .bar { padding-block: 8px; }
+.cgrid { display: grid; grid-template-columns: repeat(auto-fill, 320px); gap: 16px; justify-content: start; }
+.square { width: 320px; height: 300px; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 14px; overflow: hidden; cursor: pointer; min-width: 0; }
+.square:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.square.s-stuck { border-color: color-mix(in srgb, var(--stuck) 55%, var(--rule)); }
+.square.changed { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
+.sqhead { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 10px 12px 8px; border-bottom: 1px solid var(--rule); min-width: 0; }
+.sqhead h2 { font-size: 1rem; margin: 0; flex: 1 1 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sqhead .chip { flex: none; }
+.sqhead .life { flex: 1 1 auto; max-width: 140px; margin-left: auto; }
+.sqbody { flex: 1 1 auto; overflow: auto; padding: 8px 12px; display: grid; gap: 10px; align-content: start; font-size: .86rem; min-height: 0; }
+.sqsess { display: grid; gap: 3px; min-width: 0; }
+.sqtask { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sqsteps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.sqsteps li { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.sqsteps li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sqbody .now { margin: 0; }
+.sqnext { flex: none; padding: 6px 12px 9px; border-top: 1px solid var(--rule); font-size: .84rem; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cquiet { margin-top: 14px; }
+.cquiet a { color: var(--fg); }
+.conebar { display: flex; gap: 14px; align-items: center; margin-bottom: 12px; }
+.conebar .back { font: inherit; cursor: pointer; }
+@media (max-width: 480px) { .cgrid { grid-template-columns: minmax(0, 1fr); } .square { width: auto; } }

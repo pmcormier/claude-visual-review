@@ -15,6 +15,7 @@
   </div>
   <div class="right">
     <div class="usage" aria-label="Claude plan usage"><span class="muted">Usage not available</span></div>
+    <span class="viewlinks"><a class="viewswitch" href="/compact" title="One square per active project, for a side pane or a second screen">Compact</a><button type="button" class="viewnew" title="Open the compact view in a new window" aria-label="Open the compact view in a new window">↗</button></span>
     <span class="updated">updated <time>…</time></span>
     <label title="Shows everything the dashboard has loaded: projects active in the last 7 days, with all their plans and commits"><input type="checkbox" class="hist"> Show all history</label>
     <button type="button" class="stop" title="Stop the dashboard server">Stop</button>
@@ -36,4 +37,10 @@
 </section>
 <section id="v-sessions" role="tabpanel" aria-labelledby="tab-sessions" hidden></section>
 <section id="v-triage" role="tabpanel" aria-labelledby="tab-triage" hidden></section>
+<section id="v-compact" hidden>
+  <div class="cone" hidden></div>
+  <div class="cgrid"></div>
+  <p class="cempty muted" hidden>Nothing running right now.</p>
+  <p class="cquiet muted" hidden></p>
+</section>
 </main></body></html>

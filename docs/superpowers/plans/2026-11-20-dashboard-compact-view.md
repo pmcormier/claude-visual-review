@@ -210,14 +210,14 @@ What to build, in the page's existing style:
 - **No "New" marks in compact mode:** the handler that calls `markSeen` returns early when the body has `compact`.
   A square whose state changed since the last render gets the `changed` class the full page uses.
 
-- [ ] **Step 1: Build the mode, switch, squares, quiet line and one-project view as above.**
+- [x] **Step 1: Build the mode, switch, squares, quiet line and one-project view as above.**
 
-- [ ] **Step 2: Syntax check and unit tests**
+- [x] **Step 2: Syntax check and unit tests**
 
 Run: `node --check global/dashboard/page/app.js; node --test tests/dashboard/`
 Expected: no output from the check; PASS, 0 fail.
 
-- [ ] **Step 3: Live check** (install with `./install.ps1 -Owner -OnConflict Skip`, restart the server, open
+- [x] **Step 3: Live check** (install with `./install.ps1 -Owner -OnConflict Skip`, restart the server, open
   `http://127.0.0.1:47800/compact` in Playwright at 700 × 900 and at 1600 × 500):
   - squares A-Z, same size, several columns at 1600 wide, one column at 700;
   - a square with a long body scrolls inside, its head stays (Review Focus 3);
@@ -227,7 +227,7 @@ Expected: no output from the check; PASS, 0 fail.
   - stop the server: within 60 s the compact bar reads "Server not responding" (Review Focus 4); restart it.
   Save screenshots to the scratchpad for the end report.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add global/dashboard/page/index.html global/dashboard/page/app.js global/dashboard/page/app.css
