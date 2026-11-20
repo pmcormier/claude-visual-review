@@ -62,7 +62,7 @@ function mergeWorklog(worklog, index) {
 }
 
 // An Inbox step's about line: the same session's work-log task with the same name (trimmed, case-insensitive), first
-// in log order; else the thread's subject.
+// in log order. None: no about line (the thread's subject is on the epic's hover instead).
 function mirrorAbout(inbox, worklog) {
   const byKey = new Map();
   for (const e of worklog) {
@@ -74,7 +74,7 @@ function mirrorAbout(inbox, worklog) {
   for (const e of inbox) {
     for (const t of e.tasks) {
       if (t.about) continue;
-      t.about = (t.sessionId && byKey.get(`${t.sessionId}\u0000${titleKey(t.title)}`)) || e.subject || null;
+      t.about = (t.sessionId && byKey.get(`${t.sessionId}\u0000${titleKey(t.title)}`)) || null;
     }
   }
 }

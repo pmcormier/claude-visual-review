@@ -7,7 +7,7 @@ import {
   STATE_LABEL, STATE_CLASS, formatDuration, agoWords, updatedText, shortId, shortDate, lifePath, foldEpics,
   effortLeft, liveIds, usageView, detailText, sessionWhat, nowLine, triage, epicDone, epicLastActivity, sizeSummary,
   filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, spendLine, projectSpend,
-  taskLiveness, leftOpenText, sessionLabel, projectOpen,
+  taskLiveness, leftOpenText, sessionLabel, projectOpen, themeLabel,
 } from '/render.mjs';
 
 const MIN = 60000;
@@ -77,7 +77,7 @@ const STROKE = { fill: 'none', stroke: 'currentColor' };
 const ICONS = {
   work: [{ ...STROKE, 'stroke-width': '1.8' }, [['circle', { cx: 8, cy: 8, r: 5.5 }], ['path', { d: 'M8 2.5a5.5 5.5 0 0 1 5.5 5.5', 'stroke-width': '2.6', 'stroke-linecap': 'round' }]]],
   idle: [{ ...STROKE, 'stroke-width': '1.6' }, [['circle', { cx: 8, cy: 8, r: 5.5, 'stroke-dasharray': '2.5 2.2' }]]],
-  // Started, not current: a ring with its first quarter drawn, no motion. Left open: a dashed ring with a pause bar.
+  // Started, not active: a ring with its first quarter drawn, no motion. Left open: a dashed ring with a pause bar.
   started: [{ ...STROKE, 'stroke-width': '1.6' }, [['circle', { cx: 8, cy: 8, r: 5.5 }], ['path', { d: 'M8 2.5a5.5 5.5 0 0 1 5.5 5.5', 'stroke-width': '2.6', 'stroke-linecap': 'round', opacity: '.55' }]]],
   stale: [{ ...STROKE, 'stroke-width': '1.6', 'stroke-linecap': 'round' }, [['circle', { cx: 8, cy: 8, r: 5.5, 'stroke-dasharray': '2.5 2.2' }], ['path', { d: 'M6.5 6v4M9.5 6v4' }]]],
   done: [{ ...STROKE, 'stroke-width': '1.8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, [['path', { d: 'M3.5 8.5 6.5 11.5 12.5 4.5' }]]],
@@ -823,15 +823,17 @@ for (const b of $$('.tabs [role="tab"]')) {
 // Light / dark: follows the system until you pick; your pick is remembered on this computer.
 const modes = ['System', 'Light', 'Dark'];
 const modeBtn = $('.modebtn');
+const darkQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null;
 const applyMode = (m) => {
   if (m === 'System') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.dataset.theme = m.toLowerCase();
-  modeBtn.textContent = m === 'System' ? 'Auto' : m;
+  modeBtn.textContent = themeLabel(m, darkQuery?.matches === true);
 };
 let mode = 'System';
 try { mode = localStorage.getItem('dash-mode') || 'System'; } catch { /* blocked */ }
 if (!modes.includes(mode)) mode = 'System';
 applyMode(mode);
+darkQuery?.addEventListener?.('change', () => applyMode(mode)); // Auto's label follows a system flip
 modeBtn.addEventListener('click', () => {
   mode = modes[(modes.indexOf(mode) + 1) % 3];
   applyMode(mode);
@@ -932,7 +934,7 @@ const KEY_ROWS = [
   ['stuck', 'Looks stuck: hover the row for the evidence'],
   ['idle', 'Not started, or nothing running'],
   ['done', 'Done'],
-  ['started', 'Started, not current: begun earlier, no session on it now'],
+  ['started', 'Started, not active: begun earlier, no session on it now'],
   ['stale', 'Left open: no change for a day and no session on it'],
   ['sub', 'A subagent, under its session'],
 ];
@@ -965,7 +967,7 @@ const STEPS = [
   [['.panel.s-stuck .sess', '.panel .sess'], 'A session and its life line', 'Each Claude Code window, what it is doing, and its last hour as a line. Flat means it went quiet.'],
   [['.panel.s-stuck .evidence', '.panel .evidence'], 'Why we think it is stuck', 'Always the facts, never just a timer: CPU, output, and how long it has been silent.'],
   [['.panel.s-stuck .on-task', '.panel .on-task'], 'What it is working on', 'The task this session is on. Hover it to light up the task in the tree below.'],
-  [['.panel .tree'], 'The plan', 'Each project as epics and tasks, grouped: running (what a session is on now), waiting on you, started but not current, next, done. Hover a task for what it is. Only running and waiting work starts open; Expand all, Collapse all and Focus are at the top of each project.'],
+  [['.panel .tree'], 'The plan', 'Each project as epics and tasks, grouped: running (what a session is on now), waiting on you, started but not active, next, done. Hover a task for what it is. Only running and waiting work starts open; Expand all, Collapse all and Focus are at the top of each project.'],
   [['.quiet'], 'Quiet projects', 'Projects with nothing running, folded to one line each so they do not crowd the page.'],
   [['.keybtn'], 'What the symbols mean', 'Each icon and colour, in one place.'],
   [['.helpbtn'], 'Hover for more', 'Hover over almost anything for a short plain-English explanation; a cut-off line shows in full. Key explains the symbols. Click ? to see this tour again.'],

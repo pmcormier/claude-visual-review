@@ -715,7 +715,7 @@ test('an Inbox step takes its about from the same session work-log mirror', asyn
   const t = buildTree('/proj', { ...empty(), inbox, worklog }, TH);
   const a = t.epics.find((e) => e.id === 'inbox:t1:s1').tasks;
   assert.equal(a[0].about, 'why');
-  assert.equal(a[1].about, 'Ship the cart');
+  assert.equal(a[1].about, null); // no mirror line: no description (the subject is on the epic's hover)
   assert.equal(t.epics.find((e) => e.id === 'inbox:t2:s3').tasks[0].about, null);
 });
 

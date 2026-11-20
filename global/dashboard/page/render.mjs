@@ -60,14 +60,15 @@ export function shortId(id) {
   return typeof id === 'string' && id ? id.slice(0, 4) : '?';
 }
 
-/** Token counts: 820, 3.4k, 51k, 1.2M. */
+/** Token counts to three significant figures: 820, 3.4k, 51.2k, 523k, 12.3M, 1.04B. Rounding to 1000 moves up a unit. */
 export function formatTokens(n) {
   if (!num(n) || n < 0) return '0';
-  if (n < 1000) return String(Math.round(n));
-  if (n < 10000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`;
-  if (n < 1e6) return `${Math.round(n / 1000)}k`;
-  if (n < 999.5e6) return `${(n / 1e6).toFixed(n < 1e8 ? 1 : 0).replace(/\.0$/, '')}M`;
-  return `${(n / 1e9).toFixed(1).replace(/\.0$/, '')}B`;
+  if (Math.round(n) < 1000) return String(Math.round(n));
+  const units = [[1e3, 'k'], [1e6, 'M'], [1e9, 'B']];
+  let i = n < 1e6 ? 0 : n < 1e9 ? 1 : 2;
+  let v = Number((n / units[i][0]).toPrecision(3));
+  if (v >= 1000 && i < 2) { i += 1; v = Number((n / units[i][0]).toPrecision(3)); }
+  return `${v}${units[i][1]}`;
 }
 
 export function shortDate(ms) {
@@ -150,7 +151,7 @@ export function foldEpics(epics, now, liveSessionIds) {
 export const GROUPS = Object.freeze([
   { id: 'running', label: 'Running', history: false, open: true },
   { id: 'waiting', label: 'Waiting on you', history: false, open: true },
-  { id: 'started', label: 'Started, not current', history: false, open: false },
+  { id: 'started', label: 'Started, not active', history: false, open: false },
   { id: 'next', label: 'Next', history: false, open: false },
   { id: 'done', label: 'Done', history: false, open: false },
   { id: 'quiet', label: 'Quiet for a week', history: true, open: false },
@@ -227,6 +228,9 @@ export function leftOpenText(changedMs, now) {
   const h = Math.max(1, Math.floor((now - changedMs) / HOUR));
   return h < 24 ? `left open ${plural(h, 'hour')} ago` : `left open ${plural(Math.floor(h / 24), 'day')} ago`;
 }
+
+/** The light/dark button's words: Auto names the scheme the browser reports, so it can be checked at a glance. */
+export const themeLabel = (mode, prefersDark) => (mode === 'Light' || mode === 'Dark' ? mode : `Auto (${prefersDark ? 'dark' : 'light'})`);
 
 /** A session's name on the page: Claude Code's title for it, else its short id. */
 export const sessionLabel = (s) => (s?.title ? s.title : `Session ${shortId(s?.sessionId)}`);
@@ -403,6 +407,7 @@ function sessionText({ session, project }) {
     `${plural(running, 'helper')} running, ${finished} finished`,
     currentTask(s)?.title ? `Linked to ${currentTask(s).title}` : '',
     tin || tk.output ? `${formatTokens(tin)} tokens in and ${formatTokens(tk.output ?? 0)} out so far in this session` : '',
+    s.pendingTool?.command ? `Command: ${s.pendingTool.command}` : '',
   );
 }
 
@@ -422,7 +427,8 @@ function epicText({ epic }) {
   const tasks = arr(epic?.tasks);
   const done = tasks.filter((t) => t?.status === 'done').length;
   const spent = num(epic?.spentMin) && epic.spentMin > 0 ? `, ${formatDuration(epic.spentMin * MIN)} spent` : '';
-  return `${done} of ${tasks.length} tasks done${spent}.`;
+  const subject = typeof epic?.subject === 'string' && epic.subject.trim() ? `${sentence(epic.subject)} ` : '';
+  return `${subject}${done} of ${tasks.length} tasks done${spent}.`;
 }
 
 const PROJECT_PHRASE = {
@@ -475,7 +481,8 @@ export function detailText(item) {
 /** The short "what" for a session row and the second, muted line with its live timer (ms to count from). */
 export function sessionWhat(s) {
   const tool = s?.pendingTool;
-  const toolLabel = tool ? (tool.command ? tool.command.split('\n')[0] : tool.name) : '';
+  // Claude's own description of the call first; a shell command without one is just "a command" (its text is in the hover).
+  const toolLabel = !tool ? '' : tool.description ? tool.description : tool.name === 'Bash' ? 'a command' : tool.name;
   let what;
   if (s?.name && s.name !== s.title) what = s.name; // a name that only repeats the bold title says nothing
   else if (s?.state === 'waiting') what = 'Waiting for your answer';
@@ -496,6 +503,7 @@ export function nowLine(s) {
   if (s.state === 'waiting') return s.evidence || 'waiting on you';
   if (s.state !== 'working') return '';
   const tool = s.pendingTool;
+  if (tool?.description) return tool.description;
   if (tool?.command) return tool.command.split('\n')[0];
   if (tool) return tool.name === 'Agent' || tool.name === 'Task' ? 'waiting on a helper' : tool.name;
   return 'working';

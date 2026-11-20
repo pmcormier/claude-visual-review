@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
   sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, formatSpend, spendLine, projectSpend, formatTokens,
-  taskLiveness, leftOpenText, sessionLabel, projectOpen, STALE_AFTER_MS, sessionWhat,
+  taskLiveness, leftOpenText, sessionLabel, projectOpen, STALE_AFTER_MS, sessionWhat, nowLine, themeLabel,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -91,7 +91,7 @@ test('detailText templates for the other kinds', () => {
   const st = detailText({ kind: 'session', session: s, project: { name: 'billing-api' }, now: NOW });
   assert.match(st, /^A Claude Code window in billing-api, working\./);
   assert.match(st, /1 helper running, 5 finished\./);
-  assert.match(st, /51k tokens in and 3\.4k out so far in this session\./);
+  assert.match(st, /51\.2k tokens in and 3\.4k out so far in this session\./);
   assert.match(st, /Linked to Fixture migration\./);
   const sst = detailText({ kind: 'session', session: stuckSession, project: { name: 'billing-api' }, now: NOW });
   assert.match(sst, /looks stuck\. pytest running 52 min/);
@@ -276,7 +276,7 @@ test('groupEpics: exclusive groups by liveness, first that applies', () => {
   assert.deepEqual(r.done.map((e) => e.id), ['fin']);
   assert.equal(r.shown.length, 6);
   assert.deepEqual(GROUPS.map((g) => g.id), ['running', 'waiting', 'started', 'next', 'done', 'quiet', 'doneEarlier', 'before', 'dropped']);
-  assert.deepEqual(GROUPS[2], { id: 'started', label: 'Started, not current', history: false, open: false });
+  assert.deepEqual(GROUPS[2], { id: 'started', label: 'Started, not active', history: false, open: false });
 });
 
 // Clarity (spec 2026-11-19-dashboard-clarity-design.md): what is really running, and what each task is.
@@ -429,10 +429,12 @@ test('detailText shows a spend tooltip', () => {
   assert.equal(detailText({ kind: 'spend' }), '');
 });
 
-test('formatTokens shows billions as B', () => {
-  assert.equal(formatTokens(1_010_200_000), '1B');
-  assert.equal(formatTokens(2_340_000_000), '2.3B');
-  assert.equal(formatTokens(999_000_000), '999M');
+test('formatTokens shows three significant figures, moving up a unit at 1000', () => {
+  const cases = [[820, '820'], [999, '999'], [999.6, '1k'], [1000, '1k'], [3400, '3.4k'], [51_234, '51.2k'], [523_000, '523k'],
+    [999_499, '999k'], [999_999, '1M'], [1_200_000, '1.2M'], [12_340_000, '12.3M'], [523_000_000, '523M'],
+    [1_010_200_000, '1.01B'], [1_040_000_000, '1.04B'], [2_340_000_000, '2.34B'], [12_300_000_000, '12.3B']];
+  for (const [n, s] of cases) assert.equal(formatTokens(n), s, String(n));
+  assert.equal(formatTokens(1_005_000_000), `${Number((1.005).toPrecision(3))}B`);
 });
 
 test('sessionWhat does not repeat the title as the session name', () => {
@@ -466,4 +468,37 @@ test('groupEpics passes each task its epic id', () => {
 test('a shortened about line does not end in a stray full stop', () => {
   const t = { id: 'a', status: 'next', about: 'x'.repeat(10) + '\u2026' };
   assert.equal(detailText({ kind: 'task', task: t }).split('\n')[0], 'xxxxxxxxxx\u2026');
+});
+
+// Review fixes (2026-11-19): plain words.
+test('sessionWhat says what a tool is doing in Claude\'s own words', () => {
+  const s = (tool) => ({ sessionId: 'x', state: 'working', pendingTool: { startedMs: NOW - MIN, ...tool } });
+  assert.equal(sessionWhat(s({ name: 'Bash', command: 'sleep 20; gh run watch 1', description: "Watch the fix PR's CI run to the end" })).what,
+    "Running Watch the fix PR's CI run to the end");
+  assert.equal(sessionWhat(s({ name: 'Bash', command: 'sleep 20; gh run watch 1', description: null })).what, 'Running a command');
+  assert.equal(sessionWhat(s({ name: 'Read', command: 'docs/x.md', description: null })).what, 'Running Read');
+});
+
+test('nowLine prefers the description', () => {
+  const s = { state: 'working', pendingTool: { name: 'Bash', command: 'npm test', description: 'Run the tests' } };
+  assert.equal(nowLine(s), 'Run the tests');
+  assert.equal(nowLine({ ...s, pendingTool: { ...s.pendingTool, description: null } }), 'npm test');
+});
+
+test('the session hover carries the full command', () => {
+  const s = { sessionId: 'abcd1234', state: 'working', subagents: [], tokens: {}, pendingTool: { name: 'Bash', command: 'gh run watch 1', description: 'Watch CI' } };
+  assert.match(detailText({ kind: 'session', session: s, project: { name: 'p' }, now: NOW }), /Command: gh run watch 1/);
+});
+
+test('themeLabel names what Auto follows', () => {
+  assert.equal(themeLabel('System', true), 'Auto (dark)');
+  assert.equal(themeLabel('System', false), 'Auto (light)');
+  assert.equal(themeLabel('Light', true), 'Light');
+  assert.equal(themeLabel('Dark', false), 'Dark');
+});
+
+test('the epic hover starts with the thread subject, and the group is Started, not active', () => {
+  const e = { title: 'T', subject: 'Settings: what follows you', spentMin: 0, tasks: [{ status: 'done' }, { status: 'next' }] };
+  assert.equal(detailText({ kind: 'epic', epic: e }), 'Settings: what follows you. 1 of 2 tasks done.');
+  assert.equal(GROUPS.find((g) => g.id === 'started').label, 'Started, not active');
 });
