@@ -67,9 +67,13 @@ export function readWorklog(root) {
         if (prev) {
           // leftOpen: begun or waiting, then left when the session moved on; the page shows it as started, not active.
           // A closed entry waits on no one, so its waiting steps are left open too.
-          for (const t of prev.tasks) {
+          prev.tasks.forEach((t, i) => {
             if (t.status === 'doing' || t.status === 'waiting') { t.status = 'next'; t.startedMs = null; t.leftOpen = true; }
-          }
+            // A step never begun in a closed entry is not next work (it showed as "Next:" from a replaced checklist).
+            else if (t.status === 'next') prev._hidden.add(i);
+          });
+          // Closed with nothing begun or finished: nothing real is left to show.
+          if (prev.tasks.every((t, i) => prev._hidden.has(i))) prev._dropped = true;
         }
         epics.push(epic);
         open.set(session, epic);

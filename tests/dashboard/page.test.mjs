@@ -5,7 +5,7 @@ import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
   sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, formatSpend, spendLine, projectSpend, formatTokens,
   taskLiveness, leftOpenText, sessionLabel, projectOpen, STALE_AFTER_MS, sessionWhat, nowLines, themeLabel,
-  compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip, squareNext, squareLabel, toolTrail,
+  compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip, squareNext, squareLabel, toolTrail, trailForTask,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -636,4 +636,22 @@ test('a tool without a description reads plainly: file tools name the file, MCP 
   assert.equal(w({ name: 'mcp__playwright__browser_evaluate', command: null }), 'browser evaluate (playwright)');
   assert.equal(w({ name: 'Bash', command: 'npm test\nmore' }), 'npm test');
   assert.equal(w({ name: 'Grep', command: null }), 'Grep');
+});
+
+test('trailForTask: each finished tool goes under the step that was in progress when it ended; running ones under the current step', () => {
+  const step = (id, startedMs, doneMs) => ({ id, sessionId: 'S', startedMs, doneMs });
+  const tasks = [step('a', 100, 200), step('b', 200, null), step('c', null, null)];
+  const tool = (d, endedMs) => ({ name: 'Bash', description: d, endedMs });
+  const s = { sessionId: 'S', state: 'working', linkedTask: { id: 'b' },
+    pendingTools: [{ name: 'Bash', description: 'Run tests' }],
+    recentTools: [tool('Edit b', 250), tool('Read a', 150), tool('Before any step', 50)] };
+  const lines = (id) => trailForTask(tasks.find((t) => t.id === id), tasks, s).map((x) => [x.text, x.done]);
+  assert.deepEqual(lines('b'), [['Run tests', false], ['Edit b', true], ['Before any step', true]]);
+  assert.deepEqual(lines('a'), [['Read a', true]]);
+  assert.deepEqual(lines('c'), []);
+  // Not working: only the current step says why (waiting or stuck); the others say nothing.
+  const w = { ...s, state: 'waiting', evidence: 'Asked: merge?' };
+  assert.deepEqual(trailForTask(tasks[1], tasks, w).map((x) => x.text), ['Asked: merge?']);
+  assert.deepEqual(trailForTask(tasks[0], tasks, w), []);
+  assert.deepEqual(trailForTask(tasks[0], tasks, null), []);
 });

@@ -620,6 +620,30 @@ export function toolTrail(s) {
 }
 
 /**
+ * The trail lines for one task (a step) of a session's work (owner, 2026-11-20: "the tools should go under the step
+ * they apply to"). Running tools go under the session's current task. A finished tool goes under the task of the same
+ * session that was in progress when it ended (started at or before, not done before), the latest-started one if
+ * several; a tool that ended before any of them goes under the current task. Not working: only the current task
+ * gets its one "why" line.
+ */
+export function trailForTask(task, tasks, s) {
+  if (!task || !s) return [];
+  const current = s.linkedTask?.id === task.id;
+  if (s.state !== 'working') return current ? toolTrail(s) : [];
+  const mine = arr(tasks).filter((t) => t?.sessionId === s.sessionId && num(t.startedMs));
+  const ownerOf = (ended) => {
+    if (!num(ended)) return s.linkedTask?.id ?? null;
+    let best = null;
+    for (const t of mine) if (t.startedMs <= ended && (!num(t.doneMs) || ended <= t.doneMs) && (!best || t.startedMs > best.startedMs)) best = t;
+    return best?.id ?? s.linkedTask?.id ?? null;
+  };
+  const running = current ? nowLines(s).map((text) => ({ text, done: false, endedMs: null })) : [];
+  const done = arr(s.recentTools).slice(0, 5).filter((t) => ownerOf(t?.endedMs) === task.id)
+    .map((t) => ({ text: toolText(t), done: true, endedMs: num(t?.endedMs) ? t.endedMs : null })).filter((t) => t.text);
+  return [...running, ...done];
+}
+
+/**
  * The live lines under a task a session is on: one per tool running now, by Claude's description, else the command's
  * first line. Nothing running, no line: the task's state already says it is running (owner's ruling, decision 39).
  * Stuck and waiting give one line saying why.
