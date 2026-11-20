@@ -11,7 +11,7 @@ running now, so most of them show for a second and vanish.
   session finished, newest first, each crossed out with how long ago it ended ("12 s ago").
 - Only while the session is **working**. When it goes idle or waits on the owner, the finished ones clear and the
   line goes back to what decision 39 shows (owner's pick, 2026-11-20).
-- The same list appears in the compact view's squares (builder's call; the owner can overrule).
+- The same list appears on the full page and in the compact view's squares (owner, 2026-11-20: "full and compact").
 - Each entry is named as today: Claude's description of the call, else the command's first line, else the tool's
   name. Heartbeat watchers stay out, as in decision 37.
 
