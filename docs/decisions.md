@@ -496,6 +496,9 @@ Changed after the first build (owner's ruling, same day): a session left open fo
 work, and its old "waiting" steps still crowded Waiting on you. Now a live session whose current task is in another
 epic counts as gone for that older epic's tasks: its waits read "left open" after a day, and work it began there
 shows under Started, not current (a work-log epic superseded by a new `start` keeps its begun steps as `leftOpen`).
+Later (2026-11-20, owner's report of the same task listed twice, once under Waiting on you): a superseded work-log
+epic's waiting steps are `leftOpen` too. The session closed that entry by starting a new one, so nothing in it can
+still be waiting on the owner.
 A wait inside the epic the session is working on is still a real wait.
 
 Review round (owner's review of the page, same day; spec `docs/superpowers/specs/2026-11-19-dashboard-review-fixes-design.md`):

@@ -160,7 +160,7 @@ test('reader ignores unknown verbs, other versions and broken lines', async () =
   assert.equal(e.tasks[0].status, 'doing');
 });
 
-test('a second start closes the first as superseded: doing reverts to next, later records reach only the new one', async () => {
+test('a second start closes the first as superseded: doing and waiting are left open, later records reach only the new one', async () => {
   const env = setup();
   note(env, ['start', 'A', '--steps', 'a|b']);
   note(env, ['step', '1', 'doing']);
@@ -169,7 +169,9 @@ test('a second start closes the first as superseded: doing reverts to next, late
   note(env, ['done']);
   const epics = await read(env);
   assert.equal(epics.length, 2);
-  assert.deepEqual(epics[0].tasks.map((t) => t.status), ['next', 'waiting']);
+  // A closed entry waits on no one: its waiting step is left open, like its begun one.
+  assert.deepEqual(epics[0].tasks.map((t) => t.status), ['next', 'next']);
+  assert.deepEqual(epics[0].tasks.map((t) => t.leftOpen), [true, true]);
   assert.equal(epics[0].tasks[0].startedMs, null);
   assert.equal(epics[1].tasks[0].status, 'done');
 });

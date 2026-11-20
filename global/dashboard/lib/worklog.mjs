@@ -62,8 +62,11 @@ export function readWorklog(root) {
         // and no later record reaches it.
         const prev = open.get(session);
         if (prev) {
-          // leftOpen: begun, then left when the session moved on; the page shows it as started, not current.
-          for (const t of prev.tasks) if (t.status === 'doing') { t.status = 'next'; t.startedMs = null; t.leftOpen = true; }
+          // leftOpen: begun or waiting, then left when the session moved on; the page shows it as started, not active.
+          // A closed entry waits on no one, so its waiting steps are left open too.
+          for (const t of prev.tasks) {
+            if (t.status === 'doing' || t.status === 'waiting') { t.status = 'next'; t.startedMs = null; t.leftOpen = true; }
+          }
         }
         epics.push(epic);
         open.set(session, epic);
