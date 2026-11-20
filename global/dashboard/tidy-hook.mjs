@@ -29,7 +29,7 @@ function tailLines(path) {
     const lines = buf.toString('utf8').split(/\r?\n/);
     if (len < size) lines.shift(); // the first line is cut
     return lines.filter(Boolean);
-  } catch { return []; } finally { if (fd !== undefined) closeSync(fd); }
+  } catch { return null; } finally { if (fd !== undefined) closeSync(fd); }
 }
 
 function run(text) {
@@ -38,6 +38,9 @@ function run(text) {
   if (!session || typeof input.cwd !== 'string') return;
   const entry = openEntryFor(projectRoot(input.cwd), session);
   if (!entry?.doing.length) return;
+  // Without the transcript the hook can't tell whether the session just asked the owner something: stay quiet.
+  const lines = typeof input.transcript_path === 'string' ? tailLines(input.transcript_path) : null;
+  if (!lines) return;
   const stateFile = join(dashHome(), 'tidy', `${session.replace(/[^A-Za-z0-9-]/g, '-')}.json`);
   let lastState = null;
   try { lastState = JSON.parse(readFileSync(stateFile, 'utf8'))?.state ?? null; } catch { /* first time */ }
@@ -45,7 +48,7 @@ function run(text) {
   const d = tidyDecision({
     entry,
     live: readMarkers(session).some((m) => isLive(m, now)),
-    asking: typeof input.transcript_path === 'string' ? askingAtEnd(tailLines(input.transcript_path)) : false,
+    asking: askingAtEnd(lines),
     stopActive: input.stop_hook_active === true,
     lastState,
   });

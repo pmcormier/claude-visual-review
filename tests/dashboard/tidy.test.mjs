@@ -106,3 +106,11 @@ test('hook: a live watcher means no reminder', () => {
   writeMarker({ session: 'c', file: 'work/c/tasks/j.output', what: 'CI', startedAt: now, beatAt: now, lastGrowthAt: now, size: 0, quietMin: 15, exited: null });
   assert.equal(hook({ session_id: 'c', cwd: root, transcript_path: tr, stop_hook_active: false }).stdout, '');
 });
+
+test('hook: an unreadable transcript means no reminder, even with a doing step', () => {
+  log({ session: 'd', verb: 'start', title: 'Docs', steps: ['Write'] });
+  log({ session: 'd', verb: 'step', n: 1, status: 'doing' });
+  const r = hook({ session_id: 'd', cwd: root, transcript_path: join(root, 'gone-d.jsonl'), stop_hook_active: false });
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, '');
+});

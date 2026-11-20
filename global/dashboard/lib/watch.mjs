@@ -52,16 +52,21 @@ export function judge(prev, poll, now) {
   }
   s.failures = 0;
   // Any change of size is new output, including a file that was replaced and is now shorter.
-  if (poll.size !== s.size) { s.size = poll.size; s.lastGrowthAt = now; }
+  const grew = poll.size !== s.size;
+  if (grew) { s.size = poll.size; s.lastGrowthAt = now; }
+  let complete = 0;
   for (const raw of poll.tail ?? []) {
     const text = String(raw).trim();
     if (!text) continue;
     const ended = EXITED_RE.exec(text);
     if (ended) { if (s.endedAt == null) { s.endedAt = now; s.endCode = Number(ended[1]); } continue; }
+    complete += 1;
     if (!s.windowLines.some((l) => l.text === text)) s.distinctSince = now;
     s.windowLines.push({ text, at: now });
     s.lastLine = text;
   }
+  // Output that grows without finishing a line (progress dots, a bar redrawn in place) is activity, not repetition.
+  if (grew && complete === 0) s.distinctSince = now;
   s.windowLines = s.windowLines.filter((l) => now - l.at <= q);
   if (s.endedAt != null) {
     return { state: s, exit: now - s.endedAt >= ENDED_GRACE_MS ? `Job ended (code ${s.endCode}): "${s.what}". Stop watching it.` : null };
@@ -74,6 +79,18 @@ export function judge(prev, poll, now) {
     return { state: s, exit: `Quiet ${s.quietMin} min: "${s.what}". Last line: ${s.lastLine ? clip(s.lastLine) : '(none)'}.${same}` };
   }
   return { state: s, exit: null };
+}
+
+const MAX_PARTIAL = 4096;
+
+/**
+ * Splits new output into complete lines. A carriage return ends a line too, so a progress bar redrawn in place
+ * reads as changing lines. partial: the unfinished last line, kept to its newest 4096 characters.
+ */
+export function splitChunk(partial, text) {
+  const lines = (partial + text).split(/\r\n|\r|\n/);
+  const rest = lines.pop() ?? '';
+  return { lines, partial: rest.length > MAX_PARTIAL ? rest.slice(-MAX_PARTIAL) : rest };
 }
 
 /** The exit reason a line stands for, kept in the marker. */
@@ -121,8 +138,17 @@ export function readMarker(session, file) {
   try { return JSON.parse(readFileSync(markerPath(session, file), 'utf8')); } catch { return null; }
 }
 
-/** A watcher is live while it has not exited and has beaten within 3 minutes. */
-export const isLive = (m, now) => !!m && !m.exited && Number.isFinite(m.beatAt) && now - m.beatAt <= LIVE_MS;
+/** Whether a process is still running. A process we may not signal (EPERM) is running. */
+function running(pid) {
+  try { process.kill(pid, 0); return true; } catch (e) { return e?.code === 'EPERM'; }
+}
+
+/**
+ * A watcher is live while it has not exited, has beaten within 3 minutes and, when its marker names its process,
+ * that process is still running (a watcher that was stopped writes no exit).
+ */
+export const isLive = (m, now) => !!m && !m.exited && Number.isFinite(m.beatAt) && now - m.beatAt <= LIVE_MS
+  && (!Number.isInteger(m.pid) || running(m.pid));
 
 /** Removes markers untouched for 7 days. */
 export function pruneMarkers(now = Date.now()) {

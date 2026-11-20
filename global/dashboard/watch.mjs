@@ -7,7 +7,7 @@ import { appendFileSync, closeSync, mkdirSync, openSync, readSync, statSync } fr
 import { join } from 'node:path';
 import { dashHome } from './lib/paths.mjs';
 import {
-  parseArgs, initState, judge, reasonOf, writeMarker, readMarker, sessionOf, POLL_MS, BEAT_MS,
+  parseArgs, initState, judge, reasonOf, writeMarker, readMarker, sessionOf, splitChunk, POLL_MS, BEAT_MS,
 } from './lib/watch.mjs';
 
 const MAX_READ = 1024 * 1024; // only the newest megabyte of a burst is read
@@ -40,22 +40,24 @@ async function main() {
     let text = '';
     if (st.size > offset) {
       const from = Math.max(offset, st.size - MAX_READ);
+      if (from > offset) partial = ''; // bytes were skipped, so the old partial line doesn't continue here
       const buf = Buffer.alloc(st.size - from);
       let fd;
       try { fd = openSync(file, 'r'); readSync(fd, buf, 0, buf.length, from); } catch { return { ok: false }; } finally { if (fd !== undefined) closeSync(fd); }
       text = buf.toString('utf8');
       offset = st.size;
     }
-    const lines = (partial + text).split(/\r?\n/);
-    partial = lines.pop() ?? '';
-    // A last line without its newline still counts when nothing more is coming (the exit line has none on Windows).
+    const split = splitChunk(partial, text);
+    const lines = split.lines;
+    partial = split.partial;
+    // A last line without its newline still counts when nothing more is coming.
     const tail = partial && text === '' ? [...lines, partial] : lines;
     if (partial && text === '') partial = '';
     return { ok: true, size: st.size, tail };
   };
 
   let state = initState({ what, quietMin, size: 0, now: now0, prevQuietSize });
-  const marker = { session, file, what, startedAt: now0, beatAt: now0, lastGrowthAt: now0, size: 0, quietMin, exited: null };
+  const marker = { session, file, what, pid: process.pid, startedAt: now0, beatAt: now0, lastGrowthAt: now0, size: 0, quietMin, exited: null };
   let lastBeat = 0;
   for (;;) {
     const now = Date.now();

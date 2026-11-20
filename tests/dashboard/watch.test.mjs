@@ -138,3 +138,25 @@ test('watchFor: a live marker on the same file, whatever the slashes or case', a
   assert.equal(watchFor('work/t/job.output', [{ ...m, beatAt: now - 4 * MIN }], now), null);
   assert.equal(watchFor(null, [m], now), null);
 });
+
+test('a killed watcher is not live: its process is gone', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const dead = spawnSync(process.execPath, ['-e', '']).pid;
+  const now = Date.now();
+  const m = { session: 's', file: 'work/j.output', exited: null, beatAt: now - MIN };
+  assert.equal(isLive({ ...m, pid: dead }, now), false);
+  assert.equal(isLive({ ...m, pid: process.pid }, now), true);
+  assert.equal(isLive(m, now), true); // older markers without a pid fall back to the beat
+});
+
+test('growth without a complete line is activity, not repeating', () => {
+  const polls = [[0, { size: 10, tail: ['  % Total    % Received'] }]];
+  for (let m = 1; m <= 20; m++) polls.push([m, { size: 10 + m * 100 }]);
+  assert.equal(run(start(), polls).exit, null);
+});
+
+test('splitChunk: a carriage return ends a line, and a runaway partial line is capped', () => {
+  assert.deepEqual(W.splitChunk('', 'a\r b\r\nc\nd'), { lines: ['a', ' b', 'c'], partial: 'd' });
+  assert.deepEqual(W.splitChunk('d', 'e\n'), { lines: ['de'], partial: '' });
+  assert.ok(W.splitChunk('', '.'.repeat(10000)).partial.length <= 4096);
+});
