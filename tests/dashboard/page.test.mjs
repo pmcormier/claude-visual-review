@@ -5,7 +5,7 @@ import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
   sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, formatSpend, spendLine, projectSpend, formatTokens,
   taskLiveness, leftOpenText, sessionLabel, projectOpen, STALE_AFTER_MS, sessionWhat, nowLines, themeLabel,
-  compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip, squareNext, squareLabel,
+  compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip, squareNext, squareLabel, toolTrail,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -483,7 +483,7 @@ test('sessionWhat says what a tool is doing in Claude\'s own words', () => {
 test('nowLines: one line per running tool, its description first', () => {
   const bash = { name: 'Bash', command: 'npm test\nmore', description: 'Run the tests' };
   const s = { state: 'working', pendingTools: [bash, { name: 'Read', command: 'docs/x.md', description: null }] };
-  assert.deepEqual(nowLines(s), ['Run the tests', 'docs/x.md']);
+  assert.deepEqual(nowLines(s), ['Run the tests', 'Read x.md']);
   assert.deepEqual(nowLines({ state: 'working', pendingTools: [{ ...bash, description: null }] }), ['npm test']);
   assert.deepEqual(nowLines({ state: 'working', pendingTools: [{ name: 'Agent', description: null }] }), ['waiting on a helper']);
 });
@@ -612,4 +612,28 @@ test('squareLabel: what a screen reader hears names the project, its state and i
     'tools, Waiting on you, Compact card view. Open the full card.');
   assert.equal(squareLabel({ name: 'tools', state: 'quiet', error: 'Could not read this project' }, null),
     'tools, Could not read this project. Open the full card.');
+});
+
+test('toolTrail: running tools on top, then up to 5 finished ones crossed out, only while working', () => {
+  const run = { name: 'Bash', command: 'npm test', description: 'Run the tests' };
+  const done = (n) => ({ name: 'Read', command: 'f' + n, description: null, endedMs: n });
+  const s = { state: 'working', pendingTools: [run], recentTools: [done(9), done(8), done(7), done(6), done(5), done(4)] };
+  const t = toolTrail(s);
+  assert.deepEqual(t.map((x) => [x.text, x.done]), [['Run the tests', false], ['Read f9', true], ['Read f8', true], ['Read f7', true], ['Read f6', true], ['Read f5', true]]);
+  assert.equal(t[1].endedMs, 9);
+  // Between tools: only the finished ones.
+  assert.deepEqual(toolTrail({ ...s, pendingTools: [] }).map((x) => x.done), [true, true, true, true, true]);
+  // Idle or waiting: the finished ones clear; waiting keeps its one "why" line.
+  assert.deepEqual(toolTrail({ ...s, state: 'idle' }), []);
+  assert.deepEqual(toolTrail({ ...s, state: 'waiting', evidence: 'Asked: merge?' }), [{ text: 'Asked: merge?', done: false, endedMs: null }]);
+  assert.deepEqual(toolTrail(null), []);
+});
+
+test('a tool without a description reads plainly: file tools name the file, MCP tools their own name', () => {
+  const w = (tool) => nowLines({ state: 'working', pendingTools: [tool] })[0];
+  assert.equal(w({ name: 'Write', command: 'work\\scratch\\tt3.mjs' }), 'Write tt3.mjs');
+  assert.equal(w({ name: 'Edit', command: 'global/dashboard/page/app.js' }), 'Edit app.js');
+  assert.equal(w({ name: 'mcp__playwright__browser_evaluate', command: null }), 'browser evaluate (playwright)');
+  assert.equal(w({ name: 'Bash', command: 'npm test\nmore' }), 'npm test');
+  assert.equal(w({ name: 'Grep', command: null }), 'Grep');
 });

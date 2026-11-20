@@ -1,6 +1,6 @@
 # Dashboard: a running list of tools under a working task
 
-Status: draft for the owner's approval (2026-11-20). Inbox thread "Compact card view". Short design.
+Status: approved by the owner 2026-11-20. Inbox thread "Compact card view". Short design.
 
 **Intent.** The owner: "Tools flash by so fast. Considering a running list, the current on top, crossed out as they
 are completed so a short history is visible." Since decision 39, the line under a running task lists only the tools

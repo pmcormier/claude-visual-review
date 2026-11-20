@@ -10,6 +10,7 @@ const KEEP_EVENTS = 500;
 // Claude Code's reply to a run_in_background call starts with this line. It is matched only at the start of the
 // result of such a call: a command whose output quotes it (a transcript excerpt) has finished, not left a job running.
 const WATCHER_RE = /dashboard[\\/]watch\.mjs\b/;
+const RECENT_KEPT = 5;
 const BG_RE = /^\s*Command running in background with ID: (\S+?)\.?\s+Output is being written to: (.+?\.output)/;
 // Tools that end a background job by its ID. A stopped job gets no completion note, so a successful stop ends it.
 const STOP_TOOLS = new Set(['TaskStop', 'KillShell', 'KillBash']);
@@ -34,7 +35,7 @@ export const trackedTranscripts = () => states.size;
 
 function fresh() {
   return {
-    endByte: 0, minuteSet: new Set(), pending: new Map(), lastEntryIsApiError: false, lastEntryMs: null,
+    endByte: 0, minuteSet: new Set(), pending: new Map(), recent: [], lastEntryIsApiError: false, lastEntryMs: null,
     tokens: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 }, seenIds: new Set(),
     events: [], planRefs: [], taskRefs: [], customTitle: null, aiTitle: null, lastAsk: null,
   };
@@ -114,7 +115,14 @@ function ingest(st, e) {
       if (!p) continue;
       const m = p.bg ? BG_RE.exec(resultText(b.content)) : null;
       if (m) { p.jobId = m[1]; p.outputFile = m[2]; } // job still running: stays pending
-      else st.pending.delete(b.tool_use_id);
+      else {
+        st.pending.delete(b.tool_use_id);
+        // The last few finished tools, for the trail under a working task (decision 42). Watchers stay out.
+        if (!WATCHER_RE.test(p.command ?? '')) {
+          st.recent.push({ name: p.name, command: p.command, description: p.description, endedMs: hasMs ? ms : null });
+          if (st.recent.length > RECENT_KEPT) st.recent.shift();
+        }
+      }
       if (p.stops && b.is_error !== true) {
         for (const [id, q] of st.pending) if (q.jobId === p.stops) st.pending.delete(id);
       }
@@ -201,6 +209,7 @@ export function scanTranscript(path, now = Date.now(), thresholds = loadConfig()
     minutes,
     pendingTool: pendings.length ? { ...pendings[pendings.length - 1] } : null,
     pendingTools: pendings.map((p) => ({ ...p })), // every tool still running, oldest first
+    recentTools: [...view.recent].reverse().map((t) => ({ ...t })), // the last finished ones, newest first
     lastEntryIsApiError: view.lastEntryIsApiError,
     lastEntryMs: view.lastEntryMs,
     tokens: { ...view.tokens },

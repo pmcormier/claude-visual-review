@@ -302,6 +302,7 @@ function sessionView(s, now, th, sampler, openQuestions) {
     cpuPct, lastWriteMs: signals.lastWriteMs, life: signals.minutes, tokens: signals.tokens,
     pendingTool: toolView(tool, buildMarkers, now), linkedTask: null,
     pendingTools: (signals.pendingTools ?? []).slice(-MAX_RUNNING_SHOWN).map((t) => toolView(t, buildMarkers, now)),
+    recentTools: (signals.recentTools ?? []).map((t) => ({ name: t.name, command: clip(t.command), description: clip(t.description ?? null), endedMs: t.endedMs ?? null })),
     subagents: [...active, ...rest.slice(0, KEEP_DONE_SUBAGENTS)],
     subagentsHidden: Math.max(0, rest.length - KEEP_DONE_SUBAGENTS),
     _signals: signals,

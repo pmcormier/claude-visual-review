@@ -8,7 +8,7 @@ import {
   effortLeft, liveIds, usageView, detailText, sessionWhat, nowLines, watchedNote, watchedAgo, watchedHover, triage, epicDone, epicLastActivity, sizeSummary,
   filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, spendLine, projectSpend,
   taskLiveness, leftOpenText, sessionLabel, projectOpen, themeLabel,
-  compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip, squareNext, squareLabel,
+  compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip, squareNext, squareLabel, toolTrail,
 } from '/render.mjs';
 
 const MIN = 60000;
@@ -246,6 +246,13 @@ function epicState(e, byId) {
   return epicDone(e) ? 'done' : 'idle';
 }
 
+/** One line of the trail under a working task: running now, or finished (crossed out, with how long ago). */
+function trailLine(t, s, now) {
+  const cls = `now s-${STATE_CLASS[s.state] ?? 'work'}${t.done ? ' done' : ''}`;
+  return h('div', { class: cls }, h('span', { text: t.text }),
+    t.done && Number.isFinite(t.endedMs) ? h('span', { class: 'ago' }, since(t.endedMs, now), ' ago') : null);
+}
+
 function taskLi(p, e, t, byId) {
   const now = Date.now();
   const lv = taskLiveness(t, byId, now, e.id);
@@ -253,7 +260,7 @@ function taskLi(p, e, t, byId) {
   const s = current ? liveSession(byId, t) : null; // the live line and session chip only under a session's current task
   const st = taskState(t, s, lv);
   const link = s ? keyOf(p.root, t.id) : null;
-  const nowTexts = s ? nowLines(s) : [];
+  const trail = s ? toolTrail(s) : [];
   // Started or left open: one short muted note, so the task's name keeps its room; which session is in the hover.
   return h('li', null,
     h('div', { class: `node s-${st}`, data: { dk: keyOf('t', p.root, t.id), link } },
@@ -265,7 +272,7 @@ function taskLi(p, e, t, byId) {
         lv === 'started' && t.sessionId ? h('span', { class: 't', text: 'earlier' }) : null,
         lv === 'stale' ? h('span', { class: 't', text: leftOpenText(t.changedMs, now) }) : null,
         t.spentMin > 0 ? h('span', { class: 't', text: formatDuration(t.spentMin * MIN) }) : null)),
-    nowTexts.map((text) => h('div', { class: `now s-${STATE_CLASS[s.state] ?? 'work'}` }, h('span', { text }))));
+    trail.map((t) => trailLine(t, s, now)));
 }
 
 function epicLi(p, e, byId, dflt = false) {
@@ -462,7 +469,7 @@ function squareFor(p, now, key) {
         st.done ? h('li', { class: 'muted' }, icon('done'), h('span', { text: `${st.done} done` })) : null,
         st.items.map(stepLi),
         st.more ? h('li', { class: 'muted' }, h('span', { text: `+${st.more} more` })) : null) : null,
-      nowLines(s).map((text) => h('div', { class: `now s-${STATE_CLASS[s.state] ?? 'work'}` }, h('span', { text }))),
+      toolTrail(s).map((t) => trailLine(t, s, now)),
       arr(s.pendingTools).map((t) => (watchedNote(t, now) ? h('div', { class: 'muted', title: watchedHover(t), data: { watched: t.watch.lastGrowthAt }, text: watchedNote(t, now) }) : null)),
       arr(s.subagents).filter((a) => a.state === 'stuck').map((a) => h('div', { class: 'evidence', text: `Subagent: ${a.evidence || 'looks stuck'}` }))));
   }

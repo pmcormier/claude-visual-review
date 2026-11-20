@@ -590,6 +590,35 @@ export function watchedNote(tool, now) {
 
 export const watchedHover = (tool) => `The session is watching this job and will check on it after ${tool?.watch?.quietMin ?? 15} minutes of silence.`;
 
+const FILE_TOOLS = new Set(['Read', 'Write', 'Edit', 'NotebookEdit']);
+/**
+ * A tool in plain words: Claude's description; else a file tool and its file's name ("Edit app.js"); else a shell
+ * command's first line; else an MCP tool's own name with its server ("browser evaluate (playwright)"); else the name.
+ */
+const toolText = (tool) => {
+  if (tool?.description) return tool.description;
+  const name = String(tool?.name ?? '');
+  if (FILE_TOOLS.has(name) && tool?.command) return `${name} ${String(tool.command).split(/[\\/]/).pop()}`;
+  if (tool?.command) return String(tool.command).split('\n')[0];
+  if (name === 'Agent' || name === 'Task') return 'waiting on a helper';
+  const mcp = /^mcp__(.+?)__(.+)$/.exec(name);
+  if (mcp) return `${mcp[2].replace(/_/g, ' ')} (${mcp[1].replace(/_/g, ' ')})`;
+  return name;
+};
+
+/**
+ * The trail under a task a session is working on (decision 42): the tools running now, then the last 5 it finished,
+ * newest first, marked done. Only while it is working; otherwise the same lines as nowLines.
+ * @returns {{text: string, done: boolean, endedMs: number|null}[]}
+ */
+export function toolTrail(s) {
+  if (s?.state !== 'working') return nowLines(s).map((text) => ({ text, done: false, endedMs: null }));
+  const running = nowLines(s).map((text) => ({ text, done: false, endedMs: null }));
+  const done = arr(s.recentTools).slice(0, 5).map((t) => ({ text: toolText(t), done: true, endedMs: num(t?.endedMs) ? t.endedMs : null }))
+    .filter((t) => t.text);
+  return [...running, ...done];
+}
+
 /**
  * The live lines under a task a session is on: one per tool running now, by Claude's description, else the command's
  * first line. Nothing running, no line: the task's state already says it is running (owner's ruling, decision 39).
@@ -600,11 +629,7 @@ export function nowLines(s) {
   if (s.state === 'stuck' || s.state === 'gone') return [s.evidence || STATE_LABEL[s.state]];
   if (s.state === 'waiting') return [s.evidence || 'waiting on you'];
   if (s.state !== 'working') return [];
-  return arr(s.pendingTools).map((tool) => {
-    if (tool?.description) return tool.description;
-    if (tool?.command) return tool.command.split('\n')[0];
-    return tool?.name === 'Agent' || tool?.name === 'Task' ? 'waiting on a helper' : tool?.name ?? '';
-  }).filter(Boolean);
+  return arr(s.pendingTools).map(toolText).filter(Boolean);
 }
 
 // ---- triage ---------------------------------------------------------------------------------------------------

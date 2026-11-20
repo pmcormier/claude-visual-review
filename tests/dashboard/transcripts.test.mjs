@@ -336,3 +336,15 @@ test('every running tool is listed, oldest first, watchers left out', () => with
   appendFileSync(p, lines(result('toolu_a', 'ok'), result('toolu_c', 'ok')));
   assert.deepEqual(scanTranscript(p, NOW).pendingTools, []);
 }));
+
+test('the last 5 finished tools are kept, newest first, with when they ended; watchers left out', () => withDir((d) => {
+  const p = join(d, 't.jsonl');
+  const rows = [];
+  for (let i = 1; i <= 7; i++) rows.push(toolUse('toolu_' + i, 'Bash', { command: 'step ' + i, description: 'Step ' + i }, 20 - i), result('toolu_' + i, 'ok', 19 - i));
+  rows.push(toolUse('toolu_w', 'Bash', { command: 'node ~/.claude/dashboard/watch.mjs --file x' }, 3), result('toolu_w', 'ok', 2));
+  writeFileSync(p, lines(...rows));
+  const s = scanTranscript(p, NOW);
+  assert.deepEqual(s.recentTools.map((t) => t.description), ['Step 7', 'Step 6', 'Step 5', 'Step 4', 'Step 3']);
+  assert.equal(s.recentTools[0].endedMs, NOW - 12 * 60000);
+  assert.equal(s.recentTools[0].command, 'step 7');
+}));
