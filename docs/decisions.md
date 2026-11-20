@@ -590,3 +590,11 @@ and unreadable projects also get a square (the full page counts both as needing 
 "Server not responding"; plan work shows its done tasks as a count, the current task and the next three; a click
 opens the project's full card in the same space; the compact view never marks alerts as seen, so a pane left open
 does not clear the full page's "New" badges. It is the same page as the full view, so both read one live model.
+
+## 41. The end-of-turn check counts a background helper as running (2026-11-20)
+The check from decision 37 reminded a session about a step marked doing while a reviewer it had started was still
+working in the background, because it only counted watched shell jobs. Claude Code keeps an `agent-<id>.meta.json`
+beside each helper's transcript, with `"requestShape": "background"` and `"finished": true` once done (read
+2026-11-20). The check now also counts a background helper that has not finished and wrote within 30 minutes; the
+limit keeps a helper that died without saying so from hushing the reminder forever. Approved by the owner as a short
+design in the "Compact card view" thread.

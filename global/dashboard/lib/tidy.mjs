@@ -1,4 +1,7 @@
-// The end-of-turn tidy-up's decisions (decision 37), kept pure so they can be tested. tidy-hook.mjs does the I/O.
+// The end-of-turn tidy-up's decisions (decision 37), kept pure so they can be tested; tidy-hook.mjs does the I/O,
+// except backgroundHelperRunning, which reads the session's helper files (decision 41).
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 
 /** The reminder, in the words the owner approved. Names the first step still marked doing. */
 export function reminderText(entry) {
@@ -43,4 +46,28 @@ export function askingAtEnd(lines) {
     }
   }
   return ask || openAsks.size > 0;
+}
+
+const HELPER_QUIET_MS = 30 * 60000; // a helper silent this long is taken as dead, so it can't hush the reminder forever
+
+/**
+ * Whether the session has a helper agent working in the background: Claude Code's meta file beside it says
+ * requestShape "background" and not finished, and its transcript was written within 30 minutes (decision 41).
+ * Never throws; false when nothing can be read.
+ */
+export function backgroundHelperRunning(transcriptPath, now = Date.now()) {
+  try {
+    const dir = join(dirname(transcriptPath), basename(transcriptPath).replace(/\.jsonl$/, ''), 'subagents');
+    for (const n of readdirSync(dir)) {
+      const m = /^agent-(.+)\.meta\.json$/.exec(n);
+      if (!m) continue;
+      let meta;
+      try { meta = JSON.parse(readFileSync(join(dir, n), 'utf8')); } catch { continue; }
+      if (meta?.requestShape !== 'background' || meta?.finished === true) continue;
+      let wrote = 0;
+      try { wrote = statSync(join(dir, `agent-${m[1]}.jsonl`)).mtimeMs; } catch { continue; }
+      if (now - wrote <= HELPER_QUIET_MS) return true;
+    }
+  } catch { /* no helpers folder */ }
+  return false;
 }

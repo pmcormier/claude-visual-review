@@ -7,7 +7,7 @@ import { dashHome } from './lib/paths.mjs';
 import { projectRoot } from './lib/sessions.mjs';
 import { openEntryFor } from './lib/worklog.mjs';
 import { readMarkers, isLive } from './lib/watch.mjs';
-import { tidyDecision, askingAtEnd } from './lib/tidy.mjs';
+import { tidyDecision, askingAtEnd, backgroundHelperRunning } from './lib/tidy.mjs';
 
 const TAIL_BYTES = 64 * 1024;
 
@@ -47,7 +47,7 @@ function run(text) {
   const now = Date.now();
   const d = tidyDecision({
     entry,
-    live: readMarkers(session).some((m) => isLive(m, now)),
+    live: readMarkers(session).some((m) => isLive(m, now)) || backgroundHelperRunning(input.transcript_path, now),
     asking: askingAtEnd(lines),
     stopActive: input.stop_hook_active === true,
     lastState,

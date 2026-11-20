@@ -122,3 +122,41 @@ test('tidyDecision: a new entry with the same title and steps is reminded again'
   const again = tidyDecision({ ...base, entry: { ...entry, startedAt: '2026-11-20T12:00:00.000Z' }, lastState: first.state });
   assert.equal(again.remind, reminderText(entry));
 });
+
+test('backgroundHelperRunning: an unfinished background helper that wrote lately counts; finished, foreground or silent ones do not', async () => {
+  const { backgroundHelperRunning } = await import('../../global/dashboard/lib/tidy.mjs');
+  const { utimesSync } = await import('node:fs');
+  const dir = mkdtempSync(join(tmpdir(), 'cvr-helpers-'));
+  const tr = join(dir, 'sess.jsonl');
+  writeFileSync(tr, '');
+  const subs = join(dir, 'sess', 'subagents');
+  mkdirSync(subs, { recursive: true });
+  const agent = (id, meta, minAgo) => {
+    writeFileSync(join(subs, `agent-${id}.meta.json`), JSON.stringify(meta));
+    const f = join(subs, `agent-${id}.jsonl`);
+    writeFileSync(f, '{}\n');
+    const t = (Date.now() - minAgo * 60000) / 1000;
+    utimesSync(f, t, t);
+  };
+  const now = Date.now();
+  assert.equal(backgroundHelperRunning(tr, now), false); // none yet
+  agent('done', { requestShape: 'background', finished: true }, 1);
+  agent('fore', { requestShape: 'foreground', finished: false }, 1);
+  agent('old', { requestShape: 'background', finished: false }, 45);
+  assert.equal(backgroundHelperRunning(tr, now), false);
+  agent('busy', { requestShape: 'background', finished: false }, 2);
+  assert.equal(backgroundHelperRunning(tr, now), true);
+  assert.equal(backgroundHelperRunning(join(dir, 'missing.jsonl'), now), false);
+});
+
+test('hook: a background helper still working means no reminder', () => {
+  log({ session: 'e', verb: 'start', title: 'Review', steps: ['Wait for the reviewer'] });
+  log({ session: 'e', verb: 'step', n: 1, status: 'doing' });
+  const tr = join(root, 'e.jsonl');
+  writeFileSync(tr, text('Reviewer started.') + '\n');
+  const subs = join(root, 'e', 'subagents');
+  mkdirSync(subs, { recursive: true });
+  writeFileSync(join(subs, 'agent-r1.meta.json'), JSON.stringify({ requestShape: 'background', finished: false }));
+  writeFileSync(join(subs, 'agent-r1.jsonl'), '{}\n');
+  assert.equal(hook({ session_id: 'e', cwd: root, transcript_path: tr, stop_hook_active: false }).stdout, '');
+});
