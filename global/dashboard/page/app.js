@@ -246,10 +246,14 @@ function epicState(e, byId) {
   return epicDone(e) ? 'done' : 'idle';
 }
 
-/** One line of the trail under a working task: running now, or finished (crossed out, with how long ago). */
+/**
+ * One line of the trail under a working task: an icon in front says running (the open ring) or done (the tick);
+ * a done one also says how long ago it ended. Stuck and waiting lines keep the plain dash.
+ */
 function trailLine(t, s, now) {
-  const cls = `now s-${STATE_CLASS[s.state] ?? 'work'}${t.done ? ' done' : ''}`;
-  return h('div', { class: cls }, h('span', { text: t.text }),
+  const tool = t.done || s.state === 'working';
+  const cls = `now s-${STATE_CLASS[s.state] ?? 'work'}${t.done ? ' done' : ''}${tool ? ' trail' : ''}`;
+  return h('div', { class: cls }, tool ? icon(t.done ? 'done' : 'work') : null, h('span', { text: t.text }),
     t.done && Number.isFinite(t.endedMs) ? h('span', { class: 'ago' }, since(t.endedMs, now), ' ago') : null);
 }
 

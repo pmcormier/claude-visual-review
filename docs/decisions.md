@@ -602,7 +602,7 @@ design in the "Compact card view" thread.
 ## 42. A trail of recent tools under a working task (2026-11-20)
 The owner: "Tools flash by so fast. Considering a running list, the current on top, crossed out as they are completed
 so a short history is visible." Under a task a session is working on, the tools running now come first, then the
-last 5 it finished, newest first, crossed out with how long ago they ended; on the full page and in the compact view
+last 5 it finished, newest first, marked with a tick and how long ago they ended (the running ones with the open ring; owner's follow-up: icons rather than strikethrough); on the full page and in the compact view
 ("full and compact"). Of three choices, the owner picked keeping the last 5 while the session works and clearing
 them when it goes idle or waits, so the empty line of decision 39 comes back as soon as work stops. Tools without
 Claude's own description now read plainly: a file tool names its file ("Edit app.js"), an MCP tool its own name

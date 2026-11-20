@@ -286,8 +286,9 @@ body.compact .bar { padding-block: 8px; }
 /* An opened project's card gets nearly the full width: half the usual side margin. */
 body.compact main:has(> #v-compact > .cone:not([hidden])) { padding-inline: max(8px, 1.25vw); }
 
-/* The tool trail (decision 42): finished tools under the running one, crossed out and quieter. */
+/* The tool trail (decision 42): an icon in front says running or done; finished ones are quieter. */
+.now.trail::before { display: none; }
+.now.trail .ic { flex: none; width: 13px; height: 13px; }
 .now.done { color: var(--muted); font-weight: 400; }
-.now.done::before { background: var(--muted); }
-.now.done > span:first-of-type { text-decoration: line-through; }
 .now .ago { flex: none; overflow: visible; font-size: .8rem; }
+.sqbody .now.trail { margin-left: 18px; font-size: .82rem; }
