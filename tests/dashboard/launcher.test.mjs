@@ -30,11 +30,11 @@ async function makeHome() {
   return { base, claude, dash, port, env };
 }
 
-// Runs a script, feeding stdin; resolves {code, stdout, stderr, ms}.
-function run(script, env, input = '') {
+// Runs a script (or node with `args` when script is null), feeding stdin; resolves {code, stdout, stderr, ms}.
+function run(script, env, input = '', args = null) {
   return new Promise((res) => {
     const t0 = process.hrtime.bigint();
-    const c = spawn(process.execPath, [join(DASH, script)], { env, windowsHide: true });
+    const c = spawn(process.execPath, args ?? [join(DASH, script)], { env, windowsHide: true });
     let stdout = '';
     let stderr = '';
     c.stdout.on('data', (d) => { stdout += d; });
@@ -44,16 +44,26 @@ function run(script, env, input = '') {
   });
 }
 
-test('launcher exits 0 within 300 ms when server cannot start', async () => {
+// The launcher's own cost: its fastest of 3 runs against Node's fastest of 3 bare starts, taken in turn. Node alone
+// can take 300+ ms to start on a busy machine (measured 2026-11-20: 181-384 ms with every core busy, 36-48 ms idle);
+// the launcher adds about 10 ms. 150 ms of headroom still catches it waiting for the server (a connect timeout, 5 s).
+test('launcher exits 0 when server cannot start, adding under 150 ms to a bare node start', async () => {
   const h = await makeHome();
   try {
     h.env.CVR_DASH_SERVER = join(h.base, 'no-such-server.mjs');
     await run('launcher.mjs', h.env); // warm the file cache: the cap is about the launcher, not a cold disk
-    const r = await run('launcher.mjs', h.env);
-    assert.equal(r.code, 0);
-    assert.equal(r.stdout, '');
-    assert.equal(r.stderr, '');
-    assert.ok(r.ms < 300, `took ${Math.round(r.ms)} ms`);
+    const bare = [];
+    const launch = [];
+    for (let i = 0; i < 3; i++) {
+      bare.push((await run(null, h.env, '', ['-e', ''])).ms);
+      const r = await run('launcher.mjs', h.env);
+      assert.equal(r.code, 0);
+      assert.equal(r.stdout, '');
+      assert.equal(r.stderr, '');
+      launch.push(r.ms);
+    }
+    const extra = Math.min(...launch) - Math.min(...bare);
+    assert.ok(extra < 150, `launcher added ${Math.round(extra)} ms (launcher ${launch.map(Math.round)}, bare node ${bare.map(Math.round)})`);
   } finally { rmSync(h.base, { recursive: true, force: true }); }
 });
 
