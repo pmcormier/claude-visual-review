@@ -70,6 +70,52 @@ function ms(at) {
 }
 
 /**
+ * Open Inbox questions by the session that asked them, across every Inbox project: the latest envelope has no
+ * answer, is not withdrawn (superseded_by), is not an action already done (action_result), and its thread is not
+ * resolved. askedMs is the question's first envelope. Per session the newest wins. Never throws.
+ * @returns {Map<string, {prompt: string, askedMs: number}>}
+ */
+export function readOpenQuestions() {
+  const out = new Map();
+  let keys = [];
+  const base = join(plannotatorHome(), 'inbox', 'projects');
+  try { keys = readdirSync(base); } catch { return out; }
+  for (const key of keys) {
+    try {
+      const dir = join(base, key);
+      const latest = new Map(); // id -> {env, firstMs}
+      for (const e of readJsonl(join(dir, 'questions.jsonl')).records) {
+        if (!e || e.kind !== 'question' || typeof e.id !== 'string' || !isObjRec(e.record)) continue;
+        const prev = latest.get(e.id);
+        if (prev && seqOf(prev.env) !== null && seqOf(e) !== null && seqOf(e) < seqOf(prev.env)) continue;
+        latest.set(e.id, { env: e, firstMs: prev?.firstMs ?? ms(e.at) });
+      }
+      if (!latest.size) continue;
+      const threadOf = new Map();
+      const resolved = new Set();
+      for (const e of readJsonl(join(dir, 'messages.jsonl')).records) {
+        const m = e?.record;
+        if (!m || typeof m.id !== 'string') continue;
+        threadOf.set(m.id, m.thread_id);
+        if (m.resolved_at) resolved.add(m.thread_id);
+      }
+      for (const { env, firstMs } of latest.values()) {
+        const r = env.record;
+        if (r.answer != null || r.superseded_by != null || (r.action && r.action_result)) continue;
+        if (resolved.has(threadOf.get(r.message_id))) continue;
+        const sid = typeof r.asked_by_agent_id === 'string' ? r.asked_by_agent_id : null;
+        if (!sid || typeof r.prompt !== 'string' || firstMs === null) continue;
+        const prev = out.get(sid);
+        if (!prev || firstMs > prev.askedMs) out.set(sid, { prompt: r.prompt.trim(), askedMs: firstMs });
+      }
+    } catch { /* skip this project */ }
+  }
+  return out;
+}
+
+const isObjRec = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/**
  * @param {string} root project root
  * @returns {import('../types.mjs').Epic[]}
  */

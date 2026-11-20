@@ -289,3 +289,26 @@ test('a long description is clipped at the source, so stall evidence stays short
   assert.equal(desc.length, 200);
   assert.ok(desc.endsWith('…'));
 }));
+
+// Needs-you (2026-11-19): a question left to the owner.
+const say = (text, minAgo = 1) => ({ type: 'assistant', timestamp: iso(minAgo), message: { content: [{ type: 'text', text }] } });
+
+test('lastAsk: a closing question is kept; a later tool call or user reply clears it', () => withDir((d) => {
+  const f = join(d, 'ask.jsonl');
+  writeFileSync(f, lines(say('Done the build.\nShould I merge it?', 2)));
+  assert.deepEqual(scanTranscript(f, NOW).lastAsk, { text: 'Should I merge it?', ms: NOW - 2 * 60000 });
+  appendFileSync(f, lines(toolUse('t1', 'Bash', { command: 'ls' })));
+  assert.equal(scanTranscript(f, NOW).lastAsk, null);
+  const g = join(d, 'ask2.jsonl');
+  writeFileSync(g, lines(say('Merge it?'), { type: 'user', timestamp: iso(0), message: { content: 'yes' } }));
+  assert.equal(scanTranscript(g, NOW).lastAsk, null);
+  const h = join(d, 'ask3.jsonl');
+  writeFileSync(h, lines(say('All done.')));
+  assert.equal(scanTranscript(h, NOW).lastAsk, null);
+}));
+
+test('an AskUserQuestion call keeps its first question as the description', () => withDir((d) => {
+  const f = join(d, 'auq.jsonl');
+  writeFileSync(f, lines(toolUse('q1', 'AskUserQuestion', { questions: [{ question: 'Which way?' }, { question: 'Other' }] })));
+  assert.equal(scanTranscript(f, NOW).pendingTool.description, 'Which way?');
+}));

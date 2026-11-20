@@ -400,3 +400,26 @@ test('plan about: a bold-only line is a label, and abbreviations do not end the 
   assert.equal(e.tasks[0].about, null);
   assert.equal(e.tasks[1].about, 'Adds e.g. caching, i.e. speed.');
 });
+
+test('readOpenQuestions: only unanswered, not withdrawn, not done, in an open thread', async () => {
+  const { plan, root } = setup();
+  const dir = inboxProject(plan, root);
+  writeFileSync(join(dir, 'messages.jsonl'), [
+    env(1, 1, 'a', 'message', 'm1', { id: 'm1', thread_id: 't1', subject: 'x', resolved_at: null }),
+    env(1, 2, 'a', 'message', 'm2', { id: 'm2', thread_id: 't2', subject: 'y', resolved_at: '2026-11-19T00:00:00Z' }),
+  ].join('\n') + '\n');
+  const q = (key, msg, over) => ({ id: msg + '/' + key, message_id: msg, key, prompt: 'P ' + key, asked_by_agent_id: 'sess-1', answer: null, superseded_by: null, ...over });
+  writeFileSync(join(dir, 'questions.jsonl'), [
+    env(1, 1, '2026-11-19T10:00:00Z', 'question', 'm1/a', q('a', 'm1', { answer: { v: 1 } })),
+    env(1, 2, '2026-11-19T10:01:00Z', 'question', 'm1/b', q('b', 'm1', { superseded_by: { message_id: 'm9' } })),
+    env(1, 3, '2026-11-19T10:02:00Z', 'question', 'm1/c', q('c', 'm1', { action: { text: 'do' }, action_result: 'done' })),
+    env(1, 4, '2026-11-19T10:03:00Z', 'question', 'm2/d', q('d', 'm2')),
+    env(1, 5, '2026-11-19T10:04:00Z', 'question', 'm1/e', q('e', 'm1')),
+    env(1, 6, '2026-11-19T10:05:00Z', 'question', 'm1/f', q('f', 'm1', { asked_by_agent_id: 'sess-2', answer: null })),
+    env(1, 7, '2026-11-19T10:06:00Z', 'question', 'm1/f', q('f', 'm1', { asked_by_agent_id: 'sess-2', answer: { v: 1 } })),
+  ].join('\n') + '\n');
+  const { readOpenQuestions } = await mod('inbox.mjs');
+  const open = readOpenQuestions();
+  assert.deepEqual([...open.keys()], ['sess-1']);
+  assert.deepEqual(open.get('sess-1'), { prompt: 'P e', askedMs: Date.parse('2026-11-19T10:04:00Z') });
+});

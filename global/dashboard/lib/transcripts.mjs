@@ -35,7 +35,7 @@ function fresh() {
   return {
     endByte: 0, minuteSet: new Set(), pending: new Map(), lastEntryIsApiError: false, lastEntryMs: null,
     tokens: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 }, seenIds: new Set(),
-    events: [], planRefs: [], taskRefs: [], customTitle: null, aiTitle: null,
+    events: [], planRefs: [], taskRefs: [], customTitle: null, aiTitle: null, lastAsk: null,
   };
 }
 
@@ -79,7 +79,17 @@ function ingest(st, e) {
   const msg = isObj(e.message) ? e.message : null;
   const content = msg && Array.isArray(msg.content) ? msg.content : [];
 
+  // A question left to the owner: the last assistant text ends in "?", with no tool call or reply after it.
+  if (e.type === 'user') st.lastAsk = null;
   if (e.type === 'assistant') {
+    for (const b of content) {
+      if (!isObj(b)) continue;
+      if (b.type === 'tool_use') st.lastAsk = null;
+      else if (b.type === 'text' && typeof b.text === 'string' && b.text.trim()) {
+        const t = b.text.trim();
+        st.lastAsk = t.endsWith('?') && hasMs ? { text: t.split('\n').pop().trim(), ms } : null;
+      }
+    }
     const u = msg && isObj(msg.usage) ? msg.usage : null;
     if (u) {
       const id = e.requestId ?? msg.id ?? null;
@@ -124,7 +134,9 @@ function toolUse(st, b, ms, hasMs) {
   const command = typeof input.command === 'string' ? input.command : file;
   // Claude's own plain-English line for the call (Bash and others carry one); empty reads as none.
   // Clipped here (200 characters), since stall evidence is built from the raw scan, not the model's clipped view.
-  const d = typeof input.description === 'string' ? input.description.trim() : '';
+  // AskUserQuestion carries no description: its first question stands in for one.
+  const asked = name === 'AskUserQuestion' && Array.isArray(input.questions) ? input.questions[0]?.question : null;
+  const d = typeof input.description === 'string' ? input.description.trim() : typeof asked === 'string' ? asked.trim() : '';
   const description = !d ? null : d.length > 200 ? d.slice(0, 199) + '\u2026' : d;
   const stops = STOP_TOOLS.has(name) ? [input.task_id, input.shell_id, input.bash_id].find((v) => typeof v === 'string') ?? null : null;
   if (typeof b.id === 'string') st.pending.set(b.id, { name, command, description, startedMs: hasMs ? ms : null, outputFile: null, bg: input.run_in_background === true, jobId: null, stops });
@@ -193,5 +205,6 @@ export function scanTranscript(path, now = Date.now(), thresholds = loadConfig()
     planRefs: view.planRefs.map((r) => ({ ...r })),
     taskRefs: view.taskRefs.map((r) => ({ ...r })),
     title: view.customTitle ?? view.aiTitle ?? null,
+    lastAsk: view.lastAsk ? { ...view.lastAsk } : null,
   };
 }
