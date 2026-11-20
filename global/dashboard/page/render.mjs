@@ -290,6 +290,52 @@ export function panelOrder(projects) {
   return [...arr(projects)].sort((a, b) => String(a?.name ?? '').localeCompare(String(b?.name ?? ''), undefined, { sensitivity: 'base' }));
 }
 
+// ---- compact view (decision 40) -------------------------------------------------------------------------------
+
+const SQUARE_STATES = new Set(['working', 'waiting', 'stuck', 'gone']);
+
+/** Projects that get a square (active, gone, or unreadable) and the quiet rest, each A-Z by name. */
+export function compactSplit(projects) {
+  const all = panelOrder(projects);
+  const isSquare = (p) => SQUARE_STATES.has(p?.state) || !!p?.error;
+  return { squares: all.filter(isSquare), quiet: all.filter((p) => !isSquare(p)) };
+}
+
+/** The live session heard from last: its heartbeat is the square's. Null when no session is alive. */
+export function busiestSession(p) {
+  let best = null;
+  for (const s of arr(p?.sessions)) {
+    if (s?.alive !== true) continue;
+    if (!best || (s.lastWriteMs ?? -Infinity) > (best.lastWriteMs ?? -Infinity)) best = s;
+  }
+  return best;
+}
+
+const SQUARE_AHEAD = 3; // plan tasks shown after the current one
+
+/**
+ * The steps a square lists for a session's current task. A work-log entry's steps all show. A plan or ticket
+ * section folds its done tasks to a count and shows the current task and the next three; the rest is a count.
+ */
+export function squareSteps(epic, currentTaskId) {
+  const tasks = arr(epic?.tasks);
+  if (epic?.source === 'worklog') return { done: 0, items: tasks, more: 0 };
+  const open = tasks.filter((t) => t?.status !== 'done');
+  let at = open.findIndex((t) => t?.id === currentTaskId);
+  if (at < 0) at = 0;
+  const items = open.slice(at, at + 1 + SQUARE_AHEAD);
+  return { done: tasks.length - open.length, items, more: Math.max(0, open.length - at - items.length) };
+}
+
+/** Which view the address asks for, and the project named after # (null when none matches). */
+export function viewFromLocation(pathname, hash, projects) {
+  const view = pathname === '/compact' ? 'compact' : 'full';
+  let name = '';
+  try { name = decodeURIComponent(String(hash ?? '').replace(/^#/, '')); } catch { name = ''; }
+  const project = name ? arr(projects).find((p) => p?.name === name) ?? null : null;
+  return { view, project };
+}
+
 /** The task a session is working on now: its linked task, unless that task is already done. */
 export const currentTask = (session) => (session?.linkedTask && session.linkedTask.status !== 'done' ? session.linkedTask : null);
 

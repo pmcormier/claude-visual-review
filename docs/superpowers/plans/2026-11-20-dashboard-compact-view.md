@@ -59,7 +59,7 @@ Tests for 2 and 5 are in Task 1; 1, 3 and 4 are checked live in Task 3.
     `compact` only for `pathname === '/compact'`. `project` is the project whose name matches the decoded hash,
     else null.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```js
 test('compactSplit: active, gone and unreadable projects get squares, A-Z; the rest are quiet', () => {
@@ -102,22 +102,22 @@ test('viewFromLocation: /compact picks the compact view; an unknown project in t
 
 Add the four names to the test file's import from `render.mjs`.
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `node --test tests/dashboard/page.test.mjs`
 Expected: FAIL, "does not provide an export named 'compactSplit'".
 
-- [ ] **Step 3: Implement the four functions in `page/render.mjs`**
+- [x] **Step 3: Implement the four functions in `page/render.mjs`**
 
 `squareSteps` with no current task in a plan epic (`currentTaskId` not found) starts `items` at the first not-done
 task. `viewFromLocation` must not throw on a malformed hash (`decodeURIComponent` in a try).
 
-- [ ] **Step 4: Run to verify they pass**
+- [x] **Step 4: Run to verify they pass**
 
 Run: `node --test tests/dashboard/`
 Expected: PASS, 0 fail.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add global/dashboard/page/render.mjs tests/dashboard/page.test.mjs

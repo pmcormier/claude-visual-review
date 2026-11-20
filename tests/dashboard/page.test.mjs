@@ -5,6 +5,7 @@ import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
   sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, formatSpend, spendLine, projectSpend, formatTokens,
   taskLiveness, leftOpenText, sessionLabel, projectOpen, STALE_AFTER_MS, sessionWhat, nowLines, themeLabel,
+  compactSplit, busiestSession, squareSteps, viewFromLocation,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -532,4 +533,44 @@ test('watchedAgo: the live "last output" text from its time alone', async () => 
   const now = Date.parse('2026-11-20T10:00:00Z');
   assert.equal(watchedAgo(now - 3 * 60000, now), 'Watched · last output 3 min ago');
   assert.equal(watchedAgo(now - 1000, now), 'Watched · last output just now');
+});
+
+test('compactSplit: active, gone and unreadable projects get squares, A-Z; the rest are quiet', () => {
+  const p = (name, state, error = null) => ({ name, state, error });
+  const { squares, quiet } = compactSplit([p('zeta', 'working'), p('Alpha', 'quiet'), p('beta', 'gone'),
+    p('gamma', 'idle'), p('delta', 'waiting'), p('eps', 'quiet', 'Could not read this project'), p('Kappa', 'stuck')]);
+  assert.deepEqual(squares.map((x) => x.name), ['beta', 'delta', 'eps', 'Kappa', 'zeta']);
+  assert.deepEqual(quiet.map((x) => x.name), ['Alpha', 'gamma']);
+  assert.deepEqual(compactSplit(null), { squares: [], quiet: [] });
+});
+
+test('busiestSession: the live session heard from last', () => {
+  const s = (id, alive, lastWriteMs) => ({ sessionId: id, alive, lastWriteMs });
+  assert.equal(busiestSession({ sessions: [s('a', true, 5), s('b', true, 9), s('c', false, 20)] }).sessionId, 'b');
+  assert.equal(busiestSession({ sessions: [s('c', false, 20)] }), null);
+  assert.equal(busiestSession({}), null);
+});
+
+test('squareSteps: a checklist shows every step; a plan folds done work and shows three ahead', () => {
+  const t = (id, status) => ({ id, status });
+  const wl = { source: 'worklog', tasks: [t('1', 'done'), t('2', 'doing'), t('3', 'next')] };
+  assert.deepEqual(squareSteps(wl, '2'), { done: 0, items: wl.tasks, more: 0 });
+  const plan = { source: 'plan', tasks: [t('1', 'done'), t('2', 'done'), t('3', 'doing'), t('4', 'next'),
+    t('5', 'next'), t('6', 'next'), t('7', 'next'), t('8', 'next')] };
+  const r = squareSteps(plan, '3');
+  assert.equal(r.done, 2);
+  assert.deepEqual(r.items.map((x) => x.id), ['3', '4', '5', '6']);
+  assert.equal(r.more, 2);
+  // No current task found: start at the first unfinished one.
+  assert.deepEqual(squareSteps(plan, 'nope').items.map((x) => x.id), ['3', '4', '5', '6']);
+  assert.deepEqual(squareSteps(null, '1'), { done: 0, items: [], more: 0 });
+});
+
+test('viewFromLocation: /compact picks the compact view; an unknown project in the hash opens nothing', () => {
+  const ps = [{ name: 'anatomy to scale' }, { name: 'nimbus' }];
+  assert.deepEqual(viewFromLocation('/compact', '#nimbus', ps), { view: 'compact', project: ps[1] });
+  assert.deepEqual(viewFromLocation('/compact', '#anatomy%20to%20scale', ps), { view: 'compact', project: ps[0] });
+  assert.deepEqual(viewFromLocation('/compact', '#gone-project', ps), { view: 'compact', project: null });
+  assert.deepEqual(viewFromLocation('/compact', '#%E0%A4%A', ps), { view: 'compact', project: null });
+  assert.deepEqual(viewFromLocation('/', '', ps), { view: 'full', project: null });
 });
