@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classify } from '../../global/dashboard/lib/stall.mjs';
+import { classify, askedOwner } from '../../global/dashboard/lib/stall.mjs';
 
 const MIN = 60000;
 const T = { quiet: 20, hungTool: 20, apiError: 5, waiting: 5, waitingEscalate: 15, subagentQuiet: 20, loopCount: 6, loopWindow: 10 };
@@ -208,4 +208,23 @@ test('stuck and gone evidence name the tool by its description', () => {
   assert.equal(bg.evidence, `Background job quiet for 40 min, still running: ${desc}. It may be waiting on something outside, such as a CI run or a download.`);
   const gone = classify(inp({ alive: false, signals: sig({ pendingTool: tool(3, { description: desc }) }) }), T);
   assert.equal(gone.evidence, `"${desc}" was still running when the process ended`);
+});
+
+// Needs-you (2026-11-19): waiting on you whenever Claude asks.
+test('askedOwner: terminal and Inbox questions make an idle session wait; stuck and gone keep precedence', () => {
+  const idle = { state: 'idle', evidence: null, hint: null, since: null };
+  const q = { prompt: 'What should happen to the branch?', askedMs: ago(20) };
+  assert.deepEqual(askedOwner(idle, sig({ lastAsk: { text: 'Should I merge it?', ms: ago(3) } }), null),
+    { state: 'waiting', evidence: 'Asked: Should I merge it?', hint: null, since: ago(3) });
+  assert.deepEqual(askedOwner(idle, sig(), q), { state: 'waiting', evidence: 'Inbox: What should happen to the branch?', hint: null, since: ago(20) });
+  const auq = { name: 'AskUserQuestion', command: null, description: 'Which way?', startedMs: ago(2), outputFile: null };
+  assert.equal(askedOwner({ ...idle, state: 'working' }, sig({ pendingTool: auq }), null).evidence, 'Asked: Which way?');
+  assert.equal(askedOwner({ ...idle, state: 'working' }, sig({ pendingTool: auq }), null).state, 'waiting');
+  for (const state of ['stuck', 'gone', 'waiting']) assert.equal(askedOwner({ ...idle, state }, sig(), q).state, state);
+  const busy = askedOwner({ ...idle, state: 'working' }, sig(), q);
+  assert.equal(busy.state, 'working');
+  assert.equal(busy.hint, 'Inbox question open: What should happen to the branch?');
+  assert.equal(askedOwner(idle, sig(), null), idle);
+  const long = askedOwner(idle, sig(), { prompt: 'x'.repeat(300), askedMs: ago(1) }).evidence;
+  assert.equal(long.length, 'Inbox: '.length + 120);
 });

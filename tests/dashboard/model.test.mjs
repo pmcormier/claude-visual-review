@@ -350,3 +350,24 @@ test('pruneActive drops projects that are gone', async () => {
   pruneActive(m, new Set(['b']));
   assert.deepEqual([...m.keys()], ['b']);
 });
+
+test('an idle session with an open Inbox question reads waiting and counts', async () => {
+  const w = makeWorld();
+  try {
+    const { buildModel } = await import('../../global/dashboard/lib/model.mjs');
+    const now = Date.now();
+    const root = project(w, 'asks');
+    transcript(w, root, 'sid-ask', [userAt(now - 5 * MIN)]);
+    session(w, 4343, root, 'sid-ask', 'idle');
+    const dir = join(w.base, 'plannotator', 'inbox', 'projects', 'p1');
+    mkdirSync(dir, { recursive: true });
+    const at = new Date(now - 10 * MIN).toISOString();
+    writeFileSync(join(dir, 'messages.jsonl'), JSON.stringify({ v: 1, seq: 1, at, kind: 'message', id: 'm1', record: { id: 'm1', thread_id: 't1', resolved_at: null } }) + '\n');
+    writeFileSync(join(dir, 'questions.jsonl'), JSON.stringify({ v: 1, seq: 2, at, kind: 'question', id: 'm1/q', record: { id: 'm1/q', message_id: 'm1', prompt: 'Merge it?', asked_by_agent_id: 'sid-ask', answer: null, superseded_by: null } }) + '\n');
+    const m = await buildModel(now, { sampler: sampler() });
+    const s = m.projects.find((p) => p.root === root).sessions[0];
+    assert.equal(s.state, 'waiting');
+    assert.equal(s.evidence, 'Inbox: Merge it?');
+    assert.equal(m.counts.waiting, 1);
+  } finally { rmSync(w.base, { recursive: true, force: true }); }
+});

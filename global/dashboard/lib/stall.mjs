@@ -49,6 +49,30 @@ function label(tool) {
   return first || tool.name;
 }
 
+const clip120 = (s) => { const t = String(s ?? '').trim(); return t.length > 120 ? t.slice(0, 119) + '\u2026' : t; };
+
+/**
+ * Waiting on you whenever Claude asks (spec 2026-11-19 needs-you). Stuck, gone and waiting are returned unchanged.
+ * A pending AskUserQuestion waits (whatever the status). An idle session waits on a question it left in the terminal
+ * (signals.lastAsk) or an open Inbox question it asked (inboxQ: {prompt, askedMs}). A working session with an open
+ * Inbox question keeps working; its hint names the question.
+ */
+export function askedOwner(v, signals, inboxQ) {
+  if (!v || v.state === 'stuck' || v.state === 'gone' || v.state === 'waiting') return v;
+  const tool = signals?.pendingTool;
+  if (tool?.name === 'AskUserQuestion') {
+    return { ...v, state: 'waiting', evidence: `Asked: ${clip120(tool.description || 'a question in the terminal')}`, since: tool.startedMs ?? null };
+  }
+  if (v.state === 'idle' && signals?.lastAsk?.text) {
+    return { ...v, state: 'waiting', evidence: `Asked: ${clip120(signals.lastAsk.text)}`, since: signals.lastAsk.ms ?? null };
+  }
+  if (v.state === 'idle' && inboxQ?.prompt) {
+    return { ...v, state: 'waiting', evidence: `Inbox: ${clip120(inboxQ.prompt)}`, since: inboxQ.askedMs ?? null };
+  }
+  if (v.state === 'working' && inboxQ?.prompt && !v.hint) return { ...v, hint: `Inbox question open: ${clip120(inboxQ.prompt)}` };
+  return v;
+}
+
 export function classify(input, thresholds) {
   const { kind, status, alive, signals, cpuPct, outputIdleMs, finished, now } = input;
   const th = thresholds;

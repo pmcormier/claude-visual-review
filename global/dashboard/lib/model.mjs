@@ -43,11 +43,11 @@ import { readSessions, projectRoot } from './sessions.mjs';
 import { scanTranscript } from './transcripts.mjs';
 import { readSubagents } from './subagents.mjs';
 import { outputGrowth } from './procs.mjs';
-import { classify } from './stall.mjs';
+import { classify, askedOwner } from './stall.mjs';
 import { readWorklog } from './worklog.mjs';
 import { readPlans } from './sources/plans.mjs';
 import { readBmad } from './sources/bmad.mjs';
-import { readInbox } from './sources/inbox.mjs';
+import { readInbox, readOpenQuestions } from './sources/inbox.mjs';
 import { readCommits } from './git.mjs';
 import { buildTree } from './tree.mjs';
 import { readUsage } from './usage.mjs';
@@ -170,8 +170,17 @@ function inboxSig() {
   const base = join(plannotatorHome(), 'inbox', 'projects');
   let keys;
   try { keys = readdirSync(base).sort(); } catch { return '-'; }
-  return keys.map((k) => ['project.json', 'steps.jsonl', 'messages.jsonl']
+  return keys.map((k) => ['project.json', 'steps.jsonl', 'messages.jsonl', 'questions.jsonl']
     .map((f) => statSig(join(base, k, f))).join(',') + `@${k}`).join('|');
+}
+
+let openQCache = { sig: null, value: new Map() };
+function cachedOpenQuestions(sig) {
+  if (sig !== '-' && openQCache.sig === sig) return openQCache.value;
+  let value;
+  try { value = readOpenQuestions(); } catch { value = new Map(); }
+  openQCache = { sig, value };
+  return value;
 }
 
 const sourceCache = new Map(); // kind + NUL + root key -> {sig, value}
@@ -261,16 +270,17 @@ function subagentView(a, parent, now, th, sampler) {
   };
 }
 
-function sessionView(s, now, th, sampler) {
+function sessionView(s, now, th, sampler, openQuestions) {
   const signals = scanTranscript(s.transcriptPath ?? '', now, th);
   const alive = aliveOf(sampler, s);
   const tool = signals.pendingTool;
   if (!alive && (!tool || (signals.lastWriteMs ?? 0) < now - GONE_KEEP_MS)) return null; // closed normally
   const cpuPct = alive && tool ? toolCpu(sampler, s.pid, tool.startedMs) : null;
-  const v = classify({
+  // Waiting on you whenever Claude asks: in the terminal or in the Inbox (askedOwner).
+  const v = askedOwner(classify({
     kind: 'session', status: s.status, alive, signals, cpuPct, outputIdleMs: idleOf(tool, now), finished: null, now,
     statusUpdatedAt: s.statusUpdatedAt,
-  }, th);
+  }, th), signals, openQuestions?.get(s.sessionId) ?? null);
   const waitsOnAgent = !!tool && (tool.name === 'Agent' || tool.name === 'Task');
   const parent = { alive, pid: s.pid, waitsOnAgent, agentSinceMs: waitsOnAgent ? tool.startedMs ?? null : null };
   let subs = [];
@@ -389,9 +399,11 @@ export async function buildModel(now = Date.now(), opts = {}) {
     const byRoot = new Map(); // key -> {root, lastMs, sessions}
     const liveSessionIds = new Set();
     for (const [k, d] of discoverRoots(now, historyDays)) byRoot.set(k, { root: d.root, lastMs: d.lastMs, sessions: [] });
+    const inboxSigNow = inboxSig();
+    const openQuestions = cachedOpenQuestions(inboxSigNow);
     for (const s of readSessions()) {
       let v;
-      try { v = sessionView(s, now, th, sampler); } catch { v = null; }
+      try { v = sessionView(s, now, th, sampler, openQuestions); } catch { v = null; }
       if (!v) continue;
       if (v.alive) { model.live += 1; if (v.sessionId) liveSessionIds.add(v.sessionId); }
       if (!s.cwd) continue;
@@ -402,7 +414,6 @@ export async function buildModel(now = Date.now(), opts = {}) {
     }
 
     const events = readEvents(sinceMs);
-    const inboxSigNow = inboxSig();
     const src = { ...SOURCES, ...(isObj(opts.sources) ? opts.sources : {}) };
     const projects = await Promise.all([...byRoot.values()].map(async (p) => {
       p.sessions.sort((a, b) => rankOf(a.state) - rankOf(b.state) || (b.lastWriteMs ?? 0) - (a.lastWriteMs ?? 0));
