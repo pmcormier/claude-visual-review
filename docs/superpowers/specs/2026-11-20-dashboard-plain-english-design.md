@@ -1,6 +1,6 @@
 # Dashboard: plain-English check
 
-Status: draft for the owner's approval (2026-11-20). Inbox thread "Plain-English check of the dashboard". Short design.
+Status: approved by the owner 2026-11-20, including the rule line. Inbox thread "Plain-English check of the dashboard". Short design.
 
 **Intent.** The owner: "ensuring that everything on the screen is real, readable, non-technical, english. Can we do
 some testing to ensure that is the case?" He also sees hover descriptions missing in places.
