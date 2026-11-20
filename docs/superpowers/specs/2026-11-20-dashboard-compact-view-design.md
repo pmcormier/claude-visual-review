@@ -36,6 +36,9 @@ the squares is verbose enough to get the full picture. Similar to running."
 
 - **Which projects get a square:** active projects only (working, waiting on you, stuck). Below the squares, one
   line names the quiet projects. A name in that line opens that project's full card, like a square does.
+  (Builder's call, from the anti-goal "never disagree with the full page": **Gone** projects, where a session's
+  process ended with a tool still running, and projects the dashboard **could not read** also get a square, because
+  the full page counts both as needing a look. Their chip reads Gone, or the read error shows in the body.)
 - **How the squares fit verbose content (approach A, chosen from three):** same-size squares, cut to fit.
   - Considered: B, the same width with height fitting the content. It never cuts anything, but squares differ in
     height. C, the window shared out evenly: squares are equal and the page never scrolls, but they get small with
@@ -65,11 +68,36 @@ the squares is verbose enough to get the full picture. Similar to running."
 
 A square's hover texts are the full page's: the same words, from the same functions in `page/render.mjs`.
 
+## The bar at the top
+
+A slim bar, one line high:
+- **Freshness.** "Updated Ns ago", and the same "Server not responding" / "Server stopped" warnings the full page
+  shows. A view that stays open in a corner must never show old data as if it were live.
+- **The switch** to the full page, and its ↗.
+
+Nothing else from the full page's header comes along: no counts strip, usage meters, Stop button, Key or help. The
+theme follows the full page's choice (it is stored per browser).
+
+## Steps for plan work
+
+A square shows the steps of the task a session is on. For a work-log entry these are the entry's steps. For a task
+from a plan or a ticket, the plan's section around it stands in: done tasks fold to one line ("✓ 5 done"), then the
+task the session is on, then up to the next three, then "+N more". The body may scroll; the headline does not.
+
 ## The full view of one project
 
 Clicking a square, or a quiet project's name, replaces the squares with that project's full card: the same card the
-full page draws, with its history and controls. A "Back to all" button sits at the top. While one project is open,
-the live updates keep updating it.
+full page draws, with its history. A "Back to all" button sits at the top, beside its own "Show history" box. While
+one project is open, the live updates keep updating it.
+- The card's own fold arrow (which moves a project between the full page's cards and its "Nothing running" list) is
+  left out; it means nothing here.
+- Opening and closing groups inside the card is remembered the same way as on the full page, so the card looks the
+  same in both views.
+
+## "New" marks
+
+The compact view never marks anything as seen, so an always-open pane does not quietly clear the full page's "New"
+badges. A square that changes state gets the full page's brief highlight instead.
 
 ## Builder's calls in this document (the owner can overrule them)
 
