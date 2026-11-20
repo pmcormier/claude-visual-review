@@ -74,6 +74,9 @@ button { font: inherit; color: inherit; }
 .s-done { --c: var(--approve); --cs: var(--approve-soft); }
 .s-idle { --c: var(--idle); --cs: transparent; }
 .s-gone { --c: var(--stuck); --cs: transparent; }
+.s-started { --c: color-mix(in srgb, var(--accent) 60%, var(--muted)); --cs: transparent; }
+.s-stale { --c: var(--idle); --cs: transparent; }
+.node.s-stale .label { color: var(--muted); }
 .dot { background: var(--c); display: inline-block; flex: none; }
 .chip { display: inline-flex; align-items: center; gap: 6px; font: 500 .78rem var(--body); color: var(--c);
   background: var(--cs); border-radius: 999px; padding: 2px 10px 2px 8px; white-space: nowrap; }

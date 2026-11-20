@@ -7,6 +7,7 @@ import {
   STATE_LABEL, STATE_CLASS, formatDuration, agoWords, updatedText, shortId, shortDate, lifePath, foldEpics,
   effortLeft, liveIds, usageView, detailText, sessionWhat, nowLine, triage, epicDone, epicLastActivity, sizeSummary,
   filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, spendLine, projectSpend,
+  taskLiveness, leftOpenText, sessionLabel, projectOpen,
 } from '/render.mjs';
 
 const MIN = 60000;
@@ -76,6 +77,9 @@ const STROKE = { fill: 'none', stroke: 'currentColor' };
 const ICONS = {
   work: [{ ...STROKE, 'stroke-width': '1.8' }, [['circle', { cx: 8, cy: 8, r: 5.5 }], ['path', { d: 'M8 2.5a5.5 5.5 0 0 1 5.5 5.5', 'stroke-width': '2.6', 'stroke-linecap': 'round' }]]],
   idle: [{ ...STROKE, 'stroke-width': '1.6' }, [['circle', { cx: 8, cy: 8, r: 5.5, 'stroke-dasharray': '2.5 2.2' }]]],
+  // Started, not current: a ring with its first quarter drawn, no motion. Left open: a dashed ring with a pause bar.
+  started: [{ ...STROKE, 'stroke-width': '1.6' }, [['circle', { cx: 8, cy: 8, r: 5.5 }], ['path', { d: 'M8 2.5a5.5 5.5 0 0 1 5.5 5.5', 'stroke-width': '2.6', 'stroke-linecap': 'round', opacity: '.55' }]]],
+  stale: [{ ...STROKE, 'stroke-width': '1.6', 'stroke-linecap': 'round' }, [['circle', { cx: 8, cy: 8, r: 5.5, 'stroke-dasharray': '2.5 2.2' }], ['path', { d: 'M6.5 6v4M9.5 6v4' }]]],
   done: [{ ...STROKE, 'stroke-width': '1.8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, [['path', { d: 'M3.5 8.5 6.5 11.5 12.5 4.5' }]]],
   stuck: [{ ...STROKE, 'stroke-width': '1.8', 'stroke-linecap': 'round' }, [['path', { d: 'M8 2.5 14 13.5H2Z', 'stroke-linejoin': 'round' }], ['path', { d: 'M8 7v3M8 12v.01' }]]],
   wait: [{ ...STROKE, 'stroke-width': '1.8', 'stroke-linecap': 'round' }, [['circle', { cx: 8, cy: 8, r: 5.5 }], ['path', { d: 'M8 5v3.2l2 1.3' }]]],
@@ -169,7 +173,10 @@ function buildDetails(m) {
     }
     for (const e of arr(p.tree?.epics)) {
       details.set(keyOf('e', p.root, e.id), { kind: 'epic', epic: e });
-      for (const t of arr(e.tasks)) details.set(keyOf('t', p.root, t.id), { kind: 'task', task: t, epic: e, session: liveSession(byId, t) });
+      for (const t of arr(e.tasks)) {
+        const now = Date.now();
+        details.set(keyOf('t', p.root, t.id), { kind: 'task', task: t, epic: e, session: liveSession(byId, t), liveness: taskLiveness(t, byId, now), now });
+      }
     }
   }
 }
@@ -177,10 +184,8 @@ const liveSession = (byId, t) => { const s = t?.sessionId ? byId.get(t.sessionId
 
 // ---- Projects view ----------------------------------------------------------------------------------------------
 
-function isOpen(p) {
-  const o = openState[keyOf('p', p.root)];
-  return typeof o === 'boolean' ? o : !!p.open;
-}
+// A fold holds unless the project became active after it (spec 2026-11-19 clarity, rule 9).
+const isOpen = (p) => projectOpen(p, openState[keyOf('p', p.root)]);
 
 function sessionBlock(p, s, now) {
   const cls = STATE_CLASS[s.state] ?? 'idle';
@@ -206,7 +211,7 @@ function sessionBlock(p, s, now) {
       finished ? h('div', { class: 'subs', text: `${finished} ${finished === 1 ? 'subagent' : 'subagents'} finished` }) : null)
     : null;
   return h('div', { class: `sess s-${cls}`, data: { dk: keyOf('s', p.root, s.sessionId), link, alerts: keys.join(',') || null } },
-    h('div', { class: 'what' }, h('b', { text: `Session ${shortId(s.sessionId)}` }), ' · ', what, sub, spendRow, onTask),
+    h('div', { class: 'what' }, h('b', { text: sessionLabel(s) }), ' · ', what, sub, spendRow, onTask),
     life(s.life),
     s.evidence ? h('div', { class: 'evidence', text: s.evidence }) : null,
     s.hint ? h('div', { class: 'hint', text: s.hint }) : null,
@@ -222,31 +227,40 @@ function stuckSubBlock(p, s, a, now) {
     a.evidence ? h('div', { class: 'evidence', text: a.evidence }) : null);
 }
 
-function taskState(t, s) {
+// A task's look from its liveness (render.mjs taskLiveness): only a session's current task shows as running.
+function taskState(t, s, lv) {
   if (t.status === 'done') return 'done';
-  if (t.status === 'next') return 'idle';
-  if (t.status === 'waiting') return 'wait';
-  if (s && ['stuck', 'waiting', 'gone'].includes(s.state)) return STATE_CLASS[s.state];
-  return 'work';
+  if (lv === 'current') return s && ['stuck', 'waiting', 'gone'].includes(s.state) ? STATE_CLASS[s.state] : 'work';
+  if (lv === 'waiting') return 'wait';
+  if (lv === 'started' || lv === 'stale') return lv;
+  return 'idle';
 }
 
 function epicState(e, byId) {
-  const states = arr(e.tasks).map((t) => taskState(t, liveSession(byId, t)));
-  for (const st of ['stuck', 'gone', 'wait', 'work']) if (states.includes(st)) return st;
+  const now = Date.now();
+  const states = arr(e.tasks).map((t) => taskState(t, liveSession(byId, t), taskLiveness(t, byId, now)));
+  for (const st of ['stuck', 'gone', 'wait', 'work', 'started', 'stale']) if (states.includes(st)) return st;
   return epicDone(e) ? 'done' : 'idle';
 }
 
 function taskLi(p, t, byId) {
-  const s = t.status === 'done' ? null : liveSession(byId, t); // a finished task shows no live session
-  const st = taskState(t, s);
+  const now = Date.now();
+  const lv = taskLiveness(t, byId, now);
+  const current = lv === 'current';
+  const s = current ? liveSession(byId, t) : null; // the live line and session chip only under a session's current task
+  const st = taskState(t, s, lv);
   const link = s ? keyOf(p.root, t.id) : null;
   const nowText = s ? nowLine(s) : '';
+  const earlier = !current && t.status !== 'done' && t.sessionId && (lv === 'started' || lv === 'stale');
   return h('li', null,
     h('div', { class: `node s-${st}`, data: { dk: keyOf('t', p.root, t.id), link } },
       h('span'),
       h('span', { class: 'name' }, icon(st), h('span', { class: `label${st === 'done' ? ' done-label' : ''}`, text: t.title || 'Untitled task' }),
         t.size ? h('span', { class: 'size', text: t.size }) : null),
-      h('span', { class: 'meta' }, s ? h('span', { class: 'who', text: `session ${shortId(s.sessionId)}` }) : null,
+      h('span', { class: 'meta' },
+        s ? h('span', { class: 'who', text: `session ${shortId(s.sessionId)}` }) : null,
+        earlier ? h('span', { class: 'who muted', text: `session ${shortId(t.sessionId)}, earlier` }) : null,
+        lv === 'stale' ? h('span', { class: 't muted', text: leftOpenText(t.changedMs, now) }) : null,
         t.spentMin > 0 ? h('span', { class: 't', text: formatDuration(t.spentMin * MIN) }) : null)),
     nowText ? h('div', { class: `now s-${STATE_CLASS[s.state] ?? 'work'}` }, h('span', { text: nowText })) : null);
 }
@@ -311,7 +325,7 @@ function treeOf(p, groups, byId) {
   return ul;
 }
 
-const groupsOf = (p, now, byId) => groupEpics(p.tree?.epics, now, liveIds(p), (t) => taskState(t, liveSession(byId, t)));
+const groupsOf = (p, now, byId) => groupEpics(p.tree?.epics, now, liveIds(p), (t) => taskLiveness(t, byId, now));
 
 function foldActs(p) {
   const b = (act, text, title) => h('button', { type: 'button', class: 'fold-act', title, data: { act, root: p.root }, text });
@@ -450,7 +464,7 @@ function sessionRow(p, s, fresh, keys, now) {
   return h('div', { class: `srow s-${cls}${fresh ? ' changed' : ''}`, data: { state: filterToken(s.state), dk: keyOf('s', p.root, s.sessionId), alerts: keys.join(',') || null } },
     h('span', { class: 'cell state' }, chip(s.state), fresh ? [' ', h('span', { class: 'newbadge', text: 'New' })] : null),
     h('span', { class: 'cell', text: p.name }),
-    h('span', { class: 'cell who-cell' }, h('b', { text: `Session ${shortId(s.sessionId)}` }), ' · ', what,
+    h('span', { class: 'cell who-cell' }, h('b', { text: sessionLabel(s) }), ' · ', what,
       line && s.state !== 'idle' ? h('div', { class: 'muted' }, `${line.prefix} `, since(line.from, now), line.suffix ?? '') : null,
       s.evidence ? h('div', { class: 'evidence', text: s.evidence }) : null,
       s.hint ? h('div', { class: 'hint', text: s.hint }) : null),
@@ -511,7 +525,7 @@ function triageItem(it, akey, fresh, now) {
   const { what, line } = a ? { what: a.description || 'Subagent', line: null } : sessionWhat(s);
   return h('div', { class: `titem s-${cls}${fresh ? ' changed' : ''}`, data: { state: filterToken(who.state), alerts: akey, dk: a ? keyOf('a', p.root, s.sessionId, a.agentId) : keyOf('s', p.root, s.sessionId) } },
     h('div', { class: 'top' }, chip(who.state), fresh ? h('span', { class: 'newbadge', text: 'New' }) : null,
-      h('b', { text: a ? 'Subagent' : `Session ${shortId(s.sessionId)}` }), h('span', { class: 'where', text: `in ${p.name}` })),
+      h('b', { text: a ? 'Subagent' : sessionLabel(s) }), h('span', { class: 'where', text: `in ${p.name}` })),
     h('div', null, what, line ? h('span', { class: 'muted' }, ' · ', `${line.prefix} `, since(line.from, now), line.suffix ?? '') : null),
     who.evidence ? h('div', { class: 'evidence', text: who.evidence }) : null,
     !a ? h('div', { class: `on-task${currentTask(s) ? '' : ' none'}`, text: currentTask(s) ? `Working on ${currentTask(s).title}` : 'Not linked to a task yet' }) : null);
@@ -695,7 +709,8 @@ document.addEventListener('click', (e) => {
       openState[key] = open;
       store.set('dash-open', openState);
     } else if (t.dataset.tw === 'proj') {
-      openState[key] = t.getAttribute('aria-expanded') !== 'true';
+      // The time decides whether the project comes back when it next becomes active (render.mjs projectOpen).
+      openState[key] = { open: t.getAttribute('aria-expanded') !== 'true', at: Date.now() };
       store.set('dash-open', openState);
       renderByUser();
       $(`[data-fk="${CSS.escape(key)}"]`)?.focus({ preventScroll: false });
@@ -917,6 +932,8 @@ const KEY_ROWS = [
   ['stuck', 'Looks stuck: hover the row for the evidence'],
   ['idle', 'Not started, or nothing running'],
   ['done', 'Done'],
+  ['started', 'Started, not current: begun earlier, no session on it now'],
+  ['stale', 'Left open: no change for a day and no session on it'],
   ['sub', 'A subagent, under its session'],
 ];
 const keyBtn = $('.keybtn');
@@ -948,7 +965,7 @@ const STEPS = [
   [['.panel.s-stuck .sess', '.panel .sess'], 'A session and its life line', 'Each Claude Code window, what it is doing, and its last hour as a line. Flat means it went quiet.'],
   [['.panel.s-stuck .evidence', '.panel .evidence'], 'Why we think it is stuck', 'Always the facts, never just a timer: CPU, output, and how long it has been silent.'],
   [['.panel.s-stuck .on-task', '.panel .on-task'], 'What it is working on', 'The task this session is on. Hover it to light up the task in the tree below.'],
-  [['.panel .tree'], 'The plan', 'Each project as epics and tasks, grouped: running, waiting on you, next, done. Only running and waiting work starts open; Expand all, Collapse all and Focus are at the top of each project.'],
+  [['.panel .tree'], 'The plan', 'Each project as epics and tasks, grouped: running (what a session is on now), waiting on you, started but not current, next, done. Hover a task for what it is. Only running and waiting work starts open; Expand all, Collapse all and Focus are at the top of each project.'],
   [['.quiet'], 'Quiet projects', 'Projects with nothing running, folded to one line each so they do not crowd the page.'],
   [['.keybtn'], 'What the symbols mean', 'Each icon and colour, in one place.'],
   [['.helpbtn'], 'Hover for more', 'Hover over almost anything for a short plain-English explanation; a cut-off line shows in full. Key explains the symbols. Click ? to see this tour again.'],

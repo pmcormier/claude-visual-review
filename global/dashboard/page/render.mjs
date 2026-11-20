@@ -396,7 +396,7 @@ function sessionText({ session, project }) {
   const tk = s.tokens ?? {};
   const tin = (tk.input ?? 0) + (tk.cacheRead ?? 0) + (tk.cacheCreate ?? 0);
   return join(
-    `A Claude Code window in ${project?.name ?? 'this project'}, ${SESSION_PHRASE[s.state] ?? 'state unknown'}`,
+    `${s.title ? `Session ${shortId(s.sessionId)}, a` : 'A'} Claude Code window in ${project?.name ?? 'this project'}, ${SESSION_PHRASE[s.state] ?? 'state unknown'}`,
     s.evidence, s.hint,
     `${plural(running, 'helper')} running, ${finished} finished`,
     currentTask(s)?.title ? `Linked to ${currentTask(s).title}` : '',
