@@ -3,7 +3,7 @@
 /** The reminder, in the words the owner approved. Names the first step still marked doing. */
 export function reminderText(entry) {
   const s = entry.doing[0];
-  return `Work-log check: "${entry.title}" still has step ${s.n} "${s.name}" marked doing, and nothing is running or watched. ` +
+  return `Work-log check: "${entry.title}" still has step ${s.n} "${s.name}" marked doing, and no job is being watched. ` +
     'If it\'s finished, mark it done (and your Inbox checklist). If it waits on the owner, mark it waiting. ' +
     'If a job is running, start a watcher for it. If it\'s right as it is, say nothing and end the turn.';
 }
@@ -15,7 +15,7 @@ export function reminderText(entry) {
  */
 export function tidyDecision({ entry, live, asking, stopActive, lastState }) {
   if (!entry || !entry.doing?.length) return { remind: null, state: null };
-  const state = `${entry.title}|${entry.doing.map((s) => `${s.n}:${s.name}`).join(',')}`;
+  const state = `${entry.startedAt ?? ''}|${entry.title}|${entry.doing.map((s) => `${s.n}:${s.name}`).join(',')}`;
   if (live || asking || stopActive || state === lastState) return { remind: null, state };
   return { remind: reminderText(entry), state };
 }

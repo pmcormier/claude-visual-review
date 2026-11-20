@@ -512,3 +512,10 @@ test('watchedNote: a watched job says when it last printed', async () => {
   assert.equal(watchedNote(null, now), '');
   assert.equal(watchedHover({ watch: { lastGrowthAt: now, quietMin: 15 } }), 'The session is watching this job and will check on it after 15 minutes of silence.');
 });
+
+test('watchedAgo: the live "last output" text from its time alone', async () => {
+  const { watchedAgo } = await import('../../global/dashboard/page/render.mjs');
+  const now = Date.parse('2026-11-20T10:00:00Z');
+  assert.equal(watchedAgo(now - 3 * 60000, now), 'Watched · last output 3 min ago');
+  assert.equal(watchedAgo(now - 1000, now), 'Watched · last output just now');
+});

@@ -30,30 +30,32 @@ test('openEntryFor: the session\'s open entry and its doing steps', () => {
   log({ session: 'a', verb: 'step', n: 2, status: 'doing' });
   log({ session: 'b', verb: 'start', title: 'Other', steps: ['X'] });
   log({ session: 'b', verb: 'step', n: 1, status: 'doing' });
-  assert.deepEqual(openEntryFor(root, 'a'), { title: 'Ship it', doing: [{ n: 2, name: 'Build' }] });
+  const a = openEntryFor(root, 'a');
+  assert.deepEqual({ title: a.title, doing: a.doing }, { title: 'Ship it', doing: [{ n: 2, name: 'Build' }] });
+  assert.match(a.startedAt, /^2026-11-20T/);
   assert.equal(openEntryFor(root, 'b').title, 'Other');
   assert.equal(openEntryFor(root, 'nobody'), null);
   log({ session: 'b', verb: 'done' });
   assert.equal(openEntryFor(root, 'b'), null);
   log({ session: 'b', verb: 'start', title: 'Chat', steps: [] });
-  assert.deepEqual(openEntryFor(root, 'b'), { title: 'Chat', doing: [] });
+  assert.deepEqual(openEntryFor(root, 'b').doing, []);
 });
 
-const entry = { title: 'Ship it', doing: [{ n: 2, name: 'Build' }] };
+const entry = { title: 'Ship it', startedAt: '2026-11-20T10:00:00.000Z', doing: [{ n: 2, name: 'Build' }] };
 const base = { entry, live: false, asking: false, stopActive: false, lastState: null };
 
 test('tidyDecision: reminds with the spec text', () => {
   const r = tidyDecision(base);
   assert.equal(r.remind, reminderText(entry));
-  assert.equal(r.remind, 'Work-log check: "Ship it" still has step 2 "Build" marked doing, and nothing is running or watched. If it\'s finished, mark it done (and your Inbox checklist). If it waits on the owner, mark it waiting. If a job is running, start a watcher for it. If it\'s right as it is, say nothing and end the turn.');
-  assert.equal(r.state, 'Ship it|2:Build');
+  assert.equal(r.remind, 'Work-log check: "Ship it" still has step 2 "Build" marked doing, and no job is being watched. If it\'s finished, mark it done (and your Inbox checklist). If it waits on the owner, mark it waiting. If a job is running, start a watcher for it. If it\'s right as it is, say nothing and end the turn.');
+  assert.equal(r.state, '2026-11-20T10:00:00.000Z|Ship it|2:Build');
 });
 
 test('tidyDecision: no reminder when watched, asking, chained, already reminded, or nothing doing', () => {
   assert.equal(tidyDecision({ ...base, live: true }).remind, null);
   assert.equal(tidyDecision({ ...base, asking: true }).remind, null);
   assert.equal(tidyDecision({ ...base, stopActive: true }).remind, null);
-  assert.equal(tidyDecision({ ...base, lastState: 'Ship it|2:Build' }).remind, null);
+  assert.equal(tidyDecision({ ...base, lastState: '2026-11-20T10:00:00.000Z|Ship it|2:Build' }).remind, null);
   assert.equal(tidyDecision({ ...base, entry: { title: 'Chat', doing: [] } }).remind, null);
   assert.equal(tidyDecision({ ...base, entry: null }).remind, null);
 });
@@ -113,4 +115,10 @@ test('hook: an unreadable transcript means no reminder, even with a doing step',
   const r = hook({ session_id: 'd', cwd: root, transcript_path: join(root, 'gone-d.jsonl'), stop_hook_active: false });
   assert.equal(r.status, 0);
   assert.equal(r.stdout, '');
+});
+
+test('tidyDecision: a new entry with the same title and steps is reminded again', () => {
+  const first = tidyDecision(base);
+  const again = tidyDecision({ ...base, entry: { ...entry, startedAt: '2026-11-20T12:00:00.000Z' }, lastState: first.state });
+  assert.equal(again.remind, reminderText(entry));
 });

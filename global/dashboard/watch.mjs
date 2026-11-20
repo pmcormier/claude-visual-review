@@ -29,6 +29,7 @@ async function main() {
   const now0 = Date.now();
   const prev = readMarker(session, file);
   const prevQuietSize = prev?.exited?.reason === 'quiet' && Number.isFinite(prev.exited.size) ? prev.exited.size : null;
+  const prevRepeatLine = prev?.exited?.reason === 'repeating' && typeof prev.exited.line === 'string' ? prev.exited.line : null;
 
   let offset = 0;
   let partial = '';
@@ -56,7 +57,7 @@ async function main() {
     return { ok: true, size: st.size, tail };
   };
 
-  let state = initState({ what, quietMin, size: 0, now: now0, prevQuietSize });
+  let state = initState({ what, quietMin, size: 0, now: now0, prevQuietSize, prevRepeatLine });
   const marker = { session, file, what, pid: process.pid, startedAt: now0, beatAt: now0, lastGrowthAt: now0, size: 0, quietMin, exited: null };
   let lastBeat = 0;
   for (;;) {
@@ -65,7 +66,7 @@ async function main() {
     const grew = r.state.lastGrowthAt !== state.lastGrowthAt;
     state = r.state;
     if (r.exit) {
-      writeMarker({ ...marker, beatAt: now, lastGrowthAt: state.lastGrowthAt, size: state.size, exited: { at: now, reason: reasonOf(r.exit), size: state.size } });
+      writeMarker({ ...marker, beatAt: now, lastGrowthAt: state.lastGrowthAt, size: state.size, exited: { at: now, reason: reasonOf(r.exit), size: state.size, line: state.lastLine } });
       console.log(r.exit);
       return;
     }

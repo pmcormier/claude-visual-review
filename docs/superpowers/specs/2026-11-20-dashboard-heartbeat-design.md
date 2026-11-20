@@ -176,7 +176,7 @@ It runs every time a session ends a turn. It is fast and reads only small files.
 **What it does:** returns `{"decision": "block", "reason": "<text>"}`, which makes Claude take one more turn with
 this text:
 
-> Work-log check: "<entry title>" still has step <n> "<name>" marked doing, and nothing is running or watched.
+> Work-log check: "<entry title>" still has step <n> "<name>" marked doing, and no job is being watched.
 > If it's finished, mark it done (and your Inbox checklist). If it waits on the owner, mark it waiting. If a job
 > is running, start a watcher for it. If it's right as it is, say nothing and end the turn.
 

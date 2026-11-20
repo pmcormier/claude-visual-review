@@ -5,7 +5,7 @@
 // over to the rebuilt node.
 import {
   STATE_LABEL, STATE_CLASS, formatDuration, agoWords, updatedText, shortId, shortDate, lifePath, foldEpics,
-  effortLeft, liveIds, usageView, detailText, sessionWhat, nowLine, watchedNote, watchedHover, triage, epicDone, epicLastActivity, sizeSummary,
+  effortLeft, liveIds, usageView, detailText, sessionWhat, nowLine, watchedNote, watchedAgo, watchedHover, triage, epicDone, epicLastActivity, sizeSummary,
   filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, spendLine, projectSpend,
   taskLiveness, leftOpenText, sessionLabel, projectOpen, themeLabel,
 } from '/render.mjs';
@@ -466,7 +466,7 @@ function sessionRow(p, s, fresh, keys, now) {
     h('span', { class: 'cell', text: p.name }),
     h('span', { class: 'cell who-cell' }, h('b', { text: sessionLabel(s) }), ' · ', what,
       line && s.state !== 'idle' ? h('div', { class: 'muted' }, `${line.prefix} `, since(line.from, now), line.suffix ?? '') : null,
-      watchedNote(s.pendingTool, now) ? h('div', { class: 'muted', title: watchedHover(s.pendingTool), text: watchedNote(s.pendingTool, now) }) : null,
+      watchedNote(s.pendingTool, now) ? h('div', { class: 'muted', title: watchedHover(s.pendingTool), data: { watched: s.pendingTool.watch.lastGrowthAt }, text: watchedNote(s.pendingTool, now) }) : null,
       s.evidence ? h('div', { class: 'evidence', text: s.evidence }) : null,
       s.hint ? h('div', { class: 'hint', text: s.hint }) : null),
     h('span', { class: `cell${currentTask(s) ? '' : ' muted'}`, text: currentTask(s)?.title || 'Not linked to a task yet' }),
@@ -690,6 +690,7 @@ function refreshTimers() {
   const now = Date.now();
   for (const el of $$('[data-since]')) el.textContent = formatDuration(Math.max(0, now - Number(el.dataset.since)));
   for (const el of $$('[data-until]')) el.textContent = formatDuration(Math.max(0, Number(el.dataset.until) - now));
+  for (const el of $$('[data-watched]')) el.textContent = watchedAgo(Number(el.dataset.watched), now);
   for (const el of $$('[data-quiet]')) el.textContent = `quiet ${agoWords(now - Number(el.dataset.quiet))}`;
 }
 setInterval(tickUpdated, 1000);

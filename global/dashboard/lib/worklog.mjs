@@ -120,7 +120,7 @@ export function openEntryFor(root, session) {
         const title = typeof r.title === 'string' ? r.title.trim() : '';
         if (!title) continue;
         const steps = Array.isArray(r.steps) ? r.steps.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim()) : [];
-        cur = { title, steps, status: steps.map(() => 'todo') };
+        cur = { title, startedAt: typeof r.at === 'string' ? r.at : null, steps, status: steps.map(() => 'todo') };
       } else if (!cur) {
         continue;
       } else if (r.verb === 'step') {
@@ -132,5 +132,5 @@ export function openEntryFor(root, session) {
     }
   } catch { return null; }
   if (!cur) return null;
-  return { title: cur.title, doing: cur.steps.map((name, i) => ({ n: i + 1, name })).filter((s) => cur.status[s.n - 1] === 'doing') };
+  return { title: cur.title, startedAt: cur.startedAt, doing: cur.steps.map((name, i) => ({ n: i + 1, name })).filter((s) => cur.status[s.n - 1] === 'doing') };
 }

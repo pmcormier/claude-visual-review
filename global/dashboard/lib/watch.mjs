@@ -15,6 +15,8 @@ export const ENDED_GRACE_MS = 2 * MIN;
 const KEEP_MS = 7 * 86400000;
 const EXITED_RE = /^\[exited with code (-?\d+)\]$/;
 
+// The same file however its path is written: slashes and capitals don't matter on Windows.
+const norm = (p) => String(p).replace(/\\/g, '/').toLowerCase();
 const clip = (s, n = 200) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 
 /** Command-line flags: --file <path> --what <text> [--quiet <5..120>]. */
@@ -32,10 +34,10 @@ export function parseArgs(argv) {
 }
 
 /** The watcher's starting state. size: the file's size when watching starts. */
-export function initState({ what, quietMin = DEFAULT_QUIET_MIN, size = 0, now, prevQuietSize = null }) {
+export function initState({ what, quietMin = DEFAULT_QUIET_MIN, size = 0, now, prevQuietSize = null, prevRepeatLine = null }) {
   return {
-    what, quietMin, size, lastGrowthAt: now, distinctSince: now, windowLines: [], lastLine: null,
-    failures: 0, endedAt: null, endCode: null, prevQuietSize,
+    what, quietMin, size, lastGrowthAt: now, distinctSince: now, windowLines: [], counts: new Map(), lastLine: null,
+    failures: 0, endedAt: null, endCode: null, prevQuietSize, prevRepeatLine,
   };
 }
 
@@ -44,7 +46,8 @@ export function initState({ what, quietMin = DEFAULT_QUIET_MIN, size = 0, now, p
  * quiet. Returns {state, exit: string|null}.
  */
 export function judge(prev, poll, now) {
-  const s = { ...prev, windowLines: [...prev.windowLines] };
+  // counts: how often each line occurs in the window, so a busy job's lines are checked in constant time each.
+  const s = { ...prev, windowLines: [...prev.windowLines], counts: new Map(prev.counts ?? []) };
   const q = s.quietMin * MIN;
   if (!poll.ok) {
     s.failures += 1;
@@ -61,18 +64,27 @@ export function judge(prev, poll, now) {
     const ended = EXITED_RE.exec(text);
     if (ended) { if (s.endedAt == null) { s.endedAt = now; s.endCode = Number(ended[1]); } continue; }
     complete += 1;
-    if (!s.windowLines.some((l) => l.text === text)) s.distinctSince = now;
+    const seen = s.counts.get(text) ?? 0;
+    if (!seen) s.distinctSince = now;
+    s.counts.set(text, seen + 1);
     s.windowLines.push({ text, at: now });
     s.lastLine = text;
   }
   // Output that grows without finishing a line (progress dots, a bar redrawn in place) is activity, not repetition.
   if (grew && complete === 0) s.distinctSince = now;
-  s.windowLines = s.windowLines.filter((l) => now - l.at <= q);
+  let old = 0; // lines are kept in time order, so the ones out of the window are at the front
+  while (old < s.windowLines.length && now - s.windowLines[old].at > q) {
+    const t = s.windowLines[old++].text;
+    const c = s.counts.get(t) - 1;
+    if (c > 0) s.counts.set(t, c); else s.counts.delete(t);
+  }
+  if (old) s.windowLines = s.windowLines.slice(old);
   if (s.endedAt != null) {
     return { state: s, exit: now - s.endedAt >= ENDED_GRACE_MS ? `Job ended (code ${s.endCode}): "${s.what}". Stop watching it.` : null };
   }
   if (now - s.lastGrowthAt < q && now - s.distinctSince >= q && s.lastLine) {
-    return { state: s, exit: `Repeating for ${s.quietMin} min: "${s.what}". Line: ${clip(s.lastLine)}.` };
+    const same = s.prevRepeatLine != null && s.prevRepeatLine === s.lastLine ? ' No new output since the last check, only this line repeating.' : '';
+    return { state: s, exit: `Repeating for ${s.quietMin} min: "${s.what}". Line: ${clip(s.lastLine)}.${same}` };
   }
   if (now - s.lastGrowthAt >= q) {
     const same = s.prevQuietSize != null && s.prevQuietSize === s.size ? ' No new output since the last check.' : '';
@@ -101,7 +113,7 @@ const watchDir = () => join(dashHome(), 'watch');
 
 /** <dashHome>/watch/<session>-<first 12 of sha1(file)>.json */
 export function markerPath(session, file) {
-  const h = createHash('sha1').update(String(file)).digest('hex').slice(0, 12);
+  const h = createHash('sha1').update(norm(file)).digest('hex').slice(0, 12);
   return join(watchDir(), `${String(session || 'unknown').replace(/[^A-Za-z0-9-]/g, '-')}-${h}.json`);
 }
 
@@ -164,7 +176,7 @@ export function pruneMarkers(now = Date.now()) {
   }
 }
 
-const norm = (p) => String(p).replace(/\\/g, '/').toLowerCase();
+
 
 /** The live watcher on a job's output file: {lastGrowthAt, quietMin}, or null. Paths compare without case or slash style. */
 export function watchFor(outputFile, markers, now) {

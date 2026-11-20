@@ -160,3 +160,27 @@ test('splitChunk: a carriage return ends a line, and a runaway partial line is c
   assert.deepEqual(W.splitChunk('d', 'e\n'), { lines: ['de'], partial: '' });
   assert.ok(W.splitChunk('', '.'.repeat(10000)).partial.length <= 4096);
 });
+
+test('a very busy job (2,000 new lines every poll) is judged quickly', () => {
+  let s = start();
+  const t = performance.now();
+  for (let p = 0; p < 20; p++) {
+    const tail = Array.from({ length: 2000 }, (_, i) => `poll ${p} line ${i}`);
+    s = judge(s, { ok: true, size: (p + 1) * 100000, tail }, T0 + p * 15000).state;
+  }
+  const ms = performance.now() - t;
+  assert.ok(ms < 500, `20 polls took ${Math.round(ms)} ms`);
+});
+
+test('markerPath: the same file written with other slashes or capitals is the same marker', () => {
+  assert.equal(markerPath('s', 'Work\\Tasks\\J.output'), markerPath('s', 'work/tasks/j.output'));
+});
+
+test('repeating the same line as at the last check says there is no new output', () => {
+  const line = 'Error: connection refused, retrying';
+  const polls = [];
+  for (let m = 0; m <= 16; m++) polls.push([m, { size: 10 * (m + 1), tail: [line] }]);
+  const r = run(start({ prevRepeatLine: line }), polls);
+  assert.equal(r.exit, `Repeating for 15 min: "CI watch". Line: ${line}. No new output since the last check, only this line repeating.`);
+  assert.doesNotMatch(run(start({ prevRepeatLine: 'something else' }), polls).exit, /No new output/);
+});

@@ -497,11 +497,16 @@ export function sessionWhat(s) {
 }
 
 /** A watched background job's note (decision 37): when it last printed. Empty when nothing watches it. */
+/** The "last output" text from its time alone, so the page's ticker can refresh it every 15 seconds. */
+export function watchedAgo(lastGrowthAt, now) {
+  const m = Math.floor((now - lastGrowthAt) / 60000);
+  return `Watched · last output ${m < 1 ? 'just now' : `${m} min ago`}`;
+}
+
 export function watchedNote(tool, now) {
   const w = tool?.watch;
   if (!w || !num(w.lastGrowthAt)) return '';
-  const m = Math.floor((now - w.lastGrowthAt) / 60000);
-  return `Watched · last output ${m < 1 ? 'just now' : `${m} min ago`}`;
+  return watchedAgo(w.lastGrowthAt, now);
 }
 
 export const watchedHover = (tool) => `The session is watching this job and will check on it after ${tool?.watch?.quietMin ?? 15} minutes of silence.`;
