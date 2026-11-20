@@ -440,3 +440,30 @@ test('sessionWhat does not repeat the title as the session name', () => {
   assert.equal(sessionWhat(s).what, 'Your turn');
   assert.equal(sessionWhat({ ...s, title: 'Login bug' }).what, 'Shop app');
 });
+
+// Follow-ups (owner, 2026-11-19): work a live session has moved on from reads as left open.
+test('taskLiveness: a live session that moved on to another epic leaves its old waits and work open', () => {
+  const live = { sessionId: 'L', alive: true, linkedTask: { id: 'new#1', epicId: 'new' } };
+  const byId = new Map([['L', live]]);
+  const lv = (t, epicId) => taskLiveness({ id: 'x', sessionId: 'L', ...t }, byId, NOW, epicId);
+  assert.equal(lv({ status: 'waiting', changedMs: NOW - 3 * DAY }, 'old'), 'stale');
+  assert.equal(lv({ status: 'waiting', changedMs: NOW - HOUR }, 'old'), 'waiting');
+  assert.equal(lv({ status: 'doing', changedMs: NOW - 3 * DAY }, 'old'), 'stale');
+  // Same epic as its current task: still a real wait, however old.
+  assert.equal(lv({ status: 'waiting', changedMs: NOW - 3 * DAY }, 'new'), 'waiting');
+  // No epic given, or the session has no current task: as before.
+  assert.equal(lv({ status: 'waiting', changedMs: NOW - 3 * DAY }), 'waiting');
+  const idle = new Map([['L', { ...live, linkedTask: null }]]);
+  assert.equal(taskLiveness({ id: 'x', sessionId: 'L', status: 'waiting', changedMs: NOW - 3 * DAY }, idle, NOW, 'old'), 'waiting');
+});
+
+test('groupEpics passes each task its epic id', () => {
+  const seen = [];
+  groupEpics([{ id: 'E', tasks: [{ id: 'a', status: 'next' }] }], NOW, new Set(), (t, epicId) => { seen.push(epicId); return 'other'; });
+  assert.deepEqual(seen, ['E']);
+});
+
+test('a shortened about line does not end in a stray full stop', () => {
+  const t = { id: 'a', status: 'next', about: 'x'.repeat(10) + '\u2026' };
+  assert.equal(detailText({ kind: 'task', task: t }).split('\n')[0], 'xxxxxxxxxx\u2026');
+});

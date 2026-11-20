@@ -343,3 +343,10 @@ test('a session carries its transcript title, and a working project its active-s
     assert.equal(p.activeSinceMs, now);
   } finally { rmSync(w.base, { recursive: true, force: true }); }
 });
+
+test('pruneActive drops projects that are gone', async () => {
+  const { pruneActive } = await import('../../global/dashboard/lib/model.mjs');
+  const m = new Map([['a', 1], ['b', 2]]);
+  pruneActive(m, new Set(['b']));
+  assert.deepEqual([...m.keys()], ['b']);
+});

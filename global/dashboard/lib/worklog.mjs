@@ -62,7 +62,8 @@ export function readWorklog(root) {
         // and no later record reaches it.
         const prev = open.get(session);
         if (prev) {
-          for (const t of prev.tasks) if (t.status === 'doing') { t.status = 'next'; t.startedMs = null; }
+          // leftOpen: begun, then left when the session moved on; the page shows it as started, not current.
+          for (const t of prev.tasks) if (t.status === 'doing') { t.status = 'next'; t.startedMs = null; t.leftOpen = true; }
         }
         epics.push(epic);
         open.set(session, epic);

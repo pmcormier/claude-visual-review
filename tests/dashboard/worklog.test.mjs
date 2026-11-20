@@ -280,3 +280,21 @@ test('old lines without about still read', async () => {
   assert.equal(e.tasks[0].about, null);
   assert.equal(e.tasks[0].status, 'doing');
 });
+
+test('a superseded epic marks its unfinished doing steps leftOpen', async () => {
+  const env = setup();
+  await writeLog(env, [
+    { at: '2026-11-01T10:00:00Z', verb: 'start', title: 'First', steps: ['a', 'b'] },
+    { at: '2026-11-01T10:01:00Z', verb: 'step', n: 1, status: 'doing' },
+    { at: '2026-11-01T10:02:00Z', verb: 'start', title: 'Second' },
+  ]);
+  const [first, second] = await read(env);
+  assert.deepEqual(first.tasks.map((t) => [t.status, t.leftOpen === true]), [['next', true], ['next', false]]);
+  assert.equal(second.tasks[0].leftOpen, undefined);
+});
+
+test('--steps-about stays paired when --steps has an empty entry', async () => {
+  const env = setup();
+  note(env, ['start', 'Gaps', '--steps', 'a||b', '--steps-about', 'x|y|z']);
+  assert.deepEqual((await read(env))[0].tasks.map((t) => [t.title, t.about]), [['a', 'x'], ['b', 'z']]);
+});

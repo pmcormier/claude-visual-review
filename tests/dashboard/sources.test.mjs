@@ -391,3 +391,12 @@ test('inbox step keeps its at as changedMs, and the epic carries the thread subj
   assert.equal(t2.subject, 'Only one');
   assert.equal(t2.tasks[0].changedMs, null);
 });
+
+test('plan about: a bold-only line is a label, and abbreviations do not end the sentence', async () => {
+  const { root } = setup();
+  writePlan(root, 'p.md', '# P\n\n### Task 1: One\n\n**Files**\n- x\n\n### Task 2: Two\n\nAdds e.g. caching, i.e. speed. Then more.\n');
+  const { readPlans } = await mod('plans.mjs');
+  const [e] = readPlans(root);
+  assert.equal(e.tasks[0].about, null);
+  assert.equal(e.tasks[1].about, 'Adds e.g. caching, i.e. speed.');
+});

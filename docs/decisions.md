@@ -491,3 +491,9 @@ How it was kept small:
 - "Became active" is the time the server first saw the project active, held in memory. Costs of this choice: a
   server restart makes a folded active project come back once; tasks logged before this change have no about line.
 - The rule also asks agents to close their Inbox checklists when work ends, so stale waits stop being made.
+
+Changed after the first build (owner's ruling, same day): a session left open for days had moved on from older
+work, and its old "waiting" steps still crowded Waiting on you. Now a live session whose current task is in another
+epic counts as gone for that older epic's tasks: its waits read "left open" after a day, and work it began there
+shows under Started, not current (a work-log epic superseded by a new `start` keeps its begun steps as `leftOpen`).
+A wait inside the epic the session is working on is still a real wait.

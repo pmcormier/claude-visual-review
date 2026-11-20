@@ -718,3 +718,12 @@ test('an Inbox step takes its about from the same session work-log mirror', asyn
   assert.equal(a[1].about, 'Ship the cart');
   assert.equal(t.epics.find((e) => e.id === 'inbox:t2:s3').tasks[0].about, null);
 });
+
+test('a leftOpen flag from the work log reaches the tree, and the model epic id reaches linked tasks', async () => {
+  const { buildTree } = await mod('tree.mjs');
+  const worklog = [{ id: 'wl:1', source: 'worklog', title: 'Old', file: null, tasks: [
+    { id: 'wl:1#1', n: 1, title: 'left', status: 'next', sessionId: 's', leftOpen: true },
+  ] }];
+  const t = buildTree('/proj', { ...empty(), worklog }, TH);
+  assert.equal(t.epics[0].tasks[0].leftOpen, true);
+});

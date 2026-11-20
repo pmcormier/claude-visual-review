@@ -306,6 +306,11 @@ export function trackActive(map, key, active, now) {
   return map.get(key);
 }
 
+/** Forget projects no longer listed, so the map holds only current ones. */
+export function pruneActive(map, keys) {
+  for (const k of [...map.keys()]) if (!keys.has(k)) map.delete(k);
+}
+
 /** Stuck, waiting, working, then the rest; each group newest activity first. Returns a new array. */
 export function orderProjects(projects) {
   return [...projects].sort((a, b) => rankOf(a.state) - rankOf(b.state)
@@ -323,7 +328,7 @@ function trimTree(tree) {
 function findTask(tree, id) {
   for (const e of tree?.epics ?? []) {
     const t = e.tasks.find((x) => x.id === id);
-    if (t) return { id: t.id, title: t.title, epic: e.title, status: t.status };
+    if (t) return { id: t.id, title: t.title, epic: e.title, epicId: e.id, status: t.status };
   }
   return null;
 }
@@ -424,6 +429,7 @@ export async function buildModel(now = Date.now(), opts = {}) {
       }
       for (const e of p.tree?.epics ?? []) if (!e.before && !e.dropped) model.counts.next += e.tasks.filter((t) => t.status === 'next').length;
     }
+    pruneActive(ACTIVE, new Set(projects.map((p) => keyOf(p.root))));
     model.projects = orderProjects(projects);
   } catch (e) {
     model.error = `Could not build the dashboard: ${errText(e)}`;

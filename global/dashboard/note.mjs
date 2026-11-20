@@ -44,10 +44,14 @@ async function main() {
       if (/^\d+$/.test(String(flags.task).trim()) && Number(flags.task) >= 1) rec.task = Number(flags.task);
       else logError(`start: ignored --task "${flags.task}"`);
     }
-    if (flags.steps) rec.steps = flags.steps.split('|').map((s) => s.trim()).filter(Boolean);
     if (typeof flags.about === 'string' && flags.about.trim()) rec.about = flags.about.trim();
-    // One line per step, by position; empty entries keep their place so later lines still pair up.
-    if (typeof flags['steps-about'] === 'string') rec.stepsAbout = flags['steps-about'].split('|').map((s) => s.trim());
+    // Steps and their about lines pair by position in what was typed; an empty step drops its about line with it.
+    const about = typeof flags['steps-about'] === 'string' ? flags['steps-about'].split('|').map((s) => s.trim()) : null;
+    if (flags.steps) {
+      const pairs = flags.steps.split('|').map((s, i) => [s.trim(), about?.[i] ?? '']).filter(([s]) => s);
+      rec.steps = pairs.map(([s]) => s);
+      if (about) rec.stepsAbout = pairs.map(([, a]) => a);
+    }
   } else if (verb === 'step') {
     const n = Number(pos[1]);
     if (!Number.isInteger(n) || n < 1) return logError(`step: bad number "${pos[1]}"`);

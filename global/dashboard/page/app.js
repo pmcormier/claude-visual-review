@@ -175,7 +175,7 @@ function buildDetails(m) {
       details.set(keyOf('e', p.root, e.id), { kind: 'epic', epic: e });
       for (const t of arr(e.tasks)) {
         const now = Date.now();
-        details.set(keyOf('t', p.root, t.id), { kind: 'task', task: t, epic: e, session: liveSession(byId, t), liveness: taskLiveness(t, byId, now), now });
+        details.set(keyOf('t', p.root, t.id), { kind: 'task', task: t, epic: e, session: liveSession(byId, t), liveness: taskLiveness(t, byId, now, e.id), now });
       }
     }
   }
@@ -238,14 +238,14 @@ function taskState(t, s, lv) {
 
 function epicState(e, byId) {
   const now = Date.now();
-  const states = arr(e.tasks).map((t) => taskState(t, liveSession(byId, t), taskLiveness(t, byId, now)));
+  const states = arr(e.tasks).map((t) => taskState(t, liveSession(byId, t), taskLiveness(t, byId, now, e.id)));
   for (const st of ['stuck', 'gone', 'wait', 'work', 'started', 'stale']) if (states.includes(st)) return st;
   return epicDone(e) ? 'done' : 'idle';
 }
 
-function taskLi(p, t, byId) {
+function taskLi(p, e, t, byId) {
   const now = Date.now();
-  const lv = taskLiveness(t, byId, now);
+  const lv = taskLiveness(t, byId, now, e.id);
   const current = lv === 'current';
   const s = current ? liveSession(byId, t) : null; // the live line and session chip only under a session's current task
   const st = taskState(t, s, lv);
@@ -279,7 +279,7 @@ function epicLi(p, e, byId, dflt = false) {
       tasks.length ? tw(open, key, e.title, 'epic') : h('span'),
       h('span', { class: 'name' }, icon(st), h('span', { class: 'label' }, h('b', { text: e.title || 'Untitled' }))),
       h('span', { class: 'meta', text: spent ? `${meta} · ${spent}` : meta })),
-    tasks.length ? h('ul', { class: 'tree', hidden: !open }, tasks.map((t) => taskLi(p, t, byId))) : null);
+    tasks.length ? h('ul', { class: 'tree', hidden: !open }, tasks.map((t) => taskLi(p, e, t, byId))) : null);
 }
 
 // One history row per epic, shown only with "Show all history" on; `note` (e.g. 'dropped') ends its line.
@@ -325,7 +325,7 @@ function treeOf(p, groups, byId) {
   return ul;
 }
 
-const groupsOf = (p, now, byId) => groupEpics(p.tree?.epics, now, liveIds(p), (t) => taskLiveness(t, byId, now));
+const groupsOf = (p, now, byId) => groupEpics(p.tree?.epics, now, liveIds(p), (t, epicId) => taskLiveness(t, byId, now, epicId));
 
 function foldActs(p) {
   const b = (act, text, title) => h('button', { type: 'button', class: 'fold-act', title, data: { act, root: p.root }, text });

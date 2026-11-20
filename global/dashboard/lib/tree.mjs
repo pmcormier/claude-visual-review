@@ -36,7 +36,7 @@ function cleanEpics(list, source) {
         startedMs: toMs(t.startedMs), doneMs: toMs(t.doneMs), ticked: isObj(t.ticked) ? { ...t.ticked } : null,
         // about: one plain-English line about the task; changedMs: its last change (the plan file's when it has none).
         about: line(t.about), changedMs: toMs(t.changedMs) ?? (Number.isFinite(e.mtimeMs) ? e.mtimeMs : null),
-        leftOpen: false,
+        leftOpen: t.leftOpen === true,
       })),
     });
   }

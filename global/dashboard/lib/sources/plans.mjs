@@ -16,12 +16,13 @@ const TICK = /^\s*[-*]\s+\[([ xX])\]/;
 // A task's about line: the first sentence of the first paragraph under its heading, before any list, table, fence or
 // bold label (`**Files:**`), capped at ABOUT_MAX characters. Nothing there: null (never a label or a step).
 const ABOUT_MAX = 200;
-const NOT_PROSE = /^\s*(?:[-*+]\s|\d+[.)]\s|\||>|\*\*[^*]+(?::\*\*|\*\*:)\s*$)/;
+const NOT_PROSE = /^\s*(?:[-*+]\s|\d+[.)]\s|\||>|\*\*[^*]+(?::\*\*|\*\*:?)\s*$)/;
 
 function sentenceOf(lines) {
   const text = lines.join(' ').replace(/\*\*|`/g, '').replace(/\s+/g, ' ').trim();
   if (!text) return null;
-  const s = /^.*?[.!?](?=\s|$)/.exec(text)?.[0] ?? text;
+  // A sentence ends at . ! ? before a capital, a digit or the end, so "e.g. caching" does not cut it short.
+  const s = /^.*?[.!?](?=\s+[A-Z0-9]|\s*$)/.exec(text)?.[0] ?? text;
   return s.length > ABOUT_MAX ? s.slice(0, ABOUT_MAX - 1) + '\u2026' : s;
 }
 

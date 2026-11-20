@@ -96,8 +96,9 @@ work they are doing with Claude. Using it on 2026-11-19, they couldn't tell what
    - `stale`: the task is doing or waiting, its session is not alive (or it has no session), and `changedMs` is
      more than 24 hours old.
    - `started`: the task is doing but not current.
-   - `waiting`: the task is waiting and not stale. That includes a live session's waiting step, because a live
-     session asking the owner something is a real wait.
+   - `waiting`: the task is waiting and not stale. That includes a live session's waiting step in the epic it
+     is working on now. (Owner's ruling after the build: a live session whose current task is in another epic counts
+     as gone for the older epic, so those waits go stale after a day. See decision 35.)
    - `other`: anything else.
 3. **`changedMs` for every task:**
    - work log: the time of the last record touching the task (`worklog.mjs` tracks it);

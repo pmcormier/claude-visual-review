@@ -179,7 +179,7 @@ export function groupEpics(epics, now, liveSessionIds, livenessOf) {
   const { shown, earlier, before, dropped } = foldEpics(epics, now, liveSessionIds);
   const g = { running: [], waiting: [], started: [], next: [], done: [] };
   for (const e of shown) {
-    const lv = arr(e?.tasks).map((t) => { try { return livenessOf(t); } catch { return 'other'; } });
+    const lv = arr(e?.tasks).map((t) => { try { return livenessOf(t, e?.id); } catch { return 'other'; } });
     if (lv.includes('current')) g.running.push(e);
     else if (lv.includes('waiting')) g.waiting.push(e);
     else if (lv.includes('started') || lv.includes('stale')) g.started.push(e);
@@ -204,17 +204,19 @@ export const STALE_AFTER_MS = DAY;
 /**
  * What a task is doing now. current: a live session's linked task. stale: doing or waiting, no live session, and its
  * last change (changedMs) more than a day old; an unknown time is never stale. started: doing but not current.
- * waiting: waiting and not stale (a live session's wait is real). other: anything else. A task the server read as
- * next because its session closed (leftOpen) counts as doing.
+ * waiting: waiting and not stale. other: anything else. A task the server read as next because its session closed or
+ * moved on (leftOpen) counts as doing. A live session that has moved on to a task in another epic (`epicId` given,
+ * its linkedTask.epicId different) counts as gone for this task: its old asks are not waits (owner, 2026-11-19).
  * @returns {'current'|'stale'|'started'|'waiting'|'other'}
  */
-export function taskLiveness(task, sessionsById, now) {
+export function taskLiveness(task, sessionsById, now, epicId) {
   const t = task ?? {};
   const status = t.status === 'next' && t.leftOpen === true ? 'doing' : t.status;
   if (status !== 'doing' && status !== 'waiting') return 'other';
   const s = t.sessionId && sessionsById instanceof Map ? sessionsById.get(t.sessionId) : null;
-  const alive = s?.alive === true;
-  if (alive && s.linkedTask?.id === t.id) return 'current';
+  if (s?.alive === true && s.linkedTask?.id === t.id) return 'current';
+  const movedOn = epicId != null && s?.linkedTask?.epicId != null && s.linkedTask.epicId !== epicId;
+  const alive = s?.alive === true && !movedOn;
   if (!alive && num(t.changedMs) && num(now) && now - t.changedMs > STALE_AFTER_MS) return 'stale';
   return status === 'doing' ? 'started' : 'waiting';
 }
@@ -351,7 +353,7 @@ const SESSION_PHRASE = {
 const sentence = (s) => {
   const t = String(s ?? '').trim();
   if (!t) return '';
-  return /[.!?]$/.test(t) ? t : `${t}.`;
+  return /[.!?\u2026]$/.test(t) ? t : `${t}.`;
 };
 const join = (...parts) => parts.map(sentence).filter(Boolean).join(' ');
 
