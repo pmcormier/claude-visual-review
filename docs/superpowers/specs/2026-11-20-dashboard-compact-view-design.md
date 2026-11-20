@@ -1,6 +1,6 @@
 # Dashboard: compact view
 
-Status: draft for the owner's approval (2026-11-20). Inbox thread "Compact card view".
+Status: approved by the owner 2026-11-20. Inbox thread "Compact card view".
 
 ## Intent
 
