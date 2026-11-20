@@ -607,3 +607,19 @@ last 5 it finished, newest first, marked with a tick and how long ago they ended
 them when it goes idle or waits, so the empty line of decision 39 comes back as soon as work stops. Tools without
 Claude's own description now read plainly: a file tool names its file ("Edit app.js"), an MCP tool its own name
 and server ("browser evaluate (playwright)"). Spec `docs/superpowers/specs/2026-11-20-dashboard-tool-trail-design.md`.
+
+## 43. Everything on the dashboard reads as plain English (2026-11-20)
+The owner: "ensuring that everything on the screen is real, readable, non-technical, english." Approach C of three
+(spec `docs/superpowers/specs/2026-11-20-dashboard-plain-english-design.md`): a live audit first (a browser script
+collected every text and hover on both views; a fresh reviewer checked each), then the kinds the owner picked were
+fixed, each with a test, and a guard test fails on technical text (raw tool names, drive paths, backticks, "null",
+"undefined", "Implementation Plan" tails) coming out of the page's text functions.
+Fixed: tools and commands in plain words (a command in a hover is cut to its first 80 characters); "Waiting on you
+about" instead of "Working on" while a session waits; sessions named by title with their short id ("Panels build
+(d519)"); plans from before the dashboard say their progress wasn't tracked, and a document without tasks says so;
+titles lose code marks, snake_case and "Implementation Plan", and ISO dates read "16 Nov"; tokens say read and
+written, and time left reads "2h 42m" like every other time; no folder paths as tooltips; the home folder and a
+top-level Temp folder are not projects unless a session is live there; hovers on group headers, counts, tabs and
+times; the Triage tab is named "Needs me". Also real: a work-log entry replaced by its own session no longer shows
+twice, its unstarted steps no longer show as next, and `note.mjs steps` changes an entry's steps in place.
+Not taken (owner's choice): plan file lists as descriptions, and one name per thing across the page.

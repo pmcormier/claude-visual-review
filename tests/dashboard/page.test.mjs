@@ -701,3 +701,34 @@ test('fix 8: tokens and times carry their units', () => {
   assert.equal(timeLeftText(0.2), '≈ 12m');
   assert.equal(timeLeftText(0), '');
 });
+
+test('guard: realistic messy input never reaches the page as technical text (decision 43)', () => {
+  const BAD = /mcp__|\bundefined\b|\bnull\b|\bNaN\b|\[object|[A-Za-z]:[\\/]|`|Implementation Plan$|\b(?:Bash|Read|Write|Edit|Agent|Task) running\b/;
+  const tools = [
+    { name: 'mcp__playwright__browser_run_code_unsafe', command: null, description: null, startedMs: NOW - 60000, endedMs: NOW - 1000 },
+    { name: 'Bash', command: 'cd "work/x" && gh run watch 1 --exit-status > out.txt 2>&1\nmore', description: null, startedMs: NOW - 60000, endedMs: NOW - 2000 },
+    { name: 'Write', command: 'work\scratch\tt3.mjs', description: null, endedMs: NOW - 3000 },
+    { name: 'Agent', command: null, description: null },
+    { name: 'Read', command: undefined, description: undefined, endedMs: undefined },
+  ];
+  const session = (state, extra = {}) => ({
+    sessionId: 'abcd1234-ef', title: state === 'idle' ? null : 'Notes app', alive: true, state, since: NOW - 60000,
+    evidence: state === 'stuck' ? 'No output for 25 min' : state === 'waiting' ? 'Asked: merge?' : null,
+    pendingTool: tools[0], pendingTools: tools.slice(0, 2), recentTools: tools.slice(1), subagents: [], tokens: { input: 1e6, output: 2e4 },
+    linkedTask: { id: 't1', title: 'Fix it', status: 'doing' }, lastWriteMs: NOW - 1000, spend: { costUsd: null, tokensIn: 5, tokensOut: 1 }, ...extra,
+  });
+  const out = [];
+  for (const st of ['working', 'waiting', 'stuck', 'idle', 'gone']) {
+    const s = session(st);
+    const w = sessionWhat(s);
+    out.push(w.what, w.line?.prefix ?? '', ...nowLines(s), ...toolTrail(s).map((x) => x.text));
+    out.push(detailText({ kind: 'session', session: s, project: { name: 'p' }, now: NOW }));
+    for (const lv of ['current', 'started', 'stale', 'waiting', 'other']) {
+      out.push(detailText({ kind: 'task', task: { id: 't1', status: lv === 'other' ? 'next' : 'doing', sessionId: s.sessionId, changedMs: NOW - 3 * DAY, spentMin: 40 }, session: s, liveness: lv, now: NOW }));
+    }
+  }
+  out.push(detailText({ kind: 'epic', epic: { tasks: [] } }), detailText({ kind: 'epic', epic: { before: true, tasks: [{}] } }));
+  out.push(spendLine({ tokensIn: 6e8, tokensOut: 1.4e6, costUsd: 3 }).tip, timeLeftText(2.7));
+  const hits = out.filter((x) => BAD.test(String(x)));
+  assert.deepEqual(hits, []);
+});

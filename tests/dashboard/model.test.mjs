@@ -371,3 +371,15 @@ test('an idle session with an open Inbox question reads waiting and counts', asy
     assert.equal(m.counts.waiting, 1);
   } finally { rmSync(w.base, { recursive: true, force: true }); }
 });
+
+test('scratchRoot: the home folder and a top-level Temp or tmp folder are not projects unless a session is live there', async () => {
+  const { scratchRoot } = await import('../../global/dashboard/lib/model.mjs');
+  const env = { home: '/home/me' };
+  assert.equal(scratchRoot('/home/me', env), true);
+  assert.equal(scratchRoot('/home/me/', env), true);
+  assert.equal(scratchRoot('/temp/testing', env), true);
+  assert.equal(scratchRoot('/Tmp', env), true);
+  assert.equal(scratchRoot('/tmp/scratch', env), true);
+  assert.equal(scratchRoot('/home/me/projects/app', env), false);
+  assert.equal(scratchRoot('/work/temp-tools', env), false);
+});

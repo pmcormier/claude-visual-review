@@ -34,6 +34,7 @@
 //  - Counts: stuck = sessions and subagents that look stuck (so the headline agrees with project state);
 //    waiting/working count sessions; next counts unfinished tasks with status 'next' across projects, leaving out
 //    plans from before the dashboard and dropped plans.
+import { homedir } from 'node:os';
 import { readdirSync, statSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, basename, resolve, sep } from 'node:path';
 import { claudeHome, dashHome, plannotatorHome } from './paths.mjs';
@@ -90,6 +91,16 @@ function headCwd(path) {
     }
   } catch { /* unreadable */ } finally { if (fd !== undefined) try { closeSync(fd); } catch { /* closed */ } }
   return null;
+}
+
+/**
+ * The home folder itself and a top-level Temp or tmp folder on any drive (a "Temp\testing" folder, /tmp/x) are
+ * scratch places, not projects (decision 43). They are left off the page unless a session is live there.
+ */
+export function scratchRoot(root, { home = homedir() } = {}) {
+  const n = (p) => String(p ?? '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  const r = n(root);
+  return r === n(home) || /^(?:[a-z]:)?\/(?:temp|tmp)(?:\/|$)/.test(r);
 }
 
 const discoverCache = new Map(); // claudeHome -> {at, days, roots: Map key -> {root, lastMs}}
@@ -452,7 +463,8 @@ export async function buildModel(now = Date.now(), opts = {}) {
       for (const e of p.tree?.epics ?? []) if (!e.before && !e.dropped) model.counts.next += e.tasks.filter((t) => t.status === 'next').length;
     }
     pruneActive(ACTIVE, new Set(projects.map((p) => keyOf(p.root))));
-    model.projects = orderProjects(projects);
+    // Scratch places (home folder, temp) show only while a session is live there (decision 43).
+    model.projects = orderProjects(projects.filter((p) => !scratchRoot(p.root) || arr(p.sessions).some((s) => s?.alive)));
   } catch (e) {
     model.error = `Could not build the dashboard: ${errText(e)}`;
   }

@@ -8,7 +8,7 @@ import {
   effortLeft, liveIds, usageView, detailText, sessionWhat, nowLines, watchedNote, watchedAgo, watchedHover, triage, epicDone, epicLastActivity, sizeSummary,
   filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, spendLine, projectSpend,
   taskLiveness, leftOpenText, sessionLabel, projectOpen, themeLabel,
-  compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip, squareNext, squareLabel, toolTrail, trailForTask,
+  compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip, squareNext, squareLabel, toolTrail, trailForTask, sessionRef, onTaskLabel, timeLeftText,
 } from '/render.mjs';
 
 const MIN = 60000;
@@ -158,7 +158,7 @@ function leftText(p, shown, header = false) {
   if (!arr(p.tree?.epics).length) return header ? '' : 'No plan found';
   const left = effortLeft(p.tree, shown);
   if (!left.count) return 'Nothing left';
-  return [`${left.count} left`, sizeSummary(shown), left.hours ? `≈ ${left.hours}h` : ''].filter(Boolean).join(' · ');
+  return [`${left.count} left`, sizeSummary(shown), timeLeftText(left.hours)].filter(Boolean).join(' · ');
 }
 
 function buildDetails(m) {
@@ -201,7 +201,7 @@ function sessionBlock(p, s, now) {
   const sl = spendLine(s.spend);
   const spendRow = sl ? h('div', { class: 'spend', data: { dk: keyOf('$', p.root, s.sessionId) }, text: sl.text }) : null;
   const onTask = link
-    ? h('div', { class: 'on-task' }, 'Working on ', h('button', { type: 'button', class: 'go', data: { go: link, fk: `go|${s.sessionId}` }, text: cur.title || 'a task' }))
+    ? h('div', { class: 'on-task' }, onTaskLabel(s.state), h('button', { type: 'button', class: 'go', data: { go: link, fk: `go|${s.sessionId}` }, text: cur.title || 'a task' }))
     : h('div', { class: 'on-task none', text: 'Not linked to a task yet' });
   const active = arr(s.subagents).filter((a) => isActiveSub(a) && a.state !== 'stuck');
   const finished = arr(s.subagents).filter((a) => !isActiveSub(a)).length + (s.subagentsHidden ?? 0);
@@ -224,7 +224,7 @@ function sessionBlock(p, s, now) {
 function stuckSubBlock(p, s, a, now) {
   return h('div', { class: 'sess s-stuck', data: { dk: keyOf('a', p.root, s.sessionId, a.agentId), alerts: `${s.sessionId}/${a.agentId}|${a.state}|${a.since ?? ''}` } },
     h('div', { class: 'what' }, h('b', { text: 'Subagent' }), ' · ', a.description || 'Subagent',
-      h('div', { class: 'sub' }, `Looks stuck · started by session ${shortId(s.sessionId)}`,
+      h('div', { class: 'sub' }, `Looks stuck · started by ${sessionRef(s)}`,
         Number.isFinite(a.lastWriteMs) ? [' · last wrote ', since(a.lastWriteMs, now), ' ago'] : null)),
     life(a.life),
     a.evidence ? h('div', { class: 'evidence', text: a.evidence }) : null);
@@ -254,7 +254,7 @@ function trailLine(t, s, now) {
   const tool = t.done || s.state === 'working';
   const cls = `now s-${STATE_CLASS[s.state] ?? 'work'}${t.done ? ' done' : ''}${tool ? ' trail' : ''}`;
   return h('div', { class: cls }, tool ? icon(t.done ? 'done' : 'work') : null, h('span', { text: t.text }),
-    t.done && Number.isFinite(t.endedMs) ? h('span', { class: 'ago' }, since(t.endedMs, now), ' ago') : null);
+    t.done && Number.isFinite(t.endedMs) ? h('span', { class: 'ago', title: 'When it finished' }, since(t.endedMs, now), ' ago') : null);
 }
 
 function taskLi(p, e, t, byId) {
@@ -274,10 +274,10 @@ function taskLi(p, e, t, byId) {
       h('span', { class: 'name' }, icon(st), h('span', { class: `label${st === 'done' ? ' done-label' : ''}`, text: t.title || 'Untitled task' }),
         t.size ? h('span', { class: 'size', text: t.size }) : null),
       h('span', { class: 'meta' },
-        s ? h('span', { class: 'who', text: `session ${shortId(s.sessionId)}` }) : null,
-        lv === 'started' && t.sessionId ? h('span', { class: 't', text: 'earlier' }) : null,
-        lv === 'stale' ? h('span', { class: 't', text: leftOpenText(t.changedMs, now) }) : null,
-        t.spentMin > 0 ? h('span', { class: 't', text: formatDuration(t.spentMin * MIN) }) : null)),
+        s ? h('span', { class: 'who', title: `Being worked on by ${sessionRef(s)}`, text: `session ${shortId(s.sessionId)}` }) : null,
+        lv === 'started' && t.sessionId ? h('span', { class: 't', title: 'Started earlier; no session is on it now', text: 'earlier' }) : null,
+        lv === 'stale' ? h('span', { class: 't', title: 'No change since then, and no session on it', text: leftOpenText(t.changedMs, now) }) : null,
+        t.spentMin > 0 ? h('span', { class: 't', title: 'Time spent on this so far', text: formatDuration(t.spentMin * MIN) }) : null)),
     trail.map((x) => trailLine(x, ts, now)));
 }
 
@@ -309,7 +309,7 @@ function histNodes(p, epics, note = '') {
   });
 }
 
-const HIST_NOTE = { before: 'before the dashboard', dropped: 'dropped' };
+const HIST_NOTE = { dropped: 'dropped' }; // "before the dashboard" is the group's own name, not repeated per row
 
 // One state group (spec 2026-11-19 wayfinding): a foldable header, then its epics. History groups are always built
 // and shown or hidden by "Show all history", with a one-line hint in their place while it is off.
@@ -321,9 +321,21 @@ function groupLi(p, g, epics, byId) {
     ? histNodes(p, epics, HIST_NOTE[g.id]).map((n) => h('li', null, n))
     : epics.map((e) => epicLi(p, e, byId, g.open));
   return h('li', { class: `group g-${g.id}${g.history ? ' histrow' : ''}`, hidden: g.history ? !showHistory : null },
-    h('div', { class: 'node gh' }, tw(open, key, g.label, 'group'), h('span', { class: 'name' }, h('b', { text: label })), h('span')),
+    h('div', { class: 'node gh', title: GROUP_HELP[g.id] ?? '' }, tw(open, key, g.label, 'group'), h('span', { class: 'name' }, h('b', { text: label })), h('span')),
     h('ul', { class: 'tree', hidden: !open }, items));
 }
+
+const GROUP_HELP = {
+  running: 'Work a session is on right now',
+  waiting: 'Work that is waiting for your answer or approval',
+  started: 'Begun earlier; no session is on it now',
+  next: 'Not started yet',
+  done: 'Finished',
+  quiet: 'Unfinished, and nothing has changed for a week',
+  doneEarlier: 'Finished more than a week ago',
+  before: 'Plans written before the dashboard was installed; their progress wasn\'t tracked',
+  dropped: 'Plans that were set aside',
+};
 
 const histHint = (text) => h('li', { class: 'histhint', hidden: showHistory },
   h('div', { class: 'node' }, h('span'), h('span', { class: 'name', text }), h('span')));
@@ -362,12 +374,12 @@ function panelFor(p, now, opts = {}) {
   return h('article', { class: `panel s-${cls}${fresh ? ' changed' : ''}`, data: { state: stateTokens(p, shown), alerts: keys.join(',') || null, root: p.root } },
     h('div', { class: 'ph', data: { dk: keyOf('p', p.root) } },
       opts.compact ? null : tw(true, keyOf('p', p.root), p.name, 'proj'), // no "Nothing running" list to fold into
-      h('h2', { text: p.name, title: p.root }),
+      h('h2', { text: p.name }),
       fresh ? h('span', { class: 'newbadge', text: 'New' }) : null,
       p.state !== 'quiet' ? chip(p.state) : null,
       h('span', { class: 'meta' }, h('span', { text: leftText(p, shown, true) }),
         projectSpend(p.spend) ? h('span', { class: 'spend', data: { dk: keyOf('$', p.root) }, text: projectSpend(p.spend).text }) : null,
-        p.tree?.spentMin > 0 ? h('span', { class: 't', text: formatDuration(p.tree.spentMin * MIN) }) : null),
+        p.tree?.spentMin > 0 ? h('span', { class: 't', title: 'Time spent on this project so far', text: formatDuration(p.tree.spentMin * MIN) }) : null),
       arr(p.tree?.epics).length ? foldActs(p) : null),
     p.error ? h('div', { class: 'err', text: p.error }) : null,
     sessions.flatMap((s) => [sessionBlock(p, s, now),
@@ -380,7 +392,7 @@ function quietRow(p, now) {
   const quietish = p.state === 'quiet' || p.state === 'idle';
   return h('div', { class: `qrow s-${STATE_CLASS[p.state] ?? 'idle'}`, data: { dk: keyOf('p', p.root), state: stateTokens(p, shown) } },
     tw(false, keyOf('p', p.root), p.name, 'proj'),
-    h('b', { text: p.name, title: p.root }),
+    h('b', { text: p.name }),
     h('span', { class: `qleft ${p.error ? 'err' : 'muted'}`, text: p.error || leftText(p, shown) }),
     quietish
       ? h('span', { class: 't muted', data: { quiet: Number.isFinite(p.quietSince) ? p.quietSince : null }, text: Number.isFinite(p.quietSince) ? `quiet ${agoWords(now - p.quietSince)}` : 'quiet' })
@@ -472,10 +484,10 @@ function squareFor(p, now, key) {
     body.push(h('div', { class: `sqsess s-${STATE_CLASS[s.state] ?? 'idle'}`, data: { dk: keyOf('s', p.root, s.sessionId) } },
       h('div', { class: 'sqtask', text: epic?.title || cur?.title || `${sessionLabel(s)} · not linked to a task yet`, title: epic?.title || cur?.title || '' }),
       st.items.length || st.done ? h('ul', { class: 'sqsteps' },
-        st.done ? h('li', { class: 'muted' }, icon('done'), h('span', { text: `${st.done} done` })) : null,
+        st.done ? h('li', { class: 'muted' }, icon('done'), h('span', { text: `${st.done} ${st.done === 1 ? 'step' : 'steps'} done` })) : null,
         // Each step carries the tools that ran while it was in progress (owner, 2026-11-20).
         st.items.flatMap((t) => [stepLi(t), ...trailForTask(t, epic?.tasks, s).map((x) => h('li', { class: 'trailli' }, trailLine(x, s, now)))]),
-        st.more ? h('li', { class: 'muted' }, h('span', { text: `+${st.more} more` })) : null) : null,
+        st.more ? h('li', { class: 'muted' }, h('span', { text: `+${st.more} more ${st.more === 1 ? 'step' : 'steps'}` })) : null) : null,
       st.items.length ? null : toolTrail(s).map((t) => trailLine(t, s, now)),
       arr(s.pendingTools).map((t) => (watchedNote(t, now) ? h('div', { class: 'muted', title: watchedHover(t), data: { watched: t.watch.lastGrowthAt }, text: watchedNote(t, now) }) : null)),
       arr(s.subagents).filter((a) => a.state === 'stuck').map((a) => h('div', { class: 'evidence', text: `Subagent: ${a.evidence || 'looks stuck'}` }))));
@@ -487,7 +499,7 @@ function squareFor(p, now, key) {
   const left = (changedUntil.get(p.root) ?? 0) - Date.now();
   const changed = left > 0;
   const el = h('article', { class: `square s-${cls}${changed ? ' changed' : ''}`, tabindex: '0', role: 'button', 'aria-label': squareLabel(p, arr(p.sessions).map((s) => currentTask(s)?.title).find(Boolean) ?? null), data: { key, root: p.root, fk: `sq|${p.root}`, state: filterToken(p.state) } },
-    h('div', { class: 'sqhead' }, h('h2', { text: p.name, title: p.root }), squareChip(p) ? chip(squareChip(p)) : null, busy ? life(busy.life) : null),
+    h('div', { class: 'sqhead' }, h('h2', { text: p.name }), squareChip(p) ? chip(squareChip(p)) : null, busy ? life(busy.life) : null),
     h('div', { class: 'sqbody' }, body.length ? body : h('div', { class: 'muted', text: 'No live session' })),
     nextTask ? h('div', { class: 'sqnext', text: `Next: ${nextTask.title || 'Untitled task'}`, title: nextTask.title || '' }) : null);
   if (changed) setTimeout(() => el.classList.remove('changed'), left);
@@ -544,7 +556,7 @@ function renderCompact(now) {
   const qs = JSON.stringify(quiet.map((p) => [p.name, projectKey(p, projects)]));
   if (qs !== quietSig) { // rebuilt only when the list changes, so a focused link keeps its focus
     quietSig = qs;
-    quietEl.replaceChildren('Quiet: ', ...quiet.flatMap((p, i) => [i ? ' · ' : '', h('a', { href: `#${encodeURIComponent(projectKey(p, projects))}`, text: p.name, title: p.root, data: { key: projectKey(p, projects), root: p.root } })]));
+    quietEl.replaceChildren('Quiet: ', ...quiet.flatMap((p, i) => [i ? ' · ' : '', h('a', { href: `#${encodeURIComponent(projectKey(p, projects))}`, text: p.name, title: `Open ${p.name}`, data: { key: projectKey(p, projects), root: p.root } })]));
   }
   if (openedFrom) { $(`[data-fk="${CSS.escape(`sq|${openedFrom}`)}"]`)?.focus({ preventScroll: false }); openedFrom = null; }
 }
@@ -610,7 +622,7 @@ function subagentRow(p, s, a, akey, fresh, now) {
     h('span', { class: 'cell who-cell' }, h('span', { class: 'name' }, icon('sub'), ' ', h('b', { text: 'Subagent' }), ' · ', a.description || 'Subagent'),
       a.model ? [' ', h('span', { class: 'size', text: a.model })] : null,
       a.evidence ? h('div', { class: 'evidence', text: a.evidence }) : null),
-    h('span', { class: 'cell muted', text: `Helper of session ${shortId(s.sessionId)}` }),
+    h('span', { class: 'cell muted', text: `Helper of ${sessionRef(s)}` }),
     life(a.life),
     h('span', { class: 'cell ago' }, Number.isFinite(a.lastWriteMs) ? [since(a.lastWriteMs, now), ' ago'] : ''));
 }
@@ -657,7 +669,7 @@ function triageItem(it, akey, fresh, now) {
       h('b', { text: a ? 'Subagent' : sessionLabel(s) }), h('span', { class: 'where', text: `in ${p.name}` })),
     h('div', null, what, line ? h('span', { class: 'muted' }, ' · ', `${line.prefix} `, since(line.from, now), line.suffix ?? '') : null),
     who.evidence ? h('div', { class: 'evidence', text: who.evidence }) : null,
-    !a ? h('div', { class: `on-task${currentTask(s) ? '' : ' none'}`, text: currentTask(s) ? `Working on ${currentTask(s).title}` : 'Not linked to a task yet' }) : null);
+    !a ? h('div', { class: `on-task${currentTask(s) ? '' : ' none'}`, text: currentTask(s) ? `${onTaskLabel(s.state)}${currentTask(s).title}` : 'Not linked to a task yet' }) : null);
 }
 
 function triageItems(list, now) {
