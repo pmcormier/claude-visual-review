@@ -10,7 +10,9 @@
  *   sessionId: string|null,
  *   startedMs: number|null,
  *   doneMs: number|null,
- *   ticked: {done: number, total: number}|null
+ *   ticked: {done: number, total: number}|null,
+ *   about?: string|null,
+ *   changedMs?: number|null
  * }} Task
  */
 

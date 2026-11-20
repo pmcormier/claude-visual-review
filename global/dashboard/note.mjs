@@ -1,4 +1,5 @@
-// Work log helper: node note.mjs start "<task>" [--plan <file> --task <n>] [--steps "a|b|c"]
+// Work log helper: node note.mjs start "<task>" [--about "<line>"] [--plan <file> --task <n>]
+//                    [--steps "a|b|c"] [--steps-about "line|line|line"]
 //                  node note.mjs step <n> <todo|doing|done|waiting|dropped>
 //                  node note.mjs done | drop "<reason>"
 // Prints nothing and always exits 0. Errors go to <dashHome>/note.log. Writes only under <dashHome>.
@@ -44,6 +45,9 @@ async function main() {
       else logError(`start: ignored --task "${flags.task}"`);
     }
     if (flags.steps) rec.steps = flags.steps.split('|').map((s) => s.trim()).filter(Boolean);
+    if (typeof flags.about === 'string' && flags.about.trim()) rec.about = flags.about.trim();
+    // One line per step, by position; empty entries keep their place so later lines still pair up.
+    if (typeof flags['steps-about'] === 'string') rec.stepsAbout = flags['steps-about'].split('|').map((s) => s.trim());
   } else if (verb === 'step') {
     const n = Number(pos[1]);
     if (!Number.isInteger(n) || n < 1) return logError(`step: bad number "${pos[1]}"`);

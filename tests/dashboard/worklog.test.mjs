@@ -227,3 +227,56 @@ test('a partial install (note.mjs without lib/) still exits 0 and prints nothing
   assert.equal(r.stderr, '');
   assert.ok(existsSync(join(env.home, 'dashboard', 'note.log')));
 });
+
+// ---- about lines and change times (dashboard-clarity Task 1) ----
+
+async function writeLog(env, records) {
+  const { worklogPath } = await lib(env);
+  const file = worklogPath(env.proj);
+  mkdirSync(join(file, '..'), { recursive: true });
+  for (const r of records) appendFileSync(file, JSON.stringify({ v: 1, session: 's1', ...r }) + '\n');
+}
+
+test('note start --about writes about', async () => {
+  const env = setup();
+  note(env, ['start', 'Fix login', '--about', '  Users get logged out after 5 min ']);
+  const { worklogPath } = await lib(env);
+  const rec = JSON.parse(readFileSync(worklogPath(env.proj), 'utf8').trim());
+  assert.equal(rec.about, 'Users get logged out after 5 min');
+  const [e] = await read(env);
+  assert.equal(e.tasks[0].about, 'Users get logged out after 5 min');
+});
+
+test('--steps-about pairs lines with steps', async () => {
+  const env = setup();
+  note(env, ['start', 'Three things', '--steps', 'a|b|c', '--steps-about', 'why a|why b']);
+  assert.deepEqual((await read(env))[0].tasks.map((t) => t.about), ['why a', 'why b', null]);
+  const env2 = setup();
+  note(env2, ['start', 'Three things', '--steps', 'x|y|z', '--steps-about', '1|2|3|4']);
+  assert.deepEqual((await read(env2))[0].tasks.map((t) => t.about), ['1', '2', '3']);
+  const env3 = setup();
+  note(env3, ['start', 'Gap', '--steps', 'x|y', '--steps-about', '|why y']);
+  assert.deepEqual((await read(env3))[0].tasks.map((t) => t.about), [null, 'why y']);
+});
+
+test('changedMs follows the last record touching a task', async () => {
+  const env = setup();
+  const T0 = Date.parse('2026-11-01T10:00:00Z');
+  const T1 = T0 + 60000;
+  const T2 = T0 + 120000;
+  await writeLog(env, [
+    { at: new Date(T0).toISOString(), verb: 'start', title: 'Two', steps: ['a', 'b'] },
+    { at: new Date(T1).toISOString(), verb: 'step', n: 2, status: 'doing' },
+  ]);
+  assert.deepEqual((await read(env))[0].tasks.map((t) => t.changedMs), [T0, T1]);
+  await writeLog(env, [{ at: new Date(T2).toISOString(), verb: 'done' }]);
+  assert.deepEqual((await read(env))[0].tasks.map((t) => t.changedMs), [T2, T2]);
+});
+
+test('old lines without about still read', async () => {
+  const env = setup();
+  await writeLog(env, [{ at: '2026-11-01T10:00:00Z', verb: 'start', title: 'Old one' }]);
+  const [e] = await read(env);
+  assert.equal(e.tasks[0].about, null);
+  assert.equal(e.tasks[0].status, 'doing');
+});

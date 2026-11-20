@@ -21,10 +21,13 @@ function ms(at) {
   return Number.isFinite(t) ? t : null;
 }
 
-function mkTask(id, title, n, session, status, at) {
+const line = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+
+// about: the agent's plain-English line (--about / --steps-about); changedMs: the last record touching the task.
+function mkTask(id, title, n, session, status, at, about) {
   return {
     id, n, title, status, size: null, sessionId: session,
-    startedMs: status === 'doing' ? at : null, doneMs: null, ticked: null,
+    startedMs: status === 'doing' ? at : null, doneMs: null, ticked: null, about: line(about), changedMs: at,
   };
 }
 
@@ -47,9 +50,10 @@ export function readWorklog(root) {
         const id = `wl-${epics.length + 1}`;
         const n = Number.isFinite(Number(r.task)) && r.task !== null && r.task !== '' ? Number(r.task) : null;
         const steps = Array.isArray(r.steps) ? r.steps.filter((s) => typeof s === 'string' && s.trim()) : [];
+        const stepsAbout = Array.isArray(r.stepsAbout) ? r.stepsAbout : [];
         const tasks = steps.length
-          ? steps.map((s, i) => mkTask(`${id}-${i + 1}`, s.trim(), i === 0 ? n : null, session, 'next', at))
-          : [mkTask(`${id}-1`, title, n, session, 'doing', at)];
+          ? steps.map((s, i) => mkTask(`${id}-${i + 1}`, s.trim(), i === 0 ? n : null, session, 'next', at, stepsAbout[i]))
+          : [mkTask(`${id}-1`, title, n, session, 'doing', at, r.about)];
         const epic = {
           id, source: 'worklog', title, file: typeof r.plan === 'string' && r.plan ? r.plan : null,
           tasks, _hidden: new Set(), _dropped: false, _closed: false, _startMs: at,
@@ -75,6 +79,7 @@ export function readWorklog(root) {
         epic._hidden.delete(i);
         const t = epic.tasks[i];
         t.status = status;
+        t.changedMs = at;
         if (status === 'doing' && t.startedMs === null) t.startedMs = at;
         t.doneMs = status === 'done' ? at : null;
       } else if (r.verb === 'done') {
@@ -82,6 +87,7 @@ export function readWorklog(root) {
           if (epic._hidden.has(i)) return;
           t.status = 'done';
           t.doneMs = at;
+          t.changedMs = at;
           if (t.startedMs === null) t.startedMs = epic._startMs;
         });
         open.delete(session);
