@@ -468,7 +468,7 @@ transcript. Spend is recorded only from when this tap was installed; earlier ses
 ## 35. Running means a session's current task; each task says what it is (2026-11-19)
 Using the dashboard, the owner couldn't tell what was really active. One session had been linked to 262 tasks over
 its life (7 still doing, 11 waiting), and its live line showed under every one of them. Hovers explained the tool
-that was running, not what the task was. A session titled "Dwm restart" sat folded in the quiet list while working.
+that was running, not what the task was. A titled session sat folded in the quiet list while working.
 A checklist step marked "waiting" on Nov 17 by a session that never closed it still read as waiting on the owner.
 
 Chosen (spec `docs/superpowers/specs/2026-11-19-dashboard-clarity-design.md`):

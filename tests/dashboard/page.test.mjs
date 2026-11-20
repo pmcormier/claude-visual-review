@@ -303,7 +303,7 @@ test('taskLiveness: current, started, stale, waiting, other', () => {
 
 test('detailText for a task by liveness: about first, then what is happening', () => {
   const live = { ...stuckSession, state: 'working', evidence: null, alive: true };
-  const t = { id: 't', title: 'Cloud sitting', status: 'doing', sessionId: live.sessionId, about: 'Keeps the cloud copy in step.', changedMs: NOW - 2 * DAY, spentMin: 0 };
+  const t = { id: 't', title: 'Cart sync', status: 'doing', sessionId: live.sessionId, about: 'Keeps the cloud copy in step.', changedMs: NOW - 2 * DAY, spentMin: 0 };
   assert.equal(detailText({ kind: 'task', task: t, session: live, liveness: 'current', now: NOW }), 'Keeps the cloud copy in step.\n\nSession 34d4 is on it now.');
   assert.equal(detailText({ kind: 'task', task: t, session: live, liveness: 'started', now: NOW }), 'Keeps the cloud copy in step.\n\nStarted by session 34d4, which has moved on.');
   assert.equal(detailText({ kind: 'task', task: t, liveness: 'started', now: NOW }), 'Keeps the cloud copy in step.\n\nStarted by session 34d4, which has closed.');
@@ -320,8 +320,8 @@ test('leftOpenText counts hours under a day, else days', () => {
 });
 
 test('sessionLabel: the title, else the short id', () => {
-  assert.equal(sessionLabel({ sessionId: 'c189a669-x', title: 'Dwm restart' }), 'Dwm restart');
-  assert.equal(sessionLabel({ sessionId: 'c189a669-x', title: null }), 'Session c189');
+  assert.equal(sessionLabel({ sessionId: 'ab12cd34-x', title: 'Login bug' }), 'Login bug');
+  assert.equal(sessionLabel({ sessionId: 'ab12cd34-x', title: null }), 'Session ab12');
 });
 
 test('projectOpen: a fold holds, unless the project became active after it', () => {
@@ -436,7 +436,7 @@ test('formatTokens shows billions as B', () => {
 });
 
 test('sessionWhat does not repeat the title as the session name', () => {
-  const s = { sessionId: 'x', state: 'idle', name: 'OneNoteMCP Started', title: 'OneNoteMCP Started', lastWriteMs: NOW - MIN };
+  const s = { sessionId: 'x', state: 'idle', name: 'Shop app', title: 'Shop app', lastWriteMs: NOW - MIN };
   assert.equal(sessionWhat(s).what, 'Your turn');
-  assert.equal(sessionWhat({ ...s, title: 'Dwm restart' }).what, 'OneNoteMCP Started');
+  assert.equal(sessionWhat({ ...s, title: 'Login bug' }).what, 'Shop app');
 });

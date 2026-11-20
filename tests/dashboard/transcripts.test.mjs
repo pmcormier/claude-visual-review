@@ -263,8 +263,8 @@ test('title prefers the newest custom title over ai titles, and survives an incr
 
 test('title falls back to the newest ai title, and is null without one', () => withDir((d) => {
   const f = join(d, 't.jsonl');
-  writeFileSync(f, lines({ type: 'ai-title', aiTitle: 'Dwm restart', sessionId: 's' }, { type: 'ai-title', aiTitle: 'Dwm restart again', sessionId: 's' }));
-  assert.equal(scanTranscript(f, NOW).title, 'Dwm restart again');
+  writeFileSync(f, lines({ type: 'ai-title', aiTitle: 'Login bug', sessionId: 's' }, { type: 'ai-title', aiTitle: 'Login bug again', sessionId: 's' }));
+  assert.equal(scanTranscript(f, NOW).title, 'Login bug again');
   const g = join(d, 'u.jsonl');
   writeFileSync(g, lines({ type: 'user', timestamp: iso(1), message: { content: 'hi' } }));
   assert.equal(scanTranscript(g, NOW).title, null);

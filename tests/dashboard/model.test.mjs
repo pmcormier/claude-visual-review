@@ -334,11 +334,11 @@ test('a session carries its transcript title, and a working project its active-s
     const { buildModel } = await import('../../global/dashboard/lib/model.mjs');
     const now = Date.now();
     const root = project(w, 'titled');
-    transcript(w, root, 'sid-title', [{ type: 'ai-title', aiTitle: 'Dwm restart' }, toolAt(now - MIN, 'tu1', 'Bash', { command: 'sleep 100' })]);
+    transcript(w, root, 'sid-title', [{ type: 'ai-title', aiTitle: 'Login bug' }, toolAt(now - MIN, 'tu1', 'Bash', { command: 'sleep 100' })]);
     session(w, 4242, root, 'sid-title', 'busy');
     const m = await buildModel(now, { sampler: sampler() });
     const p = m.projects.find((x) => x.root === root);
-    assert.equal(p.sessions[0].title, 'Dwm restart');
+    assert.equal(p.sessions[0].title, 'Login bug');
     assert.equal(p.state, 'working');
     assert.equal(p.activeSinceMs, now);
   } finally { rmSync(w.base, { recursive: true, force: true }); }

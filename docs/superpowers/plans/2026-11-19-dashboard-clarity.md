@@ -250,7 +250,7 @@ checklist steps stop reading as waits, sessions show their title, and a folded p
   known; rerun it alone if it trips). `pwsh -NoProfile -File tools/check-personal.ps1` passes.
 - [ ] **Step 4: Commit** `dashboard-clarity Task 7: decision 35 and docs`.
 - [ ] **Step 5: Install and live check** (the owner approved the rule text with the design): `./install.ps1`,
-  restart the dashboard server, then check on the page: Running holds one task per live session; session 77de's
-  older tasks sit under Started, not current; "Back to 26.11.1 at next forced reboot" reads `left open N days ago`;
-  a task hover starts with its about line or `No description yet`; the "Dwm restart" card shows its title; a
+  restart the dashboard server, then check on the page: Running holds one task per live session; a long-lived session's
+  older tasks sit under Started, not current; a two-day-old waiting step from a closed session reads `left open N days ago`;
+  a task hover starts with its about line or `No description yet`; a session card shows its title; a
   hand-folded project with a working session shows as a panel.

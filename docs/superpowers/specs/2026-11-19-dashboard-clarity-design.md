@@ -6,15 +6,15 @@ Status: approved by the owner, 2026-11-19 (including the rule text).
 The owner wants the dashboard to be "truly useful at a glance, and dig deeper if you want": a picture of all the
 work they are doing with Claude. Using it on 2026-11-19, they couldn't tell what was actually active:
 
-- **Live lines repeat.** One session (77de) was linked to 262 tasks over its life, 7 still "doing" and 11
+- **Live lines repeat.** One session was linked to 262 tasks over its life, 7 still "doing" and 11
   "waiting". The page draws the session's live line ("— working", "— cd …") under every task linked to it, so a
   session doing one thing looks like it is doing many. "Running (5)" counted all of those.
-- **Hover text is thin.** It explains the tool that is running, but not what the task is. "Cloud sitting",
-  "Backlog 7: doc fixes" and "File the 'grants count from when given' bug" say nothing to someone who hasn't
+- **Hover text is thin.** It explains the tool that is running, but not what the task is. Short step names
+  such as "Second sitting" or "Doc fixes, then merge" say nothing to someone who hasn't
   followed the thread.
-- **A session was hard to recognise.** "Dwm restart" showed only under its folder name, "Troubleshooting Memory
-  Leak", and sat folded in the quiet list while working.
-- **A stale checklist showed as waiting on the owner.** "Back to 26.11.1 at next forced reboot" was marked
+- **A session was hard to recognise.** A session with a clear title showed only under its project's
+  folder name, and sat folded in the quiet list while working.
+- **A stale checklist showed as waiting on the owner.** A step ("roll back at the next restart") was marked
   "waiting" by a session on Nov 17 that never updated or closed its Inbox thread.
 
 ## Goals
@@ -24,7 +24,7 @@ work they are doing with Claude. Using it on 2026-11-19, they couldn't tell what
      Waiting on you and Next and is folded by default.
 2. **One live line per session.**
    - The "— working" / "— cd …" line and the session chip appear only under that session's current task.
-   - Other tasks linked to the session show who worked on them ("session 77de, earlier") without the live line.
+   - Other tasks linked to the session show who worked on them ("session ab12, earlier") without the live line.
 3. **Stale waits are not waits.**
    - A "waiting" task goes to Started, not current, marked **"left open N days ago"**, when two things are both
      true: its session is not alive, and it hasn't changed for 24 hours.
@@ -38,7 +38,7 @@ work they are doing with Claude. Using it on 2026-11-19, they couldn't tell what
    - After that line come today's details: state, session, time, the tool running. Where there is no about line,
      the text says "No description yet", rather than guessing.
 5. **Sessions show their title.**
-   - Each session card shows Claude Code's title for the session ("Dwm restart"): the newest `custom-title`,
+   - Each session card shows Claude Code's title for the session ("Login bug"): the newest `custom-title`,
      else the newest `ai-title` record in its transcript. The folder-based name moves to the tooltip.
 6. **A working project comes back up.**
    - A project folded into the quiet list moves back to the panels when one of its sessions becomes working,
