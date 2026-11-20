@@ -61,9 +61,8 @@ check. Keeps our status up to date, and keeps the agent on top of processes it l
   machine has 713 such files across 64 sessions. The dashboard already measures their growth
   (`procs.mjs outputGrowth`).
 - A background command's exit wakes the session with a notification.
-- **Unverified:** whether a background command is ever killed for running too long. `Monitor` is capped at 30
-  minutes; background commands state no cap. **The build checks this first** (Task 1). If a cap exists, the
-  watcher exits just before it with a "still fine, re-arm me" line, at the cost of one wake per cap period.
+- A background command is not cut off for running long: a 25-minute `sleep` ran to the end (`survived 1500 s`,
+  checked 2026-11-20). Longer runs were not tested; the watcher has no cap handling.
 - When a background command ends, Claude Code appends a last line `[exited with code N]` to its output file
   (seen on this machine 2026-11-20).
 - Background commands inherit `CLAUDE_CODE_SESSION_ID` (checked 2026-11-20). The output path also contains the
@@ -209,12 +208,6 @@ A new bullet after "Close what you open":
   quick, a few hundred milliseconds on a large transcript (read only its tail).
 - Exact page placement of the `Watched` note, following the existing session-line style.
 - How the dashboard joins a marker to a job: by output file path, which `pendingTool.outputFile` already carries.
-
-## Build order
-
-Task 1 is a gate. A 25-minute background command was started on 2026-11-20 to check whether background
-commands are ever cut off; its result goes into this document before the plan is written. If a cap exists, the
-watcher exits 1 minute before it with `Still running fine after N min: "<what>". Start the watcher again.`
 
 ## Builder's calls made in this document
 
