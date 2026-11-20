@@ -327,14 +327,28 @@ export function squareSteps(epic, currentTaskId) {
   return { done: tasks.length - open.length, items, more: Math.max(0, open.length - at - items.length) };
 }
 
-/** Which view the address asks for, and the project named after # (null when none matches). */
+/** The key a project goes by after # in the address: its name when no other project shares it, else its root. */
+export function projectKey(p, projects) {
+  const same = arr(projects).filter((q) => q?.name === p?.name).length;
+  return same > 1 ? String(p?.root ?? '') : String(p?.name ?? '');
+}
+
+/**
+ * Which view the address asks for, and the project its # names: a unique name, else a root. A name two projects
+ * share opens nothing rather than the wrong one.
+ */
 export function viewFromLocation(pathname, hash, projects) {
   const view = pathname === '/compact' ? 'compact' : 'full';
-  let name = '';
-  try { name = decodeURIComponent(String(hash ?? '').replace(/^#/, '')); } catch { name = ''; }
-  const project = name ? arr(projects).find((p) => p?.name === name) ?? null : null;
+  let key = '';
+  try { key = decodeURIComponent(String(hash ?? '').replace(/^#/, '')); } catch { key = ''; }
+  if (!key) return { view, project: null };
+  const named = arr(projects).filter((p) => p?.name === key);
+  const project = named.length === 1 ? named[0] : arr(projects).find((p) => p?.root === key) ?? null;
   return { view, project };
 }
+
+/** The state a square's chip shows; none for a quiet project that is only there because it could not be read. */
+export const squareChip = (p) => (p?.state === 'quiet' ? null : p?.state ?? null);
 
 /** The task a session is working on now: its linked task, unless that task is already done. */
 export const currentTask = (session) => (session?.linkedTask && session.linkedTask.status !== 'done' ? session.linkedTask : null);

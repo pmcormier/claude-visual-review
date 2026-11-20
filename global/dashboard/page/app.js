@@ -8,7 +8,7 @@ import {
   effortLeft, liveIds, usageView, detailText, sessionWhat, nowLines, watchedNote, watchedAgo, watchedHover, triage, epicDone, epicLastActivity, sizeSummary,
   filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, spendLine, projectSpend,
   taskLiveness, leftOpenText, sessionLabel, projectOpen, themeLabel,
-  compactSplit, busiestSession, squareSteps, viewFromLocation,
+  compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip,
 } from '/render.mjs';
 
 const MIN = 60000;
@@ -384,7 +384,9 @@ function replaceKeepingFocus(old, el) {
   const a = document.activeElement;
   const fk = a && old.contains(a) ? a.dataset?.fk : null;
   old.replaceWith(el);
-  if (fk) el.querySelector(`[data-fk="${CSS.escape(fk)}"]`)?.focus({ preventScroll: true });
+  if (!fk) return;
+  const sel = `[data-fk="${CSS.escape(fk)}"]`;
+  (el.matches(sel) ? el : el.querySelector(sel))?.focus({ preventScroll: true }); // a square is its own focus target
 }
 
 /**
@@ -438,8 +440,10 @@ function sync(container, cache, list, build, now, kind) {
 const squares = new Map(); // root -> {sig, el}
 const lastSquareState = new Map(); // root -> state at the last build, for the brief "changed" highlight
 let oneSig = null;
+let quietSig = null;
+let openedFrom = null; // the root whose square opened the card, to give focus back on "Back to all"
 
-function squareFor(p, now) {
+function squareFor(p, now, key) {
   const byId = new Map(arr(p.sessions).map((s) => [s.sessionId, s]));
   const busy = busiestSession(p);
   const body = [];
@@ -466,8 +470,8 @@ function squareFor(p, now) {
   const cls = STATE_CLASS[p.state] ?? 'idle';
   const changed = lastSquareState.has(p.root) && lastSquareState.get(p.root) !== p.state;
   lastSquareState.set(p.root, p.state);
-  const el = h('article', { class: `square s-${cls}${changed ? ' changed' : ''}`, tabindex: '0', role: 'button', 'aria-label': `${p.name}: open the full card`, data: { name: p.name, state: filterToken(p.state) } },
-    h('div', { class: 'sqhead' }, h('h2', { text: p.name, title: p.root }), chip(p.state), busy ? life(busy.life) : null),
+  const el = h('article', { class: `square s-${cls}${changed ? ' changed' : ''}`, tabindex: '0', role: 'button', 'aria-label': `${p.name}: open the full card`, data: { key, root: p.root, fk: `sq|${p.root}`, state: filterToken(p.state) } },
+    h('div', { class: 'sqhead' }, h('h2', { text: p.name, title: p.root }), squareChip(p) ? chip(squareChip(p)) : null, busy ? life(busy.life) : null),
     h('div', { class: 'sqbody' }, body.length ? body : h('div', { class: 'muted', text: 'No live session' })),
     nextTask ? h('div', { class: 'sqnext', text: `Next: ${nextTask.title || 'Untitled task'}`, title: nextTask.title || '' }) : null);
   if (changed) setTimeout(() => el.classList.remove('changed'), 4000);
@@ -475,7 +479,7 @@ function squareFor(p, now) {
 }
 
 function historyBox() {
-  const box = h('input', { type: 'checkbox' });
+  const box = h('input', { type: 'checkbox', data: { fk: 'hist1' } });
   box.checked = showHistory;
   box.addEventListener('change', () => {
     showHistory = box.checked;
@@ -499,9 +503,14 @@ function renderCompact(now) {
     one.hidden = false;
     const sig = sigOf(project, now, 'one');
     if (sig !== oneSig || !one.firstChild) {
+      const first = !one.firstChild;
       oneSig = sig;
-      one.replaceChildren(h('div', { class: 'conebar' }, h('button', { type: 'button', class: 'back', data: { fk: 'back' }, text: '← Back to all' }), historyBox()),
+      // Rebuilt in place on live updates, keeping focus on the control that had it (data-fk).
+      const wrap = h('div', { class: 'onewrap' },
+        h('div', { class: 'conebar' }, h('button', { type: 'button', class: 'back', data: { fk: 'back' }, text: '← Back to all' }), historyBox()),
         panelFor(project, now, { compact: true }));
+      if (first) { one.replaceChildren(wrap); scrollTo(0, 0); $('.back', one)?.focus({ preventScroll: true }); }
+      else replaceKeepingFocus(one.firstElementChild, wrap);
     }
     return;
   }
@@ -510,13 +519,21 @@ function renderCompact(now) {
   one.replaceChildren();
   const { squares: sq, quiet } = compactSplit(projects);
   grid.hidden = false;
-  syncKeyed(grid, squares, sq.map((p) => ({ key: p.root, sig: JSON.stringify(p), build: () => squareFor(p, now) })));
+  syncKeyed(grid, squares, sq.map((p) => {
+    const key = projectKey(p, projects);
+    return { key: p.root, sig: `${key}|${JSON.stringify(p)}`, build: () => squareFor(p, now, key) };
+  }));
   empty.hidden = sq.length > 0;
   quietEl.hidden = quiet.length === 0;
-  quietEl.replaceChildren('Quiet: ', ...quiet.flatMap((p, i) => [i ? ' · ' : '', h('a', { href: `#${encodeURIComponent(p.name)}`, text: p.name })]));
+  const qs = JSON.stringify(quiet.map((p) => [p.name, projectKey(p, projects)]));
+  if (qs !== quietSig) { // rebuilt only when the list changes, so a focused link keeps its focus
+    quietSig = qs;
+    quietEl.replaceChildren('Quiet: ', ...quiet.flatMap((p, i) => [i ? ' · ' : '', h('a', { href: `#${encodeURIComponent(projectKey(p, projects))}`, text: p.name, title: p.root })]));
+  }
+  if (openedFrom) { $(`[data-fk="${CSS.escape(`sq|${openedFrom}`)}"]`)?.focus({ preventScroll: false }); openedFrom = null; }
 }
 
-const openSquare = (sq) => { location.hash = encodeURIComponent(sq.dataset.name); };
+const openSquare = (sq) => { openedFrom = sq.dataset.root; location.hash = encodeURIComponent(sq.dataset.key); };
 const closeOne = () => { history.pushState(null, '', location.pathname); render(); };
 
 function renderByUser() {
@@ -840,7 +857,7 @@ document.addEventListener('click', (e) => {
 });
 
 function goToTask(link) {
-  const node = $(`#v-projects .node[data-link="${CSS.escape(link)}"]`);
+  const node = $(`${COMPACT ? '#v-compact' : '#v-projects'} .node[data-link="${CSS.escape(link)}"]`);
   if (!node) return;
   for (let i = 0, list = node.closest('ul.tree[hidden]'); list && i < 4; i += 1, list = node.closest('ul.tree[hidden]')) {
     let top = list; // the outermost folded list: open from the outside in

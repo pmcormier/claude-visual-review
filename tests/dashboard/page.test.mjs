@@ -5,7 +5,7 @@ import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
   sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, formatSpend, spendLine, projectSpend, formatTokens,
   taskLiveness, leftOpenText, sessionLabel, projectOpen, STALE_AFTER_MS, sessionWhat, nowLines, themeLabel,
-  compactSplit, busiestSession, squareSteps, viewFromLocation,
+  compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -567,10 +567,29 @@ test('squareSteps: a checklist shows every step; a plan folds done work and show
 });
 
 test('viewFromLocation: /compact picks the compact view; an unknown project in the hash opens nothing', () => {
-  const ps = [{ name: 'anatomy to scale' }, { name: 'nimbus' }];
+  const ps = [{ name: 'my project' }, { name: 'nimbus' }];
   assert.deepEqual(viewFromLocation('/compact', '#nimbus', ps), { view: 'compact', project: ps[1] });
-  assert.deepEqual(viewFromLocation('/compact', '#anatomy%20to%20scale', ps), { view: 'compact', project: ps[0] });
+  assert.deepEqual(viewFromLocation('/compact', '#my%20project', ps), { view: 'compact', project: ps[0] });
   assert.deepEqual(viewFromLocation('/compact', '#gone-project', ps), { view: 'compact', project: null });
   assert.deepEqual(viewFromLocation('/compact', '#%E0%A4%A', ps), { view: 'compact', project: null });
   assert.deepEqual(viewFromLocation('/', '', ps), { view: 'full', project: null });
+});
+
+test('projectKey: the name when it is unique, else the root; viewFromLocation opens the right one of two same-named projects', () => {
+  const a = { name: 'app', root: 'work/a/app' };
+  const b = { name: 'app', root: 'clones/app' };
+  const c = { name: 'tools', root: 'work/tools' };
+  const ps = [a, b, c];
+  assert.equal(projectKey(c, ps), 'tools');
+  assert.equal(projectKey(b, ps), 'clones/app');
+  assert.equal(viewFromLocation('/compact', '#' + encodeURIComponent(projectKey(b, ps)), ps).project, b);
+  assert.equal(viewFromLocation('/compact', '#' + encodeURIComponent(projectKey(a, ps)), ps).project, a);
+  assert.equal(viewFromLocation('/compact', '#app', ps).project, null); // ambiguous: open nothing rather than the wrong one
+  assert.equal(viewFromLocation('/compact', '#tools', ps).project, c);
+});
+
+test('squareChip: a quiet project the dashboard could not read gets no state chip, never "Unknown"', () => {
+  assert.equal(squareChip({ state: 'quiet', error: 'Could not read this project' }), null);
+  assert.equal(squareChip({ state: 'working', error: null }), 'working');
+  assert.equal(squareChip({ state: 'gone' }), 'gone');
 });

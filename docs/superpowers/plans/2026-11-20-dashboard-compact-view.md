@@ -91,9 +91,9 @@ test('squareSteps: a checklist shows every step; a plan folds done work and show
 });
 
 test('viewFromLocation: /compact picks the compact view; an unknown project in the hash opens nothing', () => {
-  const ps = [{ name: 'anatomy to scale' }, { name: 'nimbus' }];
+  const ps = [{ name: 'my project' }, { name: 'nimbus' }];
   assert.deepEqual(viewFromLocation('/compact', '#nimbus', ps), { view: 'compact', project: ps[1] });
-  assert.deepEqual(viewFromLocation('/compact', '#anatomy%20to%20scale', ps), { view: 'compact', project: ps[0] });
+  assert.deepEqual(viewFromLocation('/compact', '#my%20project', ps), { view: 'compact', project: ps[0] });
   assert.deepEqual(viewFromLocation('/compact', '#gone-project', ps), { view: 'compact', project: null });
   assert.deepEqual(viewFromLocation('/compact', '#%E0%A4%A', ps), { view: 'compact', project: null });
   assert.deepEqual(viewFromLocation('/', '', ps), { view: 'full', project: null });

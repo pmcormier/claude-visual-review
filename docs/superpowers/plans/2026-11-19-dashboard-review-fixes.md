@@ -103,7 +103,7 @@ by it. Everything else is a wording or format change in `page/render.mjs` and `p
 - [ ] `pwsh -NoProfile -File tests/run.ps1`. Expected: 0 failed. `tools/check-personal.ps1` passes.
 - [ ] Commit `dashboard-review-fixes Task 3: docs`.
 - [ ] Install, restart the server, then check the page:
-  - the anatomy card shows the CI watch in words;
+  - a project card watching CI shows the watch in words;
   - tokens show three figures;
   - Settings steps no longer repeat one line;
   - the mode button reads `Auto (dark)` in a dark-scheme browser.
