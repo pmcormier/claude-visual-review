@@ -474,7 +474,7 @@ test('a shortened about line does not end in a stray full stop', () => {
 test('sessionWhat says what a tool is doing in Claude\'s own words', () => {
   const s = (tool) => ({ sessionId: 'x', state: 'working', pendingTool: { startedMs: NOW - MIN, ...tool } });
   assert.equal(sessionWhat(s({ name: 'Bash', command: 'sleep 20; gh run watch 1', description: "Watch the fix PR's CI run to the end" })).what,
-    "Running Watch the fix PR's CI run to the end");
+    "Watch the fix PR's CI run to the end");
   assert.equal(sessionWhat(s({ name: 'Bash', command: 'sleep 20; gh run watch 1', description: null })).what, 'Running a command');
   assert.equal(sessionWhat(s({ name: 'Read', command: 'docs/x.md', description: null })).what, 'Running Read');
 });

@@ -281,3 +281,11 @@ test('a pending tool keeps its description, trimmed; empty reads null', () => wi
   writeFileSync(h, lines(toolUse('c', 'Read', { file_path: 'x' })));
   assert.equal(scanTranscript(h, NOW).pendingTool.description, null);
 }));
+
+test('a long description is clipped at the source, so stall evidence stays short', () => withDir((d) => {
+  const f = join(d, 'long.jsonl');
+  writeFileSync(f, lines(toolUse('a', 'Bash', { command: 'x', description: 'w'.repeat(1000) })));
+  const desc = scanTranscript(f, NOW).pendingTool.description;
+  assert.equal(desc.length, 200);
+  assert.ok(desc.endsWith('…'));
+}));

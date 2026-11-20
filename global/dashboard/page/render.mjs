@@ -486,7 +486,8 @@ export function sessionWhat(s) {
   let what;
   if (s?.name && s.name !== s.title) what = s.name; // a name that only repeats the bold title says nothing
   else if (s?.state === 'waiting') what = 'Waiting for your answer';
-  else if (tool && tool.name !== 'Agent' && tool.name !== 'Task') what = `Running ${toolLabel}`;
+  // A description reads on its own ("Watch the CI run"); "Running" goes only before a bare noun.
+  else if (tool && tool.name !== 'Agent' && tool.name !== 'Task') what = tool.description ? toolLabel : `Running ${toolLabel}`;
   else if (tool) what = 'Waiting on a helper';
   else what = { working: 'Working', idle: 'Your turn', stuck: 'Gone quiet', gone: 'Process ended' }[s?.state] ?? 'Unknown';
   let line = null;
