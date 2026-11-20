@@ -4,7 +4,7 @@
 //
 // Routes (every request must carry Host 127.0.0.1:<port> or localhost:<port>, else 403, which also blocks
 // DNS-rebinding pages from reading the token or the model):
-//   GET /             page/index.html with <!--DASH_TOKEN--> replaced by <meta name="dash-token" content="…">
+//   GET / and /compact  page/index.html (the page picks its view from the path) with <!--DASH_TOKEN--> replaced by <meta name="dash-token" content="…">
 //   GET /app.js, /render.mjs, /app.css, /fonts/<name>.woff2   fixed allow-list under page/ (raw path match)
 //   GET /events       SSE: the full model on connect, then on change (at most once a second); a named `hb` event
 //                     (data: server time in ms) on connect and every 5 s, so the page knows the server is alive
@@ -245,7 +245,7 @@ function handle(req, res) {
       onEvents(req, res);
       return;
     }
-    if (path === '/' || path === '/index.html') {
+    if (path === '/' || path === '/index.html' || path === '/compact') { // /compact: the same page, compact view
       serveFile(res, 'index.html', 'text/html; charset=utf-8',
         (html) => html.replace('<!--DASH_TOKEN-->', `<meta name="dash-token" content="${token}">`));
       return;

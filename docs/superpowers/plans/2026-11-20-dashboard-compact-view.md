@@ -133,7 +133,7 @@ git commit -m "dashboard-compact-view Task 1: what goes in the compact view"
 **Interfaces:**
 - Produces: `GET /compact` returns the same HTML as `GET /`, token meta included.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```js
 test('/compact serves the page with its token, like /', async () => {
@@ -149,19 +149,19 @@ test('/compact serves the page with its token, like /', async () => {
 
 Use the file's existing helpers for starting a server and fetching (names as they are in the file).
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Run: `node --test tests/dashboard/server.test.mjs`
 Expected: FAIL, 404 for `/compact`.
 
-- [ ] **Step 3: Serve `index.html` for `path === '/compact'`** with the same token replacement as `/`.
+- [x] **Step 3: Serve `index.html` for `path === '/compact'`** with the same token replacement as `/`.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 Run: `node --test tests/dashboard/`
 Expected: PASS, 0 fail.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add global/dashboard/server.mjs tests/dashboard/server.test.mjs

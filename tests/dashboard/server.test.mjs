@@ -231,3 +231,15 @@ test('auto-stop with a fractional autoStop ends the server with no live session'
     rmSync(home.base, { recursive: true, force: true });
   }
 });
+
+test('/compact serves the page with its token, like /', async () => {
+  await withServer(async (home) => {
+    const a = await http(home.port);
+    const b = await http(home.port, { path: '/compact' });
+    assert.equal(b.status, 200);
+    assert.match(b.headers['content-type'], /text\/html/);
+    assert.ok(tokenOf(b.body));
+    assert.equal(tokenOf(b.body), tokenOf(a.body));
+    assert.equal((await http(home.port, { path: '/compact/x' })).status, 404);
+  });
+});
