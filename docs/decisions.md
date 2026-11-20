@@ -497,3 +497,16 @@ work, and its old "waiting" steps still crowded Waiting on you. Now a live sessi
 epic counts as gone for that older epic's tasks: its waits read "left open" after a day, and work it began there
 shows under Started, not current (a work-log epic superseded by a new `start` keeps its begun steps as `leftOpen`).
 A wait inside the epic the session is working on is still a real wait.
+
+Review round (owner's review of the page, same day; spec `docs/superpowers/specs/2026-11-19-dashboard-review-fixes-design.md`):
+- The group is now **Started, not active**.
+- An Inbox step without its own line says "No description yet". The thread's subject moved to the epic's hover,
+  because falling back to it made every step in a checklist show the same text.
+- Commands are named by Claude's own description of the call (Claude Code's tools carry one: 1,025 of 1,131 shell
+  calls in one session). The raw command moved to the session's hover. This applies to the card, the live line and
+  stall evidence (decision 31's wording).
+- Tokens show three significant figures (`1.04B`, not `1B`).
+- The light/dark button names what Auto follows: "Auto (dark)".
+- A quiet background job still reads "Looks stuck", which is the owner's choice. Its evidence now says it is
+  still running and may be waiting on something outside, such as a CI run. The builder recommended that a
+  background job never mark a session stuck, since it doesn't block the session; not built.
