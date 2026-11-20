@@ -347,6 +347,28 @@ export function viewFromLocation(pathname, hash, projects) {
   return { view, project };
 }
 
+const planKey = (f) => (typeof f === 'string' && f ? f.replace(/\\/g, '/').toLowerCase() : null);
+
+/**
+ * A square's "Next:" task: the first unfinished task of the first Next epic that is not the plan the running or
+ * waiting work belongs to (a work-log entry started with --plan names it). Null when there is none.
+ */
+export function squareNext(groups) {
+  const busy = new Set([...arr(groups?.running), ...arr(groups?.waiting)].map((e) => planKey(e?.file)).filter(Boolean));
+  for (const e of arr(groups?.next)) {
+    if (busy.has(planKey(e?.file))) continue;
+    const t = arr(e?.tasks).find((x) => x?.status !== 'done');
+    if (t) return t;
+  }
+  return null;
+}
+
+/** What a screen reader hears for a square: the project, its state (or its read error) and its task. */
+export function squareLabel(p, taskTitle) {
+  const state = p?.state === 'quiet' ? p?.error : STATE_LABEL[p?.state] ?? p?.error;
+  return `${[p?.name, state, taskTitle].filter(Boolean).join(', ')}. Open the full card.`;
+}
+
 /** The state a square's chip shows; none for a quiet project that is only there because it could not be read. */
 export const squareChip = (p) => (p?.state === 'quiet' ? null : p?.state ?? null);
 

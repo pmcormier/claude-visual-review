@@ -5,7 +5,7 @@ import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
   sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, formatSpend, spendLine, projectSpend, formatTokens,
   taskLiveness, leftOpenText, sessionLabel, projectOpen, STALE_AFTER_MS, sessionWhat, nowLines, themeLabel,
-  compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip,
+  compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip, squareNext, squareLabel,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -592,4 +592,24 @@ test('squareChip: a quiet project the dashboard could not read gets no state chi
   assert.equal(squareChip({ state: 'quiet', error: 'Could not read this project' }), null);
   assert.equal(squareChip({ state: 'working', error: null }), 'working');
   assert.equal(squareChip({ state: 'gone' }), 'gone');
+});
+
+test('squareNext: the first unfinished task in Next, skipping the plan the running work belongs to', () => {
+  const t = (id, title, status = 'next') => ({ id, title, status });
+  const running = [{ id: 'wl-1', source: 'worklog', file: 'docs/plans/view.md', tasks: [t('a', 'Build', 'doing')] }];
+  const next = [
+    { id: 'p-1', source: 'plan', file: 'docs\\Plans\\view.md', tasks: [t('1', 'Task 1', 'done'), t('2', 'Task 2')] },
+    { id: 'p-2', source: 'plan', file: 'docs/plans/other.md', tasks: [t('3', 'Other task')] },
+  ];
+  assert.equal(squareNext({ running, waiting: [], next }).title, 'Other task');
+  assert.equal(squareNext({ running: [], waiting: [], next }).title, 'Task 2');
+  assert.equal(squareNext({ running, waiting: [], next: [next[0]] }), null);
+  assert.equal(squareNext({}), null);
+});
+
+test('squareLabel: what a screen reader hears names the project, its state and its task', () => {
+  assert.equal(squareLabel({ name: 'tools', state: 'waiting' }, 'Compact card view'),
+    'tools, Waiting on you, Compact card view. Open the full card.');
+  assert.equal(squareLabel({ name: 'tools', state: 'quiet', error: 'Could not read this project' }, null),
+    'tools, Could not read this project. Open the full card.');
 });

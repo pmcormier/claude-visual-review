@@ -8,7 +8,7 @@ import {
   effortLeft, liveIds, usageView, detailText, sessionWhat, nowLines, watchedNote, watchedAgo, watchedHover, triage, epicDone, epicLastActivity, sizeSummary,
   filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, spendLine, projectSpend,
   taskLiveness, leftOpenText, sessionLabel, projectOpen, themeLabel,
-  compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip,
+  compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip, squareNext, squareLabel,
 } from '/render.mjs';
 
 const MIN = 60000;
@@ -439,6 +439,7 @@ function sync(container, cache, list, build, now, kind) {
 
 const squares = new Map(); // root -> {sig, el}
 const lastSquareState = new Map(); // root -> state at the last build, for the brief "changed" highlight
+const changedUntil = new Map(); // root -> when its highlight ends, so a rebuild keeps it for the full 4 s
 let oneSig = null;
 let quietSig = null;
 let openedFrom = null; // the root whose square opened the card, to give focus back on "Back to all"
@@ -465,16 +466,17 @@ function squareFor(p, now, key) {
       arr(s.pendingTools).map((t) => (watchedNote(t, now) ? h('div', { class: 'muted', title: watchedHover(t), data: { watched: t.watch.lastGrowthAt }, text: watchedNote(t, now) }) : null)),
       arr(s.subagents).filter((a) => a.state === 'stuck').map((a) => h('div', { class: 'evidence', text: `Subagent: ${a.evidence || 'looks stuck'}` }))));
   }
-  const g = groupsOf(p, now, byId);
-  const nextTask = arr(g.next?.[0]?.tasks).find((t) => t.status !== 'done');
+  const nextTask = squareNext(groupsOf(p, now, byId));
   const cls = STATE_CLASS[p.state] ?? 'idle';
-  const changed = lastSquareState.has(p.root) && lastSquareState.get(p.root) !== p.state;
+  if (lastSquareState.has(p.root) && lastSquareState.get(p.root) !== p.state) changedUntil.set(p.root, Date.now() + 4000);
   lastSquareState.set(p.root, p.state);
-  const el = h('article', { class: `square s-${cls}${changed ? ' changed' : ''}`, tabindex: '0', role: 'button', 'aria-label': `${p.name}: open the full card`, data: { key, root: p.root, fk: `sq|${p.root}`, state: filterToken(p.state) } },
+  const left = (changedUntil.get(p.root) ?? 0) - Date.now();
+  const changed = left > 0;
+  const el = h('article', { class: `square s-${cls}${changed ? ' changed' : ''}`, tabindex: '0', role: 'button', 'aria-label': squareLabel(p, arr(p.sessions).map((s) => currentTask(s)?.title).find(Boolean) ?? null), data: { key, root: p.root, fk: `sq|${p.root}`, state: filterToken(p.state) } },
     h('div', { class: 'sqhead' }, h('h2', { text: p.name, title: p.root }), squareChip(p) ? chip(squareChip(p)) : null, busy ? life(busy.life) : null),
     h('div', { class: 'sqbody' }, body.length ? body : h('div', { class: 'muted', text: 'No live session' })),
     nextTask ? h('div', { class: 'sqnext', text: `Next: ${nextTask.title || 'Untitled task'}`, title: nextTask.title || '' }) : null);
-  if (changed) setTimeout(() => el.classList.remove('changed'), 4000);
+  if (changed) setTimeout(() => el.classList.remove('changed'), left);
   return el;
 }
 
@@ -521,20 +523,26 @@ function renderCompact(now) {
   grid.hidden = false;
   syncKeyed(grid, squares, sq.map((p) => {
     const key = projectKey(p, projects);
-    return { key: p.root, sig: `${key}|${JSON.stringify(p)}`, build: () => squareFor(p, now, key) };
+    return { key: p.root, sig: `${key}|${Math.floor(now / HOUR)}|${JSON.stringify(p)}`, build: () => squareFor(p, now, key) };
   }));
   empty.hidden = sq.length > 0;
   quietEl.hidden = quiet.length === 0;
   const qs = JSON.stringify(quiet.map((p) => [p.name, projectKey(p, projects)]));
   if (qs !== quietSig) { // rebuilt only when the list changes, so a focused link keeps its focus
     quietSig = qs;
-    quietEl.replaceChildren('Quiet: ', ...quiet.flatMap((p, i) => [i ? ' · ' : '', h('a', { href: `#${encodeURIComponent(projectKey(p, projects))}`, text: p.name, title: p.root })]));
+    quietEl.replaceChildren('Quiet: ', ...quiet.flatMap((p, i) => [i ? ' · ' : '', h('a', { href: `#${encodeURIComponent(projectKey(p, projects))}`, text: p.name, title: p.root, data: { key: projectKey(p, projects), root: p.root } })]));
   }
   if (openedFrom) { $(`[data-fk="${CSS.escape(`sq|${openedFrom}`)}"]`)?.focus({ preventScroll: false }); openedFrom = null; }
 }
 
-const openSquare = (sq) => { openedFrom = sq.dataset.root; location.hash = encodeURIComponent(sq.dataset.key); };
-const closeOne = () => { history.pushState(null, '', location.pathname); render(); };
+// Opening pushes one history entry; "Back to all" and Escape step back over it, so the browser's Back button
+// never reopens a card that was just closed. A card opened from a typed or bookmarked address closes in place.
+const openKey = (key, root) => { openedFrom = root; history.pushState({ compactOpen: true }, '', `#${encodeURIComponent(key)}`); render(); };
+const openSquare = (sq) => openKey(sq.dataset.key, sq.dataset.root);
+const closeOne = () => {
+  if (history.state?.compactOpen) history.back(); // popstate re-renders
+  else { history.replaceState(null, '', location.pathname); render(); }
+};
 
 function renderByUser() {
   userRender = true;
@@ -815,6 +823,8 @@ document.addEventListener('click', (e) => {
   }
   const sq = e.target.closest?.('.square');
   if (sq && !e.target.closest('a, button, input')) { openSquare(sq); return; }
+  const ql = e.target.closest?.('.cquiet a');
+  if (ql && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) { e.preventDefault(); openKey(ql.dataset.key, ql.dataset.root); return; }
   const t = e.target.closest?.('.tw');
   if (t) {
     const key = t.dataset.fk;
