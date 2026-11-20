@@ -510,3 +510,27 @@ Review round (owner's review of the page, same day; spec `docs/superpowers/specs
 - A quiet background job still reads "Looks stuck", which is the owner's choice. Its evidence now says it is
   still running and may be waiting on something outside, such as a CI run. The builder recommended that a
   background job never mark a session stuck, since it doesn't block the session; not built.
+
+## 36. "Waiting on you" means any time Claude asks the owner; one row per Inbox thread (2026-11-19)
+The owner, reviewing the page while this session was asking him questions in the Inbox: the session read "Idle".
+"It's not just open inbox. It is anytime claude needs me. In the terminal too." Until now only Claude Code's own
+`waiting` status counted, and that covers permission prompts only.
+
+Chosen (spec `docs/superpowers/specs/2026-11-19-dashboard-needs-you-design.md`). A session reads Waiting on you
+when any of these holds:
+- **A terminal prompt:** Claude Code's status is `waiting`, as before.
+- **A question in the terminal:** an `AskUserQuestion` call is pending, or the session is idle and its last
+  message ends in a question mark with nothing after it.
+- **An open Inbox question it asked:** read from Plannotator's `questions.jsonl`. Open means no answer, not
+  withdrawn, not an action already done, and the thread not resolved.
+
+The line under the session shows the question ("Inbox: …" or "Asked: …"). "Since" is when it was asked, so
+Triage's escalation works unchanged. Stuck and gone still come first. A session that is busy working while an Inbox
+question waits stays Working, and its hint names the question; Waiting on you is kept for sessions that have
+stopped for the owner. Considered: relying on agents marking a step `waiting`. The rule asks for it, but this
+session forgot, so it stays a backup signal.
+
+Also:
+- An Inbox thread shows as one row: the newest checklist wins, whichever session wrote it. Threads that share a
+  name show the day they started ("· Nov 14"). Before, three identical rows appeared for two threads.
+- The epic popup no longer shows the thread's subject. Agents write subjects as status notes, so it read as jargon.
