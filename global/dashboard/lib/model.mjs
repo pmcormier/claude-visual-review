@@ -227,7 +227,7 @@ function pruneSubagentCache(now) {
   for (const [k, v] of subagentCache) if (now - v.checkedAt > 10 * 60000 || v.checkedAt > now) subagentCache.delete(k);
 }
 
-const toolView = (t) => (t ? { name: t.name, command: clip(t.command), startedMs: t.startedMs ?? null, background: !!t.outputFile } : null);
+const toolView = (t) => (t ? { name: t.name, command: clip(t.command), description: clip(t.description ?? null), startedMs: t.startedMs ?? null, background: !!t.outputFile } : null);
 const idleOf = (t, now) => (t?.outputFile ? outputGrowth(t.outputFile, now).idleMs : null);
 const RANK = { stuck: 0, waiting: 1, working: 2 };
 const rankOf = (state) => RANK[state] ?? 3;

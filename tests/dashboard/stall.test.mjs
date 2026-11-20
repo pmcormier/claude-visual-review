@@ -196,3 +196,16 @@ test("status 'unknown': working while the transcript moves, idle once it is quie
   assert.equal(classify(inp({ status: 'unknown', signals: sig({ lastWriteMs: ago(3) }) }), T).state, 'working');
   assert.equal(classify(inp({ status: 'unknown', signals: sig({ lastWriteMs: ago(30) }) }), T).state, 'idle');
 });
+
+// Review fixes (2026-11-19): a tool is named by Claude's own description of it.
+test('stuck and gone evidence name the tool by its description', () => {
+  const desc = "Watch the fix PR's CI run to the end";
+  const fg = classify(inp({ signals: sig({ lastWriteMs: ago(31), pendingTool: tool(52, { description: desc }) }), cpuPct: 0 }), T);
+  assert.equal(fg.evidence, `"${desc}" running 52 min · 0% CPU · no output for 31 min`);
+  const t = tool(300, { command: 'sleep 20; gh run watch 1', outputFile: 'bg-out.txt', description: desc });
+  const bg = classify(inp({ cpuPct: null, outputIdleMs: 40 * MIN, signals: sig({ lastWriteMs: ago(100), pendingTool: t }) }), T);
+  assert.equal(bg.state, 'stuck');
+  assert.equal(bg.evidence, `Background job quiet for 40 min, still running: ${desc}. It may be waiting on something outside, such as a CI run or a download.`);
+  const gone = classify(inp({ alive: false, signals: sig({ pendingTool: tool(3, { description: desc }) }) }), T);
+  assert.equal(gone.evidence, `"${desc}" was still running when the process ended`);
+});

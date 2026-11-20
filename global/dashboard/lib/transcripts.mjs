@@ -122,8 +122,10 @@ function toolUse(st, b, ms, hasMs) {
   const name = typeof b.name === 'string' ? b.name : 'unknown';
   const file = typeof input.file_path === 'string' ? input.file_path : null;
   const command = typeof input.command === 'string' ? input.command : file;
+  // Claude's own plain-English line for the call (Bash and others carry one); empty reads as none.
+  const description = typeof input.description === 'string' && input.description.trim() ? input.description.trim() : null;
   const stops = STOP_TOOLS.has(name) ? [input.task_id, input.shell_id, input.bash_id].find((v) => typeof v === 'string') ?? null : null;
-  if (typeof b.id === 'string') st.pending.set(b.id, { name, command, startedMs: hasMs ? ms : null, outputFile: null, bg: input.run_in_background === true, jobId: null, stops });
+  if (typeof b.id === 'string') st.pending.set(b.id, { name, command, description, startedMs: hasMs ? ms : null, outputFile: null, bg: input.run_in_background === true, jobId: null, stops });
   if (hasMs) {
     if (name === 'Bash' && typeof input.command === 'string') {
       st.events.push({ key: 'B\0' + input.command, command: input.command, ms });

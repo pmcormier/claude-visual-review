@@ -269,3 +269,15 @@ test('title falls back to the newest ai title, and is null without one', () => w
   writeFileSync(g, lines({ type: 'user', timestamp: iso(1), message: { content: 'hi' } }));
   assert.equal(scanTranscript(g, NOW).title, null);
 }));
+
+test('a pending tool keeps its description, trimmed; empty reads null', () => withDir((d) => {
+  const f = join(d, 't.jsonl');
+  writeFileSync(f, lines(toolUse('a', 'Bash', { command: 'gh run watch 1', description: ' Watch CI ' })));
+  assert.equal(scanTranscript(f, NOW).pendingTool.description, 'Watch CI');
+  const g = join(d, 'u.jsonl');
+  writeFileSync(g, lines(toolUse('b', 'Bash', { command: 'ls', description: '  ' })));
+  assert.equal(scanTranscript(g, NOW).pendingTool.description, null);
+  const h = join(d, 'v.jsonl');
+  writeFileSync(h, lines(toolUse('c', 'Read', { file_path: 'x' })));
+  assert.equal(scanTranscript(h, NOW).pendingTool.description, null);
+}));

@@ -35,12 +35,16 @@
 //    session's leftover background job is not a stall).
 //  - Subagent "parent not waiting on it actively" is not visible here; the model layer handles it.
 //  - Loop hint rides on any non-gone, non-idle result and never changes the state.
+//  - A tool is named by Claude's own description of the call when it has one (quoted), else by the command's first
+//    word. A background job's stuck evidence says it is still running and may be waiting on something outside
+//    (owner's review 2026-11-19: the verdict stays, the words are gentler).
 
 const MIN = 60000;
 const mins = (ms) => Math.max(0, Math.floor(ms / MIN));
 const cpuLow = (cpu) => cpu == null || cpu < 0.5; // same rule as Math.round(cpu) === 0
 
 function label(tool) {
+  if (typeof tool.description === 'string' && tool.description.trim()) return `"${tool.description.trim()}"`;
   const first = typeof tool.command === 'string' ? tool.command.trim().split(/\s+/)[0] : '';
   return first || tool.name;
 }
@@ -94,8 +98,11 @@ export function classify(input, thresholds) {
         // A session still writing its transcript is never stuck on a tool (R27); lastWriteMs null: never judged.
         const transcriptQuiet = signals.lastWriteMs != null && quietMs >= th.hungTool * MIN;
         if (old && noOutput && noLife && transcriptQuiet) {
+          const described = typeof tool.description === 'string' && tool.description.trim();
           return result('stuck',
-            `${label(tool)} running ${mins(ageMs)} min · ${cpuText} · no output for ${mins(idleMs)} min`,
+            background && described
+              ? `Background job quiet for ${mins(idleMs)} min, still running: ${tool.description.trim()}. It may be waiting on something outside, such as a CI run or a download.`
+              : `${label(tool)} running ${mins(ageMs)} min · ${cpuText} · no output for ${mins(idleMs)} min`,
             background ? now - idleMs : tool.startedMs, hint);
         }
       }
