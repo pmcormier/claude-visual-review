@@ -178,12 +178,12 @@ test('inbox latest checklist per thread wins', async () => {
   const { readInbox } = await mod('inbox.mjs');
   const epics = readInbox(root);
   assert.equal(epics.length, 3); // t4 has only hidden steps and is skipped
-  assert.equal(epics.find((e) => e.id === 'inbox:t3:sess-c').title, 'The root subject');
-  const t1 = epics.find((e) => e.id === 'inbox:t1:sess-a');
+  assert.equal(epics.find((e) => e.id === 'inbox:t3').title, 'The root subject');
+  const t1 = epics.find((e) => e.id === 'inbox:t1');
   assert.equal(t1.source, 'inbox');
   assert.equal(t1.title, 'Ship checkout');
   assert.deepEqual(t1.tasks.map((t) => [t.title, t.status, t.sessionId]), [['Write', 'done', 'sess-a'], ['Test', 'waiting', 'sess-a']]);
-  assert.equal(epics.find((e) => e.id === 'inbox:t2:sess-b').title, 'Named thread');
+  assert.equal(epics.find((e) => e.id === 'inbox:t2').title, 'Named thread');
 });
 
 test('inbox dropped steps hidden', async () => {
@@ -383,11 +383,11 @@ test('inbox step keeps its at as changedMs, and the epic carries the thread subj
   ].join('\n') + '\n');
   const { readInbox } = await mod('inbox.mjs');
   const epics = readInbox(root);
-  const t1 = epics.find((e) => e.id === 'inbox:t1:sess-a');
+  const t1 = epics.find((e) => e.id === 'inbox:t1');
   assert.equal(t1.title, 'Short name');
   assert.equal(t1.subject, 'The root subject');
   assert.equal(t1.tasks[0].changedMs, Date.parse('2026-11-17T08:00:00Z'));
-  const t2 = epics.find((e) => e.id === 'inbox:t2:sess-a');
+  const t2 = epics.find((e) => e.id === 'inbox:t2');
   assert.equal(t2.subject, 'Only one');
   assert.equal(t2.tasks[0].changedMs, null);
 });
@@ -422,4 +422,28 @@ test('readOpenQuestions: only unanswered, not withdrawn, not done, in an open th
   const open = readOpenQuestions();
   assert.deepEqual([...open.keys()], ['sess-1']);
   assert.deepEqual(open.get('sess-1'), { prompt: 'P e', askedMs: Date.parse('2026-11-19T10:04:00Z') });
+});
+
+test('one Inbox row per thread: the newest checklist wins; same-named threads get their start date', async () => {
+  const { plan, root } = setup();
+  const dir = inboxProject(plan, root);
+  writeFileSync(join(dir, 'messages.jsonl'), [
+    env(1, 1, 'a', 'message', 't1', { id: 't1', thread_id: 't1', subject: 's', thread_name: 'Build status', created_at: '2026-11-14T10:00:00Z' }),
+    env(1, 2, 'a', 'message', 't2', { id: 't2', thread_id: 't2', subject: 's', thread_name: 'Build status', created_at: '2026-11-17T10:00:00Z' }),
+    env(1, 3, 'a', 'message', 't3', { id: 't3', thread_id: 't3', subject: 'Unique', thread_name: null, created_at: '2026-11-17T10:00:00Z' }),
+  ].join('\n') + '\n');
+  writeFileSync(join(dir, 'steps.jsonl'), [
+    env(1, 1, 'a', 'steps', 's1', rec('s1', 't1', 'old-sess', [st('Old step', 'waiting')])),
+    env(1, 2, 'a', 'steps', 's2', rec('s2', 't1', 'new-sess', [st('New step', 'doing')])),
+    env(1, 3, 'a', 'steps', 's3', rec('s3', 't2', 'new-sess', [st('Other', 'todo')])),
+    env(1, 4, 'a', 'steps', 's4', rec('s4', 't3', 'new-sess', [st('Solo', 'todo')])),
+  ].join('\n') + '\n');
+  const { readInbox } = await mod('inbox.mjs');
+  const epics = readInbox(root);
+  assert.equal(epics.length, 3);
+  const t1 = epics.find((e) => e.id === 'inbox:t1');
+  assert.deepEqual(t1.tasks.map((t) => [t.title, t.sessionId]), [['New step', 'new-sess']]);
+  assert.equal(t1.title, 'Build status \u00b7 Nov 14');
+  assert.equal(epics.find((e) => e.id === 'inbox:t2').title, 'Build status \u00b7 Nov 17');
+  assert.equal(epics.find((e) => e.id === 'inbox:t3').title, 'Unique');
 });

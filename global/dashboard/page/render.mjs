@@ -427,8 +427,7 @@ function epicText({ epic }) {
   const tasks = arr(epic?.tasks);
   const done = tasks.filter((t) => t?.status === 'done').length;
   const spent = num(epic?.spentMin) && epic.spentMin > 0 ? `, ${formatDuration(epic.spentMin * MIN)} spent` : '';
-  const subject = typeof epic?.subject === 'string' && epic.subject.trim() ? `${sentence(epic.subject)} ` : '';
-  return `${subject}${done} of ${tasks.length} tasks done${spent}.`;
+  return `${done} of ${tasks.length} tasks done${spent}.`;
 }
 
 const PROJECT_PHRASE = {

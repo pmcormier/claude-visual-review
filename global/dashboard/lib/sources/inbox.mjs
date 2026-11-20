@@ -47,12 +47,15 @@ function projectDirs(root) {
 
 function titles(dir) {
   const named = new Map(); // thread -> thread_name
+  const started = new Map(); // thread -> first message time
   const first = new Map(); // thread -> first message subject
   const root = new Map(); // thread -> subject of the message whose id is the thread id
   for (const e of readJsonl(join(dir, 'messages.jsonl')).records) {
     const m = e?.record;
     if (!m || typeof m !== 'object' || typeof m.thread_id !== 'string') continue;
     if (typeof m.thread_name === 'string' && m.thread_name.trim()) named.set(m.thread_id, m.thread_name.trim());
+    const at = ms(m.created_at) ?? ms(e.at);
+    if (at !== null && !(started.get(m.thread_id) <= at)) started.set(m.thread_id, at);
     if (typeof m.subject !== 'string' || !m.subject.trim()) continue;
     if (!first.has(m.thread_id)) first.set(m.thread_id, m.subject.trim());
     if (m.id === m.thread_id) root.set(m.thread_id, m.subject.trim());
@@ -61,6 +64,7 @@ function titles(dir) {
     titleOf: (thread) => named.get(thread) ?? root.get(thread) ?? first.get(thread) ?? 'Checklist',
     // The thread's subject, a fuller line than its name: an Inbox step's about line when no mirror has one.
     subjectOf: (thread) => root.get(thread) ?? first.get(thread) ?? null,
+    startedOf: (thread) => started.get(thread) ?? null,
   };
 }
 
@@ -123,23 +127,23 @@ export function readInbox(root) {
   const epics = [];
   try {
     for (const dir of projectDirs(root)) {
-      const latest = new Map(); // thread \u0000 session -> envelope
+      const latest = new Map(); // thread -> envelope: one checklist per thread, the newest whichever session wrote it
       for (const e of readJsonl(join(dir, 'steps.jsonl')).records) {
         const r = e?.record;
         if (!r || typeof r !== 'object' || typeof r.thread_id !== 'string' || !Array.isArray(r.steps)) continue;
         const session = typeof r.agent?.session === 'string' && r.agent.session ? r.agent.session : null;
-        const key = `${r.thread_id}\u0000${session ?? ''}`;
+        const key = r.thread_id;
         const prev = latest.get(key);
         // Later in the file wins unless both carry a seq and this one is older.
         if (prev && seqOf(prev) !== null && seqOf(e) !== null && seqOf(e) < seqOf(prev)) continue;
         latest.set(key, e);
       }
       if (!latest.size) continue;
-      const { titleOf, subjectOf } = titles(dir);
+      const { titleOf, subjectOf, startedOf } = titles(dir);
       for (const e of latest.values()) {
         const r = e.record;
         const session = typeof r.agent?.session === 'string' && r.agent.session ? r.agent.session : null;
-        const id = `inbox:${r.thread_id}:${session ?? ''}`;
+        const id = `inbox:${r.thread_id}`;
         const tasks = [];
         r.steps.forEach((s, i) => {
           if (!s || typeof s !== 'object' || s.status === 'dropped') return;
@@ -154,9 +158,18 @@ export function readInbox(root) {
           });
         });
         if (!tasks.length) continue;
-        epics.push({ id, source: 'inbox', title: titleOf(r.thread_id), subject: subjectOf(r.thread_id), file: null, tasks });
+        epics.push({ id, source: 'inbox', title: titleOf(r.thread_id), subject: subjectOf(r.thread_id), file: null, tasks, _started: startedOf(r.thread_id) });
       }
     }
   } catch { /* return what was built */ }
+  // Threads that share a name are told apart by the day they started ("Build status · Nov 14").
+  const count = new Map();
+  for (const e of epics) count.set(e.title, (count.get(e.title) ?? 0) + 1);
+  for (const e of epics) {
+    if (count.get(e.title) > 1 && e._started !== null) {
+      e.title = `${e.title} · ${new Date(e._started).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+    }
+    delete e._started;
+  }
   return epics;
 }

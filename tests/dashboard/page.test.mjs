@@ -497,8 +497,8 @@ test('themeLabel names what Auto follows', () => {
   assert.equal(themeLabel('Dark', false), 'Dark');
 });
 
-test('the epic hover starts with the thread subject, and the group is Started, not active', () => {
-  const e = { title: 'T', subject: 'Settings: what follows you', spentMin: 0, tasks: [{ status: 'done' }, { status: 'next' }] };
-  assert.equal(detailText({ kind: 'epic', epic: e }), 'Settings: what follows you. 1 of 2 tasks done.');
+test('the epic hover leaves out the thread subject, and the group is Started, not active', () => {
+  const e = { title: 'T', subject: 'Settings: plan ready (#79), 2 questions + approval', spentMin: 0, tasks: [{ status: 'done' }, { status: 'next' }] };
+  assert.equal(detailText({ kind: 'epic', epic: e }), '1 of 2 tasks done.');
   assert.equal(GROUPS.find((g) => g.id === 'started').label, 'Started, not active');
 });
