@@ -502,3 +502,13 @@ test('the epic hover leaves out the thread subject, and the group is Started, no
   assert.equal(detailText({ kind: 'epic', epic: e }), '1 of 2 tasks done.');
   assert.equal(GROUPS.find((g) => g.id === 'started').label, 'Started, not active');
 });
+
+test('watchedNote: a watched job says when it last printed', async () => {
+  const { watchedNote, watchedHover } = await import('../../global/dashboard/page/render.mjs');
+  const now = Date.parse('2026-11-20T10:00:00Z');
+  assert.equal(watchedNote({ watch: { lastGrowthAt: now - 2 * 60000, quietMin: 15 } }, now), 'Watched · last output 2 min ago');
+  assert.equal(watchedNote({ watch: { lastGrowthAt: now - 20000, quietMin: 15 } }, now), 'Watched · last output just now');
+  assert.equal(watchedNote({ watch: null }, now), '');
+  assert.equal(watchedNote(null, now), '');
+  assert.equal(watchedHover({ watch: { lastGrowthAt: now, quietMin: 15 } }), 'The session is watching this job and will check on it after 15 minutes of silence.');
+});

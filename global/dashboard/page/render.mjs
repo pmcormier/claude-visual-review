@@ -496,6 +496,16 @@ export function sessionWhat(s) {
   return { what, line };
 }
 
+/** A watched background job's note (decision 37): when it last printed. Empty when nothing watches it. */
+export function watchedNote(tool, now) {
+  const w = tool?.watch;
+  if (!w || !num(w.lastGrowthAt)) return '';
+  const m = Math.floor((now - w.lastGrowthAt) / 60000);
+  return `Watched · last output ${m < 1 ? 'just now' : `${m} min ago`}`;
+}
+
+export const watchedHover = (tool) => `The session is watching this job and will check on it after ${tool?.watch?.quietMin ?? 15} minutes of silence.`;
+
 /** The "now" line under a task a session is on: what that session is doing this minute. */
 export function nowLine(s) {
   if (!s) return '';

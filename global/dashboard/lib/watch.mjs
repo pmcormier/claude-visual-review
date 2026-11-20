@@ -138,6 +138,15 @@ export function pruneMarkers(now = Date.now()) {
   }
 }
 
+const norm = (p) => String(p).replace(/\\/g, '/').toLowerCase();
+
+/** The live watcher on a job's output file: {lastGrowthAt, quietMin}, or null. Paths compare without case or slash style. */
+export function watchFor(outputFile, markers, now) {
+  if (!outputFile) return null;
+  const m = markers.find((x) => isLive(x, now) && norm(x.file) === norm(outputFile));
+  return m ? { lastGrowthAt: m.lastGrowthAt, quietMin: m.quietMin } : null;
+}
+
 /** The session a job belongs to: CLAUDE_CODE_SESSION_ID, else the folder before `tasks` in its output path. */
 export function sessionOf(file, env = process.env) {
   if (env.CLAUDE_CODE_SESSION_ID) return env.CLAUDE_CODE_SESSION_ID;

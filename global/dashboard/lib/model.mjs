@@ -43,6 +43,7 @@ import { readSessions, projectRoot } from './sessions.mjs';
 import { scanTranscript } from './transcripts.mjs';
 import { readSubagents } from './subagents.mjs';
 import { outputGrowth } from './procs.mjs';
+import { readMarkers, watchFor } from './watch.mjs';
 import { classify, askedOwner } from './stall.mjs';
 import { readWorklog } from './worklog.mjs';
 import { readPlans } from './sources/plans.mjs';
@@ -236,7 +237,12 @@ function pruneSubagentCache(now) {
   for (const [k, v] of subagentCache) if (now - v.checkedAt > 10 * 60000 || v.checkedAt > now) subagentCache.delete(k);
 }
 
-const toolView = (t) => (t ? { name: t.name, command: clip(t.command), description: clip(t.description ?? null), startedMs: t.startedMs ?? null, background: !!t.outputFile } : null);
+let buildMarkers = [];
+// watch: the live heartbeat watcher on this job, if any (decision 37).
+const toolView = (t, markers = [], now = Date.now()) => (t ? {
+  name: t.name, command: clip(t.command), description: clip(t.description ?? null), startedMs: t.startedMs ?? null,
+  background: !!t.outputFile, watch: watchFor(t.outputFile, markers, now),
+} : null);
 const idleOf = (t, now) => (t?.outputFile ? outputGrowth(t.outputFile, now).idleMs : null);
 const RANK = { stuck: 0, waiting: 1, working: 2 };
 const rankOf = (state) => RANK[state] ?? 3;
@@ -265,7 +271,7 @@ function subagentView(a, parent, now, th, sampler) {
   }
   return {
     agentId: a.agentId, description: a.description, model: a.model, effort: a.effort, finished: a.finished,
-    lastWriteMs: a.lastWriteMs, life: a.minutes, tokens: a.signals.tokens, pendingTool: toolView(a.signals.pendingTool),
+    lastWriteMs: a.lastWriteMs, life: a.minutes, tokens: a.signals.tokens, pendingTool: toolView(a.signals.pendingTool, buildMarkers, now),
     state: v.state, evidence: v.evidence, hint: v.hint, since: v.since,
   };
 }
@@ -292,7 +298,7 @@ function sessionView(s, now, th, sampler, openQuestions) {
     sessionId: s.sessionId, pid: s.pid, name: s.name, title: signals.title ?? null, cwd: s.cwd, status: s.status, alive,
     state: v.state, evidence: v.evidence, hint: v.hint, since: v.since,
     cpuPct, lastWriteMs: signals.lastWriteMs, life: signals.minutes, tokens: signals.tokens,
-    pendingTool: toolView(tool), linkedTask: null,
+    pendingTool: toolView(tool, buildMarkers, now), linkedTask: null,
     subagents: [...active, ...rest.slice(0, KEEP_DONE_SUBAGENTS)],
     subagentsHidden: Math.max(0, rest.length - KEEP_DONE_SUBAGENTS),
     _signals: signals,
@@ -401,6 +407,7 @@ export async function buildModel(now = Date.now(), opts = {}) {
     for (const [k, d] of discoverRoots(now, historyDays)) byRoot.set(k, { root: d.root, lastMs: d.lastMs, sessions: [] });
     const inboxSigNow = inboxSig();
     const openQuestions = cachedOpenQuestions(inboxSigNow);
+    buildMarkers = readMarkers(); // heartbeat watchers, read once per build
     for (const s of readSessions()) {
       let v;
       try { v = sessionView(s, now, th, sampler, openQuestions); } catch { v = null; }

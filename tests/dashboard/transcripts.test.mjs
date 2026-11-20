@@ -312,3 +312,13 @@ test('an AskUserQuestion call keeps its first question as the description', () =
   writeFileSync(f, lines(toolUse('q1', 'AskUserQuestion', { questions: [{ question: 'Which way?' }, { question: 'Other' }] })));
   assert.equal(scanTranscript(f, NOW).pendingTool.description, 'Which way?');
 }));
+
+test('a watcher started after a job never becomes the pending tool', () => withDir((d) => {
+  const p = join(d, 't.jsonl');
+  const out = join(d, 'job1.output');
+  writeFileSync(p, bgStart(out) + lines(
+    toolUse('toolu_w', 'Bash', { command: `node ~/.claude/dashboard/watch.mjs --file "${out}" --what "CI"`, run_in_background: true }, 29),
+    result('toolu_w', [{ type: 'text', text: `Command running in background with ID: job2. Output is being written to: ${join(d, 'job2.output')}.` }], 29),
+  ));
+  assert.equal(scanTranscript(p, NOW).pendingTool.command, 'npm run watch');
+}));

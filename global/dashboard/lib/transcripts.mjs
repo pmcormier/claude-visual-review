@@ -9,6 +9,7 @@ const KEEP_REFS = 200;
 const KEEP_EVENTS = 500;
 // Claude Code's reply to a run_in_background call starts with this line. It is matched only at the start of the
 // result of such a call: a command whose output quotes it (a transcript excerpt) has finished, not left a job running.
+const WATCHER_RE = /dashboard[\\/]watch\.mjs\b/;
 const BG_RE = /^\s*Command running in background with ID: (\S+?)\.?\s+Output is being written to: (.+?\.output)/;
 // Tools that end a background job by its ID. A stopped job gets no completion note, so a successful stop ends it.
 const STOP_TOOLS = new Set(['TaskStop', 'KillShell', 'KillBash']);
@@ -193,7 +194,8 @@ export function scanTranscript(path, now = Date.now(), thresholds = loadConfig()
     else if (idx < 0 || nowMin - m > 120 * MIN) view.minuteSet.delete(m);
   }
 
-  const pendings = [...view.pending.values()];
+  // A heartbeat watcher (dashboard/watch.mjs) is never what a session is doing: it prints nothing until it fires.
+  const pendings = [...view.pending.values()].filter((p) => !WATCHER_RE.test(p.command ?? ''));
   return {
     lastWriteMs,
     minutes,

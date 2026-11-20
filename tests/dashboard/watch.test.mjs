@@ -128,3 +128,13 @@ test('the command: bad flags print one line and exit 0', async () => {
   assert.equal(r.status, 0);
   assert.match(r.stdout, /^watch: --file .* is required\n$/);
 });
+
+test('watchFor: a live marker on the same file, whatever the slashes or case', async () => {
+  const { watchFor } = await import('../../global/dashboard/lib/watch.mjs');
+  const now = Date.now();
+  const m = { session: 's', file: 'Work/T/job.output', what: 'w', startedAt: now, beatAt: now, lastGrowthAt: now - 2 * MIN, size: 1, quietMin: 15, exited: null };
+  assert.deepEqual(watchFor('work\\t\\job.output', [m], now), { lastGrowthAt: now - 2 * MIN, quietMin: 15 });
+  assert.equal(watchFor('work/t/other.output', [m], now), null);
+  assert.equal(watchFor('work/t/job.output', [{ ...m, beatAt: now - 4 * MIN }], now), null);
+  assert.equal(watchFor(null, [m], now), null);
+});

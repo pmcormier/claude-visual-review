@@ -27,6 +27,7 @@ import { claudeHome, dashHome, plannotatorHome } from './lib/paths.mjs';
 import { loadConfig } from './lib/config.mjs';
 import { buildModel } from './lib/model.mjs';
 import { pruneSpend } from './lib/spend.mjs';
+import { pruneMarkers } from './lib/watch.mjs';
 import { startCpuSampler } from './lib/procs.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -300,6 +301,8 @@ server.listen(port, '127.0.0.1', () => {
   } catch (e) { log(`could not write server.json: ${e?.message || e}`); }
   log(`listening on 127.0.0.1:${port} (pid ${process.pid})`);
   pruneSpend(join(home, 'spend')); // session spend files untouched for a year (decision 34)
+  pruneMarkers(); // heartbeat watcher markers older than a week (decision 37), then daily
+  setInterval(() => pruneMarkers(), 86400000).unref();
   process.on('exit', removeServerJson);
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGBREAK', 'SIGHUP']) {
     try { process.on(sig, () => shutdown(sig)); } catch { /* not on this platform */ }
