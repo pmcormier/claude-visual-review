@@ -318,3 +318,28 @@ test('counts.next leaves out before-dashboard and dropped plans', async () => {
     assert.equal(after.counts.next, 0, 'plans from before the install are left out too');
   } finally { rmSync(w.base, { recursive: true, force: true }); }
 });
+
+test('trackActive keeps the first active sight until the project goes quiet', async () => {
+  const { trackActive } = await import('../../global/dashboard/lib/model.mjs');
+  const m = new Map();
+  assert.equal(trackActive(m, 'k', true, 100), 100);
+  assert.equal(trackActive(m, 'k', true, 200), 100);
+  assert.equal(trackActive(m, 'k', false, 300), null);
+  assert.equal(trackActive(m, 'k', true, 400), 400);
+});
+
+test('a session carries its transcript title, and a working project its active-since time', async () => {
+  const w = makeWorld();
+  try {
+    const { buildModel } = await import('../../global/dashboard/lib/model.mjs');
+    const now = Date.now();
+    const root = project(w, 'titled');
+    transcript(w, root, 'sid-title', [{ type: 'ai-title', aiTitle: 'Dwm restart' }, toolAt(now - MIN, 'tu1', 'Bash', { command: 'sleep 100' })]);
+    session(w, 4242, root, 'sid-title', 'busy');
+    const m = await buildModel(now, { sampler: sampler() });
+    const p = m.projects.find((x) => x.root === root);
+    assert.equal(p.sessions[0].title, 'Dwm restart');
+    assert.equal(p.state, 'working');
+    assert.equal(p.activeSinceMs, now);
+  } finally { rmSync(w.base, { recursive: true, force: true }); }
+});

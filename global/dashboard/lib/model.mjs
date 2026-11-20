@@ -29,6 +29,8 @@
 //    none working) > quiet (no live session). Order: stuck, waiting, working, then the rest, each group by
 //    last activity, newest first. open = a live session, a task in progress, or a stall (stuck/gone).
 //    quietSince = last activity when nothing in the project is working, else null.
+//  - activeSinceMs: when the project was first seen stuck, waiting or working in this run of the server (kept in
+//    memory; cleared when it goes quiet). The page brings a folded project back when it became active after the fold.
 //  - Counts: stuck = sessions and subagents that look stuck (so the headline agrees with project state);
 //    waiting/working count sessions; next counts unfinished tasks with status 'next' across projects, leaving out
 //    plans from before the dashboard and dropped plans.
@@ -277,7 +279,7 @@ function sessionView(s, now, th, sampler) {
   const active = views.filter((a) => a.finished !== true && a.state !== 'idle');
   const rest = views.filter((a) => !active.includes(a));
   return {
-    sessionId: s.sessionId, pid: s.pid, name: s.name, cwd: s.cwd, status: s.status, alive,
+    sessionId: s.sessionId, pid: s.pid, name: s.name, title: signals.title ?? null, cwd: s.cwd, status: s.status, alive,
     state: v.state, evidence: v.evidence, hint: v.hint, since: v.since,
     cpuPct, lastWriteMs: signals.lastWriteMs, life: signals.minutes, tokens: signals.tokens,
     pendingTool: toolView(tool), linkedTask: null,
@@ -293,6 +295,15 @@ function projectState(sessions) {
   const states = sessions.flatMap((s) => [s.state, ...s.subagents.map((a) => a.state)]);
   for (const st of ['stuck', 'waiting', 'working', 'gone']) if (states.includes(st)) return st;
   return sessions.some((s) => s.alive) ? 'idle' : 'quiet';
+}
+
+const ACTIVE = new Map(); // project key -> first time seen active (this server run)
+
+/** When the project at `key` became active: set on the first active sight, cleared when it is not. */
+export function trackActive(map, key, active, now) {
+  if (!active) { map.delete(key); return null; }
+  if (!map.has(key)) map.set(key, now);
+  return map.get(key);
 }
 
 /** Stuck, waiting, working, then the rest; each group newest activity first. Returns a new array. */
@@ -404,6 +415,7 @@ export async function buildModel(now = Date.now(), opts = {}) {
     const spend = (() => { try { return readSpendCached(join(dashHome(), 'spend')); } catch { return new Map(); } })();
     for (const p of projects) {
       p.spend = spendFor(spend, p.root, now);
+      p.activeSinceMs = trackActive(ACTIVE, keyOf(p.root), p.state in RANK, now);
       for (const s of p.sessions) {
         s.spend = sessionSpend(spend.get(s.sessionId), s.tokens);
         delete s._signals;

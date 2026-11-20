@@ -35,7 +35,7 @@ function fresh() {
   return {
     endByte: 0, minuteSet: new Set(), pending: new Map(), lastEntryIsApiError: false, lastEntryMs: null,
     tokens: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 }, seenIds: new Set(),
-    events: [], planRefs: [], taskRefs: [],
+    events: [], planRefs: [], taskRefs: [], customTitle: null, aiTitle: null,
   };
 }
 
@@ -73,6 +73,9 @@ function ingest(st, e) {
     st.lastEntryIsApiError = e.isApiErrorMessage === true;
   }
   resolveNotification(st, e);
+  // Claude Code's own name for the session: a title the person set wins over its generated one; newest of each.
+  if (e.type === 'custom-title' && typeof e.customTitle === 'string' && e.customTitle.trim()) st.customTitle = e.customTitle.trim();
+  if (e.type === 'ai-title' && typeof e.aiTitle === 'string' && e.aiTitle.trim()) st.aiTitle = e.aiTitle.trim();
   const msg = isObj(e.message) ? e.message : null;
   const content = msg && Array.isArray(msg.content) ? msg.content : [];
 
@@ -185,5 +188,6 @@ export function scanTranscript(path, now = Date.now(), thresholds = loadConfig()
     repeat: repeatOf(view, now, thresholds.loopWindow),
     planRefs: view.planRefs.map((r) => ({ ...r })),
     taskRefs: view.taskRefs.map((r) => ({ ...r })),
+    title: view.customTitle ?? view.aiTitle ?? null,
   };
 }

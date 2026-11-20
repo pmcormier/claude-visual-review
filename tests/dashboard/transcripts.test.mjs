@@ -246,3 +246,26 @@ test('transcripts not scanned for an hour are forgotten', () => withDir((d) => {
   scanTranscript(b, later + 90 * 60000);
   assert.equal(trackedTranscripts(), 1);
 }));
+
+test('title prefers the newest custom title over ai titles, and survives an incremental scan', () => withDir((d) => {
+  const f = join(d, 't.jsonl');
+  writeFileSync(f, lines(
+    { type: 'ai-title', aiTitle: 'First guess', sessionId: 's' },
+    { type: 'custom-title', customTitle: 'Named by me', sessionId: 's' },
+    { type: 'ai-title', aiTitle: 'Later guess', sessionId: 's' },
+  ));
+  assert.equal(scanTranscript(f, NOW).title, 'Named by me');
+  appendFileSync(f, lines({ type: 'user', timestamp: iso(1), message: { content: 'hi' } }));
+  assert.equal(scanTranscript(f, NOW).title, 'Named by me');
+  appendFileSync(f, lines({ type: 'custom-title', customTitle: 'Renamed', sessionId: 's' }));
+  assert.equal(scanTranscript(f, NOW).title, 'Renamed');
+}));
+
+test('title falls back to the newest ai title, and is null without one', () => withDir((d) => {
+  const f = join(d, 't.jsonl');
+  writeFileSync(f, lines({ type: 'ai-title', aiTitle: 'Dwm restart', sessionId: 's' }, { type: 'ai-title', aiTitle: 'Dwm restart again', sessionId: 's' }));
+  assert.equal(scanTranscript(f, NOW).title, 'Dwm restart again');
+  const g = join(d, 'u.jsonl');
+  writeFileSync(g, lines({ type: 'user', timestamp: iso(1), message: { content: 'hi' } }));
+  assert.equal(scanTranscript(g, NOW).title, null);
+}));
