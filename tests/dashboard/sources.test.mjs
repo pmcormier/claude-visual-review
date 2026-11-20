@@ -339,3 +339,55 @@ test('plan Status open is read, and loose look-alikes are not', async () => {
   assert.equal(await statusOf(root, 'j.md', ['# J', 'Statusdone', '### Task 1: x']), null);
   assert.equal(await statusOf(root, 'k.md', ['# K', 'Status: done.', '### Task 1: x']), 'done');
 });
+
+// ---- about lines and change times (dashboard-clarity Task 2)
+
+test('plan task about is the first sentence of its first paragraph', async () => {
+  const { root } = setup();
+  writePlan(root, 'p.md', '# P\n\n### Task 1: One\n\nAdds the cache. Then more\nwords here.\n\n- [ ] step\n\n### Task 2: Two\n\nKeeps **bold** and `code` short\nacross lines!\n');
+  const { readPlans } = await mod('plans.mjs');
+  const [e] = readPlans(root);
+  assert.equal(e.tasks[0].about, 'Adds the cache.');
+  assert.equal(e.tasks[1].about, 'Keeps bold and code short across lines!');
+});
+
+test('plan task about skips labels and lists', async () => {
+  const { root } = setup();
+  writePlan(root, 'p.md', '# P\n\n### Task 1: One\n\n**Files:**\n- Modify: x\n\n- [ ] **Step 1: do it**\n\n### Task 2: Two\n\n| a | b |\n');
+  const { readPlans } = await mod('plans.mjs');
+  const [e] = readPlans(root);
+  assert.equal(e.tasks[0].about, null);
+  assert.equal(e.tasks[1].about, null);
+});
+
+test('plan about is capped at 200 characters', async () => {
+  const { root } = setup();
+  writePlan(root, 'p.md', `# P\n\n### Task 1: One\n\n${'word '.repeat(60)}end.\n`);
+  const { readPlans } = await mod('plans.mjs');
+  const about = readPlans(root)[0].tasks[0].about;
+  assert.equal(about.length, 200);
+  assert.ok(about.endsWith('…'));
+});
+
+test('inbox step keeps its at as changedMs, and the epic carries the thread subject', async () => {
+  const { plan, root } = setup();
+  const dir = inboxProject(plan, root);
+  writeFileSync(join(dir, 'messages.jsonl'), [
+    env(1, 1, 'a', 'message', 'm1', { id: 'm1', thread_id: 't1', subject: 'Reply first', thread_name: 'Short name', created_at: 'a' }),
+    env(1, 2, 'a', 'message', 't1', { id: 't1', thread_id: 't1', subject: 'The root subject', thread_name: null, created_at: 'a' }),
+    env(1, 3, 'a', 'message', 'm3', { id: 'm3', thread_id: 't2', subject: 'Only one', thread_name: null, created_at: 'a' }),
+  ].join('\n') + '\n');
+  writeFileSync(join(dir, 'steps.jsonl'), [
+    env(1, 1, 'a', 'steps', 's1', rec('s1', 't1', 'sess-a', [{ step: 'Write', status: 'waiting', note: null, at: '2026-11-17T08:00:00Z' }])),
+    env(1, 2, 'a', 'steps', 's2', rec('s2', 't2', 'sess-a', [{ step: 'Read', status: 'doing', note: null }])),
+  ].join('\n') + '\n');
+  const { readInbox } = await mod('inbox.mjs');
+  const epics = readInbox(root);
+  const t1 = epics.find((e) => e.id === 'inbox:t1:sess-a');
+  assert.equal(t1.title, 'Short name');
+  assert.equal(t1.subject, 'The root subject');
+  assert.equal(t1.tasks[0].changedMs, Date.parse('2026-11-17T08:00:00Z'));
+  const t2 = epics.find((e) => e.id === 'inbox:t2:sess-a');
+  assert.equal(t2.subject, 'Only one');
+  assert.equal(t2.tasks[0].changedMs, null);
+});

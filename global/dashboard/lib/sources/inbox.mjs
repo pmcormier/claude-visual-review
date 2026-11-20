@@ -57,7 +57,11 @@ function titles(dir) {
     if (!first.has(m.thread_id)) first.set(m.thread_id, m.subject.trim());
     if (m.id === m.thread_id) root.set(m.thread_id, m.subject.trim());
   }
-  return (thread) => named.get(thread) ?? root.get(thread) ?? first.get(thread) ?? 'Checklist';
+  return {
+    titleOf: (thread) => named.get(thread) ?? root.get(thread) ?? first.get(thread) ?? 'Checklist',
+    // The thread's subject, a fuller line than its name: an Inbox step's about line when no mirror has one.
+    subjectOf: (thread) => root.get(thread) ?? first.get(thread) ?? null,
+  };
 }
 
 function ms(at) {
@@ -85,7 +89,7 @@ export function readInbox(root) {
         latest.set(key, e);
       }
       if (!latest.size) continue;
-      const titleOf = titles(dir);
+      const { titleOf, subjectOf } = titles(dir);
       for (const e of latest.values()) {
         const r = e.record;
         const session = typeof r.agent?.session === 'string' && r.agent.session ? r.agent.session : null;
@@ -100,10 +104,11 @@ export function readInbox(root) {
           tasks.push({
             id: `${id}#${i + 1}`, n: null, title, status, size: null, sessionId: session,
             startedMs: status === 'doing' ? at : null, doneMs: status === 'done' ? at : null, ticked: null,
+            changedMs: at,
           });
         });
         if (!tasks.length) continue;
-        epics.push({ id, source: 'inbox', title: titleOf(r.thread_id), file: null, tasks });
+        epics.push({ id, source: 'inbox', title: titleOf(r.thread_id), subject: subjectOf(r.thread_id), file: null, tasks });
       }
     }
   } catch { /* return what was built */ }

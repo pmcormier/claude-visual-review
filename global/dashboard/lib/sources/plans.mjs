@@ -13,6 +13,18 @@ const TICK = /^\s*[-*]\s+\[([ xX])\]/;
 // dash and a note), before the first `##` heading and outside code fences. done/dropped close a whole plan; open
 // keeps a plan from before the dashboard as current work (dashboard catch-up). Anything else after the word
 // (`Status: done (Tasks 1-3)`) or any other value is ignored.
+// A task's about line: the first sentence of the first paragraph under its heading, before any list, table, fence or
+// bold label (`**Files:**`), capped at ABOUT_MAX characters. Nothing there: null (never a label or a step).
+const ABOUT_MAX = 200;
+const NOT_PROSE = /^\s*(?:[-*+]\s|\d+[.)]\s|\||>|\*\*[^*]+(?::\*\*|\*\*:)\s*$)/;
+
+function sentenceOf(lines) {
+  const text = lines.join(' ').replace(/\*\*|`/g, '').replace(/\s+/g, ' ').trim();
+  if (!text) return null;
+  const s = /^.*?[.!?](?=\s|$)/.exec(text)?.[0] ?? text;
+  return s.length > ABOUT_MAX ? s.slice(0, ABOUT_MAX - 1) + '\u2026' : s;
+}
+
 const STATUS = /^\s*(?:>\s*)?(?:\*\*)?Status(?:\*\*)?:(?:\*\*)?\s*(done|dropped|open)(?=\s*$|\s*[-–—]|\.\s*$)/i;
 
 function parsePlan(text) {
@@ -23,30 +35,39 @@ function parsePlan(text) {
   let fence = null;
   let status = null;
   let preamble = true; // before the first ## heading
+  let para = null; // the current task's first paragraph while it is still being read
+  const endAbout = () => { if (cur && para) cur.about = sentenceOf(para); para = null; };
   for (const line of lines) {
     const f = /^\s*(```|~~~)/.exec(line);
-    if (f) { fence = fence === null ? f[1] : fence === f[1] ? null : fence; continue; }
+    if (f) { endAbout(); fence = fence === null ? f[1] : fence === f[1] ? null : fence; continue; }
     if (fence !== null) continue;
     if (preamble && /^#{2,6}\s/.test(line)) preamble = false;
     if (preamble && status === null) { const st = STATUS.exec(line); if (st) status = st[1].toLowerCase(); }
     if (/^#{2,3}\s/.test(line)) {
+      endAbout();
       const m = TASK.exec(line);
       if (m) {
         let t = m[2];
         let size = null;
         const s = SIZE.exec(t);
         if (s) { size = s[1].toUpperCase(); t = t.slice(0, s.index); }
-        cur = { n: Number(m[1]), title: t.trim(), size, done: 0, total: 0 };
+        cur = { n: Number(m[1]), title: t.trim(), size, done: 0, total: 0, about: null };
         tasks.push(cur);
+        para = [];
       } else {
         cur = null; // any other ## / ### heading ends the task's range
       }
       continue;
     }
     if (!cur) continue;
+    if (para) {
+      if (!line.trim()) { if (para.length) endAbout(); } else if (NOT_PROSE.test(line) || /^#/.test(line)) endAbout();
+      else para.push(line.trim());
+    }
     const k = TICK.exec(line);
     if (k) { cur.total += 1; if (k[1] !== ' ') cur.done += 1; }
   }
+  endAbout();
   return { title, tasks, status };
 }
 
@@ -80,7 +101,7 @@ export function readPlans(root) {
         tasks: tasks.map((t) => ({
           id: `${id}#${t.n}`, n: t.n, title: t.title,
           status: t.total > 0 && t.done === t.total ? 'done' : t.done > 0 ? 'doing' : 'next',
-          size: t.size, sessionId: null, startedMs: null, doneMs: null,
+          size: t.size, sessionId: null, startedMs: null, doneMs: null, about: t.about,
           ticked: t.total > 0 ? { done: t.done, total: t.total } : null,
         })),
       });
