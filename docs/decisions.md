@@ -464,3 +464,30 @@ dollars only for the same reason.
 
 Costs of this choice: a session whose status line never ran (a headless run) shows tokens only, from its
 transcript. Spend is recorded only from when this tap was installed; earlier sessions have none.
+
+## 35. Running means a session's current task; each task says what it is (2026-11-19)
+Using the dashboard, the owner couldn't tell what was really active. One session had been linked to 262 tasks over
+its life (7 still doing, 11 waiting), and its live line showed under every one of them. Hovers explained the tool
+that was running, not what the task was. A session titled "Dwm restart" sat folded in the quiet list while working.
+A checklist step marked "waiting" on Nov 17 by a session that never closed it still read as waiting on the owner.
+
+Chosen (spec `docs/superpowers/specs/2026-11-19-dashboard-clarity-design.md`):
+- **Running** holds only the task a live session is linked to now (`linkedTask`). Other open tasks go to a new,
+  folded group, **Started, not current**. The live line and session chip show only under the current task.
+- **Stale:** a doing or waiting task with no live session and no change for 24 hours reads "left open N days
+  ago" under Started, not current, not as a wait. A live session's waiting step is still a real wait. An unknown
+  change time is never stale.
+- **About lines come from the agents**, not from a model inside the dashboard (no network, no API calls): the rule
+  asks for `note.mjs start --about` and `--steps-about`. A plan task falls back to the first sentence of its own
+  text; an Inbox step to the same session's work-log step with the same name, then to the thread's subject.
+  Without one the hover says "No description yet" rather than guessing.
+- **Sessions show their title**: the newest `custom-title`, else `ai-title`, from the transcript.
+- **A folded project comes back** while it is stuck, waiting or working, if it became active after the fold.
+  Folding it again while active wins.
+
+How it was kept small:
+- The server still reads a work-log task left doing by a closed session as `next` (so the headline counts and
+  Triage don't change), and flags it `leftOpen` for the page.
+- "Became active" is the time the server first saw the project active, held in memory. Costs of this choice: a
+  server restart makes a folded active project come back once; tasks logged before this change have no about line.
+- The rule also asks agents to close their Inbox checklists when work ends, so stale waits stop being made.
