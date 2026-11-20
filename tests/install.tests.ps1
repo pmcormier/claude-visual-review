@@ -390,6 +390,7 @@ Test 'DashboardInstallAddsHooksOnce' {
   $post = Get-HookCommands $s 'PostToolUse'
   Assert-Equal 1 @($start | Where-Object { $_ -match 'launcher\.mjs' }).Count 'one launcher hook'
   Assert-Equal 1 @($post | Where-Object { $_ -match 'plan-hook\.mjs' }).Count 'one plan hook'
+  Assert-Equal 1 @(Get-HookCommands $s 'Stop' | Where-Object { $_ -match 'tidy-hook\.mjs' }).Count 'one tidy hook'
   Assert-True ($start -contains 'other-start') 'other SessionStart hook kept'
   Assert-True ($post -contains 'other-post') 'other PostToolUse hook kept'
   $launcher = @($start | Where-Object { $_ -match 'launcher\.mjs' })[0]
@@ -450,6 +451,7 @@ Test 'DashboardRemoveRestoresOriginalStatusLine' {
   Assert-Equal 1 $s.statusLine.padding 'original padding restored'
   Assert-Equal 0 @(Get-HookCommands $s 'SessionStart' | Where-Object { $_ -match 'launcher\.mjs' }).Count 'launcher hook gone'
   Assert-True (-not $s.hooks.ContainsKey('PostToolUse')) 'empty PostToolUse removed'
+  Assert-True (-not $s.hooks.ContainsKey('Stop')) 'tidy hook gone, empty Stop removed'
   Assert-True ((Get-HookCommands $s 'SessionStart') -contains 'other-start') 'other hook kept'
   foreach ($f in 'dashboard/launcher.mjs', 'dashboard/lib/config.mjs', 'commands/dashboard.md', 'rules/dashboard.md') {
     Assert-True (-not (Test-Path "$h/$f")) "$f retired"

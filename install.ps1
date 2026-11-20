@@ -263,6 +263,7 @@ $hookSpecs = @(
   @{ Component = 'Rigor'; Event = 'UserPromptSubmit'; Script = 'hooks/pushback-check.mjs'; Find = 'pushback-check\.mjs' }
   @{ Component = 'Dashboard'; Event = 'SessionStart'; Script = 'dashboard/launcher.mjs'; Find = (& $dashFind 'launcher.mjs') }
   @{ Component = 'Dashboard'; Event = 'PostToolUse'; Script = 'dashboard/plan-hook.mjs'; Find = (& $dashFind 'plan-hook.mjs'); Matcher = 'Read|Edit|Write' }
+  @{ Component = 'Dashboard'; Event = 'Stop'; Script = 'dashboard/tidy-hook.mjs'; Find = (& $dashFind 'tidy-hook.mjs') }
 )
 # Adds or updates one hook; returns what changed, or nothing when it was already set.
 function Set-Hook($Spec) {

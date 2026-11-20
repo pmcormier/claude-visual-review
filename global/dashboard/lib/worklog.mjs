@@ -105,3 +105,32 @@ export function readWorklog(root) {
       tasks: e.tasks.filter((_, i) => !e._hidden.has(i)),
     }));
 }
+
+/**
+ * The session's open entry: its latest `start` not yet closed by `done` or `drop`, with the steps now marked doing.
+ * Used by the end-of-turn check (decision 37). Null when there is none or the log can't be read.
+ * @returns {{title: string, doing: {n: number, name: string}[]} | null}
+ */
+export function openEntryFor(root, session) {
+  let cur = null;
+  try {
+    for (const r of readJsonl(worklogPath(root)).records) {
+      if (!r || typeof r !== 'object' || r.v !== 1 || r.session !== session) continue;
+      if (r.verb === 'start') {
+        const title = typeof r.title === 'string' ? r.title.trim() : '';
+        if (!title) continue;
+        const steps = Array.isArray(r.steps) ? r.steps.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim()) : [];
+        cur = { title, steps, status: steps.map(() => 'todo') };
+      } else if (!cur) {
+        continue;
+      } else if (r.verb === 'step') {
+        const i = Number(r.n) - 1;
+        if (Number.isInteger(i) && i >= 0 && i < cur.steps.length && typeof r.status === 'string') cur.status[i] = r.status;
+      } else if (r.verb === 'done' || r.verb === 'drop') {
+        cur = null;
+      }
+    }
+  } catch { return null; }
+  if (!cur) return null;
+  return { title: cur.title, doing: cur.steps.map((name, i) => ({ n: i + 1, name })).filter((s) => cur.status[s.n - 1] === 'doing') };
+}
