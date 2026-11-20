@@ -383,3 +383,15 @@ test('scratchRoot: the home folder and a top-level Temp or tmp folder are not pr
   assert.equal(scratchRoot('/home/me/projects/app', env), false);
   assert.equal(scratchRoot('/work/temp-tools', env), false);
 });
+
+test('visibleProjects: a scratch place shows only while a session is live there', async () => {
+  const { visibleProjects } = await import('../../global/dashboard/lib/model.mjs');
+  const env = { home: '/home/me' };
+  const ps = [
+    { root: '/home/me', sessions: [] },
+    { root: '/home/me', sessions: [{ alive: true }] },
+    { root: '/tmp/x' },
+    { root: '/work/app', sessions: [] },
+  ];
+  assert.deepEqual(visibleProjects(ps, env).map((p) => [p.root, p.sessions?.length ?? 0]), [['/home/me', 1], ['/work/app', 0]]);
+});

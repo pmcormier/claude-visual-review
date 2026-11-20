@@ -622,4 +622,6 @@ written, and time left reads "2h 42m" like every other time; no folder paths as 
 top-level Temp folder are not projects unless a session is live there; hovers on group headers, counts, tabs and
 times; the Triage tab is named "Needs me". Also real: a work-log entry replaced by its own session no longer shows
 twice, its unstarted steps no longer show as next, and `note.mjs steps` changes an entry's steps in place.
+The work-log rule gained a "Plain words" bullet (owner-approved text): titles, steps and about lines for someone who
+hasn't followed the work, a ticket number only at the end in brackets, and every step with its about line.
 Not taken (owner's choice): plan file lists as descriptions, and one name per thing across the page.

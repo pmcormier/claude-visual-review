@@ -736,5 +736,6 @@ test('plainTitle: no code marks, snake_case, "Implementation Plan" tails or ISO 
   assert.equal(plainTitle('Live dashboard — Implementation Plan'), 'Live dashboard');
   assert.equal(plainTitle('Overnight 2026-11-16'), 'Overnight 16 Nov');
   assert.equal(plainTitle('Fix the sign-in timeout (#56)'), 'Fix the sign-in timeout (#56)');
+  assert.equal(plainTitle('Logging Implementation Plan (refreshed 2 Nov)'), 'Logging (refreshed 2 Nov)');
   assert.equal(plainTitle('Implementation Plan'), 'Implementation Plan'); // never empty
 });

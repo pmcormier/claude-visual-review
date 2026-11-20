@@ -10,6 +10,10 @@ nothing, and it never fails a session.
   the conversation. If the work has steps, add `--steps "first|second|third"`, and with steps add
   `--steps-about "line|line|line"`: one plain-English line per step, in order (no `|` inside a line). If it is a
   task from a plan, add `--plan <plan file> --task <N>`.
+- **Plain words.** Write the task title, each step and each about line for someone who hasn't followed the work: no
+  ticket or step numbers, code or function names, or project shorthand ("sitting", "spine", "probe"). When a number
+  helps someone look it up, put it at the end in brackets, for example "Fix the sign-in timeout (#56)". Give every
+  step its line in `--steps-about`.
 - **Keep it current as you go:** `note.mjs step <n> doing`, then `step <n> done` (also `waiting` when it waits
   on the person, `dropped` when a step no longer applies). Finish with `note.mjs done`, or
   `note.mjs drop "<reason>"` when the task is abandoned. Starting a new task closes an unfinished one as

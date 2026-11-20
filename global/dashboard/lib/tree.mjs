@@ -30,7 +30,8 @@ export function plainTitle(s) {
     .replace(/`([^`]*)`/g, '$1')
     .replace(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g, (w) => w.replace(/_/g, ' '))
     .replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (m, y, mo, d) => (Number(mo) >= 1 && Number(mo) <= 12 ? `${Number(d)} ${MONTHS[Number(mo) - 1]}` : m))
-    .replace(/\s*[—–-]?\s*Implementation Plan\s*$/i, '')
+    .replace(/\s*[—–-]?\s*Implementation Plan\s*(?=\(|$)/i, ' ')
+    .replace(/\s{2,}/g, ' ')
     .trim();
   return out || raw.trim();
 }

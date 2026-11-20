@@ -103,6 +103,12 @@ export function scratchRoot(root, { home = homedir() } = {}) {
   return r === n(home) || /^(?:[a-z]:)?\/(?:temp|tmp)(?:\/|$)/.test(r);
 }
 
+/** The projects the page shows: scratch places only while a session is live there. */
+export function visibleProjects(projects, opts) {
+  return (Array.isArray(projects) ? projects : [])
+    .filter((p) => !scratchRoot(p?.root, opts) || (Array.isArray(p?.sessions) && p.sessions.some((s) => s?.alive)));
+}
+
 const discoverCache = new Map(); // claudeHome -> {at, days, roots: Map key -> {root, lastMs}}
 
 /** Roots of projects with a transcript modified in the last `historyDays`. Cached 60 s per Claude home. */
@@ -464,7 +470,7 @@ export async function buildModel(now = Date.now(), opts = {}) {
     }
     pruneActive(ACTIVE, new Set(projects.map((p) => keyOf(p.root))));
     // Scratch places (home folder, temp) show only while a session is live there (decision 43).
-    model.projects = orderProjects(projects.filter((p) => !scratchRoot(p.root) || arr(p.sessions).some((s) => s?.alive)));
+    model.projects = orderProjects(visibleProjects(projects));
   } catch (e) {
     model.error = `Could not build the dashboard: ${errText(e)}`;
   }
