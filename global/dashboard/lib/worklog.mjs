@@ -61,6 +61,9 @@ export function readWorklog(root) {
         // A new start supersedes this session's open epic: it stays listed, unfinished work shows as next,
         // and no later record reaches it.
         const prev = open.get(session);
+        // The same session starting the same title again replaced its entry (older agents did this to rename a
+        // step): the old copy is not listed (owner, 2026-11-20).
+        if (prev && prev.title === title) prev._dropped = true;
         if (prev) {
           // leftOpen: begun or waiting, then left when the session moved on; the page shows it as started, not active.
           // A closed entry waits on no one, so its waiting steps are left open too.
@@ -74,7 +77,24 @@ export function readWorklog(root) {
       }
       const epic = open.get(session);
       if (!epic) continue;
-      if (r.verb === 'step') {
+      if (r.verb === 'steps') {
+        // The open entry's steps changed in place: each step keeps its task (status, times) by name; new ones are next.
+        const names = Array.isArray(r.steps) ? r.steps.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim()) : [];
+        if (!names.length) continue;
+        const about = Array.isArray(r.stepsAbout) ? r.stepsAbout : [];
+        const old = epic.tasks.map((t, i) => ({ t, hidden: epic._hidden.has(i) }));
+        const hidden = new Set();
+        epic.tasks = names.map((name, i) => {
+          const k = old.findIndex((o) => o.t.title === name);
+          const id = `${epic.id}-${i + 1}`;
+          if (k < 0) return mkTask(id, name, null, session, 'next', at, about[i]);
+          const { t, hidden: h } = old.splice(k, 1)[0];
+          if (h) hidden.add(i);
+          if (typeof about[i] === 'string' && about[i].trim()) t.about = line(about[i]);
+          return { ...t, id };
+        });
+        epic._hidden = hidden;
+      } else if (r.verb === 'step') {
         const i = Number(r.n) - 1;
         if (!Number.isInteger(i) || i < 0 || i >= epic.tasks.length) continue;
         if (r.status === 'dropped') { epic._hidden.add(i); continue; }
@@ -126,6 +146,13 @@ export function openEntryFor(root, session) {
         cur = { title, startedAt: typeof r.at === 'string' ? r.at : null, steps, status: steps.map(() => 'todo') };
       } else if (!cur) {
         continue;
+      } else if (r.verb === 'steps') {
+        const names = Array.isArray(r.steps) ? r.steps.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim()) : [];
+        if (names.length) {
+          const was = new Map(cur.steps.map((s, i) => [s, cur.status[i]]));
+          cur.steps = names;
+          cur.status = names.map((s) => was.get(s) ?? 'todo');
+        }
       } else if (r.verb === 'step') {
         const i = Number(r.n) - 1;
         if (Number.isInteger(i) && i >= 0 && i < cur.steps.length && typeof r.status === 'string') cur.status[i] = r.status;

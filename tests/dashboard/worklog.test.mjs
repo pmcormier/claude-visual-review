@@ -300,3 +300,31 @@ test('--steps-about stays paired when --steps has an empty entry', async () => {
   note(env, ['start', 'Gaps', '--steps', 'a||b', '--steps-about', 'x|y|z']);
   assert.deepEqual((await read(env))[0].tasks.map((t) => [t.title, t.about]), [['a', 'x'], ['b', 'z']]);
 });
+
+test('steps changes the open entry in place: statuses follow the step names, new steps start as next', async () => {
+  const env = setup();
+  note(env, ['start', 'Review rounds', '--steps', 'Design|Build|Test']);
+  note(env, ['step', '1', 'done']);
+  note(env, ['step', '2', 'doing']);
+  note(env, ['steps', 'Design|Build|Ship|Test', '--steps-about', 'd|b|s|t']);
+  note(env, ['step', '3', 'waiting']);
+  const epics = await read(env);
+  assert.equal(epics.length, 1);
+  assert.deepEqual(epics[0].tasks.map((t) => [t.title, t.status]), [['Design', 'done'], ['Build', 'doing'], ['Ship', 'waiting'], ['Test', 'next']]);
+  assert.equal(epics[0].tasks[2].about, 's');
+  const { openEntryFor } = await lib(env);
+  assert.deepEqual(openEntryFor(env.proj, 's1').doing.map((s) => s.name), ['Build']);
+});
+
+test('an entry replaced by a new start with the same title from the same session is not listed', async () => {
+  const env = setup();
+  note(env, ['start', 'Review rounds', '--steps', 'a|b']);
+  note(env, ['step', '1', 'doing']);
+  note(env, ['start', 'Review rounds', '--steps', 'a|b|c']);
+  note(env, ['start', 'Other work', '--steps', 'x']);
+  note(env, ['start', 'Something else', '--steps', 'y'], 's2');
+  note(env, ['start', 'Other work', '--steps', 'z'], 's2'); // another session: its own entry, not a replacement
+  const epics = await read(env);
+  assert.deepEqual(epics.map((e) => e.title), ['Review rounds', 'Other work', 'Something else', 'Other work']);
+  assert.equal(epics[0].tasks.length, 3); // the newer of the two same-titled entries
+});
