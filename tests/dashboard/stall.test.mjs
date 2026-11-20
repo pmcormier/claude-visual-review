@@ -228,3 +228,15 @@ test('askedOwner: terminal and Inbox questions make an idle session wait; stuck 
   const long = askedOwner(idle, sig(), { prompt: 'x'.repeat(300), askedMs: ago(1) }).evidence;
   assert.equal(long.length, 'Inbox: '.length + 120);
 });
+
+test('a long-pending AskUserQuestion is waiting, not stuck; gone stays gone', () => {
+  const auq = tool(25, { name: 'AskUserQuestion', command: null, description: 'Which way?' });
+  const v = classify(inp({ signals: sig({ lastWriteMs: ago(25), pendingTool: auq }), cpuPct: 0 }), T);
+  const r = askedOwner(v, sig({ lastWriteMs: ago(25), pendingTool: auq }), null);
+  assert.equal(r.state, 'waiting');
+  assert.equal(r.evidence, 'Asked: Which way?');
+  assert.equal(r.since, ago(25));
+  const fromStatus = askedOwner({ state: 'waiting', evidence: 'Permission prompt open for 6 min in a terminal', hint: null, since: ago(6) }, sig({ pendingTool: auq }), null);
+  assert.equal(fromStatus.evidence, 'Asked: Which way?');
+  assert.equal(askedOwner({ state: 'gone', evidence: 'x', hint: null, since: null }, sig({ pendingTool: auq }), null).state, 'gone');
+});

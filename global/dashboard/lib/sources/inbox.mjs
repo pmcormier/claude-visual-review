@@ -95,11 +95,19 @@ export function readOpenQuestions() {
         latest.set(e.id, { env: e, firstMs: prev?.firstMs ?? ms(e.at) });
       }
       if (!latest.size) continue;
-      const threadOf = new Map();
-      const resolved = new Set();
+      // messages.jsonl keeps every version of a message: only the latest says whether its thread is resolved now
+      // (a thread can be resolved and then reopened).
+      const msgs = new Map(); // id -> latest envelope
       for (const e of readJsonl(join(dir, 'messages.jsonl')).records) {
         const m = e?.record;
         if (!m || typeof m.id !== 'string') continue;
+        const prev = msgs.get(m.id);
+        if (prev && seqOf(prev) !== null && seqOf(e) !== null && seqOf(e) < seqOf(prev)) continue;
+        msgs.set(m.id, e);
+      }
+      const threadOf = new Map();
+      const resolved = new Set();
+      for (const { record: m } of msgs.values()) {
         threadOf.set(m.id, m.thread_id);
         if (m.resolved_at) resolved.add(m.thread_id);
       }

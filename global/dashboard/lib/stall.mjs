@@ -58,11 +58,13 @@ const clip120 = (s) => { const t = String(s ?? '').trim(); return t.length > 120
  * Inbox question keeps working; its hint names the question.
  */
 export function askedOwner(v, signals, inboxQ) {
-  if (!v || v.state === 'stuck' || v.state === 'gone' || v.state === 'waiting') return v;
+  if (!v || v.state === 'gone') return v;
   const tool = signals?.pendingTool;
+  // A question dialog waits on the owner however long it stays open: never stuck, and named by its question.
   if (tool?.name === 'AskUserQuestion') {
     return { ...v, state: 'waiting', evidence: `Asked: ${clip120(tool.description || 'a question in the terminal')}`, since: tool.startedMs ?? null };
   }
+  if (v.state === 'stuck' || v.state === 'waiting') return v;
   if (v.state === 'idle' && signals?.lastAsk?.text) {
     return { ...v, state: 'waiting', evidence: `Asked: ${clip120(signals.lastAsk.text)}`, since: signals.lastAsk.ms ?? null };
   }

@@ -447,3 +447,16 @@ test('one Inbox row per thread: the newest checklist wins; same-named threads ge
   assert.equal(epics.find((e) => e.id === 'inbox:t2').title, 'Build status \u00b7 Nov 17');
   assert.equal(epics.find((e) => e.id === 'inbox:t3').title, 'Unique');
 });
+
+test('readOpenQuestions: a thread resolved and then reopened counts as open', async () => {
+  const { plan, root } = setup();
+  const dir = inboxProject(plan, root);
+  writeFileSync(join(dir, 'messages.jsonl'), [
+    env(1, 1, 'a', 'message', 't1', { id: 't1', thread_id: 't1', subject: 'x', resolved_at: null }),
+    env(1, 2, 'a', 'message', 't1', { id: 't1', thread_id: 't1', subject: 'x', resolved_at: '2026-11-19T01:00:00Z' }),
+    env(1, 3, 'a', 'message', 't1', { id: 't1', thread_id: 't1', subject: 'x', resolved_at: null }),
+  ].join('\n') + '\n');
+  writeFileSync(join(dir, 'questions.jsonl'), env(1, 4, '2026-11-19T02:00:00Z', 'question', 't1/q', { id: 't1/q', message_id: 't1', prompt: 'Merge?', asked_by_agent_id: 's', answer: null, superseded_by: null }) + '\n');
+  const { readOpenQuestions } = await mod('inbox.mjs');
+  assert.equal(readOpenQuestions().get('s')?.prompt, 'Merge?');
+});
