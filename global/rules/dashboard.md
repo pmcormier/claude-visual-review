@@ -22,6 +22,15 @@ nothing, and it never fails a session.
   pair them.
 - **Close what you open.** When work ends, set every step of your Inbox checklist to done or dropped (or resolve
   the thread), and run `note.mjs done`. A step left `waiting` otherwise reads as waiting on the person.
+- **Watch what you launch.** When you start a background job that may run more than a few minutes (a CI watch,
+  a build, a long test run, a download), start a watcher for it in the same turn:
+  `node ~/.claude/dashboard/watch.mjs --file "<the job's output file>" --what "<what the job is>"`, also in
+  the background. It costs nothing while the job keeps printing, and wakes you after 15 minutes of silence or
+  of the same lines repeating (`--quiet <min>` for a job that prints rarely). When it wakes you, look at the
+  job: if it's moving, start the watcher again; if it's stuck, retry it, work around it, or mark the step
+  `waiting` and tell the person. When the line says "No new output since the last check", don't re-arm: act or
+  ask. When the job finishes on its own, stop its watcher. At the end of a turn a check may remind you once
+  that a step is still `doing`; fix the log, or end the turn if it's right.
 - **Plans:** when you finish a task from a plan, tick its checkboxes in the plan file. When you commit work for a
   plan task, start the commit's first line with the plan's name and the task, for example
   `live-dashboard Task 3: transcript signals`. The dashboard marks a plan task done from a commit only when

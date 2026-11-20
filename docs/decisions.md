@@ -534,3 +534,24 @@ Also:
 - An Inbox thread shows as one row: the newest checklist wins, whichever session wrote it. Threads that share a
   name show the day they started ("· Nov 14"). Before, three identical rows appeared for two threads.
 - The epic popup no longer shows the thread's subject. Agents write subjects as status notes, so it read as jargon.
+
+## 37. Sessions watch their own long jobs; an end-of-turn check keeps the work log true (2026-11-20)
+The owner: sessions should "check itself. Sort like a heartbeat check. Keeps our status up to date, and keeps the
+agent on top of processes it launched with little cost", with no fixed timeout, since a job "may take 30 mins, may
+take two hours". A session acts only when something wakes it, and a hung job never ends, so it never wakes anyone.
+
+Chosen (spec `docs/superpowers/specs/2026-11-20-dashboard-heartbeat-design.md`), A + C:
+- **A watcher beside each long job** (`dashboard/watch.mjs`, run in the background). It reads the job's output
+  file, which costs no model tokens, and exits with one line after 15 minutes of silence or of the same lines
+  repeating, when the job ended, or when the file is gone. Its exit wakes the session. A second quiet wake with no
+  new output says so, and the rule then says act or ask, never re-arm, so a dead job can't loop. A marker in
+  `~/.claude/dashboard/watch/` lets the page show "Watched" and the end-of-turn check see the job is covered.
+  A watcher is never shown as what a session is doing: it prints nothing until it fires, so it would read stuck.
+- **An end-of-turn check** (Stop hook `dashboard/tidy-hook.mjs`). When a session ends a turn with a step marked
+  doing, nothing watched and no question to the owner, it asks the session once to fix its log. The same state is
+  never reminded twice.
+
+Costs, measured 2026-11-20 on a 155k-token session at Opus 5.5 list prices: one call about $0.05, a wake about
+$0.15, about $1.25 after an hour asleep (the cache has to be written again). Rejected: a timer waking the session
+every 20 minutes, about $0.90 per two-hour job even when all is well. Not covered: a session that dies takes its
+watcher with it; the page already shows it as Gone.

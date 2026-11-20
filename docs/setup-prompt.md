@@ -17,7 +17,8 @@ them. Ask before anything that changes my machine beyond what's listed here, and
    - Which components: Review (always), Methods, Bmad, Fable, Rigor, Dashboard. Explain each in a line, from the README.
    - For Rigor and Dashboard: whether Node.js is installed (they run on `node`). Dashboard is opt-in: it wraps
      the status line (saved and restored on removal; it records usage limits and each session's spend) and adds a
-     Start menu shortcut, so say so when I choose it.
+     Start menu shortcut, so say so when I choose it. It also adds an end-of-turn hook that reminds a session once
+     when its task list is out of date, and asks sessions to watch their own long background jobs.
      Plans already in my repos fold as "Before the dashboard"; `/dashboard catch-up` in a project marks the
      finished ones, so mention it when I choose Dashboard.
    - Whether I have access to the Fable model (Fable is pointless without it).
