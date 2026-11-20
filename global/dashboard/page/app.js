@@ -437,7 +437,7 @@ function renderByUser() {
 
 function renderProjects(now) {
   const projects = arr(model?.projects);
-  const open = panelOrder(projects.filter(isOpen)); // by state, then name: busy projects never swap
+  const open = panelOrder(projects.filter(isOpen)); // A-Z: a card keeps its place whatever its state
   const quiet = projects.filter((p) => !isOpen(p));
   sync($('#v-projects .grid'), panels, open, panelFor, now, 'panel');
   const shownQuiet = showAllQuiet ? quiet : quiet.slice(0, QUIET_SHOWN);

@@ -285,12 +285,9 @@ export function projectSpend(s) {
   };
 }
 
-const PANEL_RANK ={ stuck: 0, waiting: 1, working: 2 };
-/** Open project panels: by state (stuck, waiting, working, the rest), then by name, so busy projects never swap. */
+/** Open project panels: A-Z by name, so a card keeps its place whatever its state (owner's ruling, decision 38). */
 export function panelOrder(projects) {
-  const r = (p) => PANEL_RANK[p?.state] ?? 3;
-  return [...arr(projects)].sort((a, b) => r(a) - r(b)
-    || String(a?.name ?? '').localeCompare(String(b?.name ?? ''), undefined, { sensitivity: 'base' }));
+  return [...arr(projects)].sort((a, b) => String(a?.name ?? '').localeCompare(String(b?.name ?? ''), undefined, { sensitivity: 'base' }));
 }
 
 /** The task a session is working on now: its linked task, unless that task is already done. */

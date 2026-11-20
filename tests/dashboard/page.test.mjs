@@ -385,10 +385,10 @@ test('currentTask drops a linked task that is already done', () => {
 });
 
 // Owner's pick 2026-11-19: projects in the same state keep a fixed order by name, so busy projects don't swap.
-test('panelOrder sorts by state, then by name, ignoring activity', () => {
+test('panelOrder keeps cards A-Z by name, whatever their state or activity', () => {
   const p = (name, state, lastActivityMs) => ({ name, state, lastActivityMs });
   const out = panelOrder([p('zeta', 'working', 9), p('Alpha', 'working', 1), p('beta', 'stuck', 0), p('gamma', 'idle', 5), p('delta', 'waiting', 2)]);
-  assert.deepEqual(out.map((x) => x.name), ['beta', 'delta', 'Alpha', 'zeta', 'gamma']);
+  assert.deepEqual(out.map((x) => x.name), ['Alpha', 'beta', 'delta', 'gamma', 'zeta']);
   assert.deepEqual(panelOrder(null), []);
 });
 

@@ -558,3 +558,11 @@ Costs, measured 2026-11-20 on a 155k-token session at Opus 5.5 list prices: one 
 $0.15, about $1.25 after an hour asleep (the cache has to be written again). Rejected: a timer waking the session
 every 20 minutes, about $0.90 per two-hour job even when all is well. Not covered: a session that dies takes its
 watcher with it; the page already shows it as Gone.
+
+## 38. Project cards keep their place: A-Z by name (2026-11-20)
+The owner: "I do not like the cards jumping around based on their status. Keep them in the same positions sorted
+some logical way." Open project cards now sort A-Z by name only; before, they sorted by state first, so a card moved
+whenever a session started, stopped or asked something. Chosen over the order projects first appeared and a
+drag-to-place order: it never moves and any project is easy to find, while the top strip's counts still point to
+what needs attention. Tasks inside a card still move between groups, and the folded quiet list keeps its
+most-recent-first order. Spec `docs/superpowers/specs/2026-11-20-dashboard-card-order-design.md`.
