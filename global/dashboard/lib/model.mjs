@@ -276,6 +276,8 @@ function subagentView(a, parent, now, th, sampler) {
   };
 }
 
+const MAX_RUNNING_SHOWN = 5; // tools listed under a task at once; a session rarely runs more
+
 function sessionView(s, now, th, sampler, openQuestions) {
   const signals = scanTranscript(s.transcriptPath ?? '', now, th);
   const alive = aliveOf(sampler, s);
@@ -299,6 +301,7 @@ function sessionView(s, now, th, sampler, openQuestions) {
     state: v.state, evidence: v.evidence, hint: v.hint, since: v.since,
     cpuPct, lastWriteMs: signals.lastWriteMs, life: signals.minutes, tokens: signals.tokens,
     pendingTool: toolView(tool, buildMarkers, now), linkedTask: null,
+    pendingTools: (signals.pendingTools ?? []).slice(-MAX_RUNNING_SHOWN).map((t) => toolView(t, buildMarkers, now)),
     subagents: [...active, ...rest.slice(0, KEEP_DONE_SUBAGENTS)],
     subagentsHidden: Math.max(0, rest.length - KEEP_DONE_SUBAGENTS),
     _signals: signals,

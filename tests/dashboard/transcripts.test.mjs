@@ -322,3 +322,17 @@ test('a watcher started after a job never becomes the pending tool', () => withD
   ));
   assert.equal(scanTranscript(p, NOW).pendingTool.command, 'npm run watch');
 }));
+
+test('every running tool is listed, oldest first, watchers left out', () => withDir((d) => {
+  const p = join(d, 't.jsonl');
+  writeFileSync(p, lines(
+    toolUse('toolu_a', 'Bash', { command: 'npm test', description: 'Run the tests' }, 3),
+    toolUse('toolu_b', 'Bash', { command: 'node ~/.claude/dashboard/watch.mjs --file x' }, 2),
+    toolUse('toolu_c', 'Read', { file_path: 'docs/x.md' }, 1),
+  ));
+  const s = scanTranscript(p, NOW);
+  assert.deepEqual(s.pendingTools.map((t) => t.name), ['Bash', 'Read']);
+  assert.equal(s.pendingTools[0].description, 'Run the tests');
+  appendFileSync(p, lines(result('toolu_a', 'ok'), result('toolu_c', 'ok')));
+  assert.deepEqual(scanTranscript(p, NOW).pendingTools, []);
+}));

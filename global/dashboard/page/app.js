@@ -5,7 +5,7 @@
 // over to the rebuilt node.
 import {
   STATE_LABEL, STATE_CLASS, formatDuration, agoWords, updatedText, shortId, shortDate, lifePath, foldEpics,
-  effortLeft, liveIds, usageView, detailText, sessionWhat, nowLine, watchedNote, watchedAgo, watchedHover, triage, epicDone, epicLastActivity, sizeSummary,
+  effortLeft, liveIds, usageView, detailText, sessionWhat, nowLines, watchedNote, watchedAgo, watchedHover, triage, epicDone, epicLastActivity, sizeSummary,
   filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, spendLine, projectSpend,
   taskLiveness, leftOpenText, sessionLabel, projectOpen, themeLabel,
 } from '/render.mjs';
@@ -250,7 +250,7 @@ function taskLi(p, e, t, byId) {
   const s = current ? liveSession(byId, t) : null; // the live line and session chip only under a session's current task
   const st = taskState(t, s, lv);
   const link = s ? keyOf(p.root, t.id) : null;
-  const nowText = s ? nowLine(s) : '';
+  const nowTexts = s ? nowLines(s) : [];
   // Started or left open: one short muted note, so the task's name keeps its room; which session is in the hover.
   return h('li', null,
     h('div', { class: `node s-${st}`, data: { dk: keyOf('t', p.root, t.id), link } },
@@ -262,7 +262,7 @@ function taskLi(p, e, t, byId) {
         lv === 'started' && t.sessionId ? h('span', { class: 't', text: 'earlier' }) : null,
         lv === 'stale' ? h('span', { class: 't', text: leftOpenText(t.changedMs, now) }) : null,
         t.spentMin > 0 ? h('span', { class: 't', text: formatDuration(t.spentMin * MIN) }) : null)),
-    nowText ? h('div', { class: `now s-${STATE_CLASS[s.state] ?? 'work'}` }, h('span', { text: nowText })) : null);
+    nowTexts.map((text) => h('div', { class: `now s-${STATE_CLASS[s.state] ?? 'work'}` }, h('span', { text }))));
 }
 
 function epicLi(p, e, byId, dflt = false) {

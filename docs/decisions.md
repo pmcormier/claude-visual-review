@@ -566,3 +566,10 @@ whenever a session started, stopped or asked something. Chosen over the order pr
 drag-to-place order: it never moves and any project is easy to find, while the top strip's counts still point to
 what needs attention. Tasks inside a card still move between groups, and the folded quiet list keeps its
 most-recent-first order. Spec `docs/superpowers/specs/2026-11-20-dashboard-card-order-design.md`.
+
+## 39. The line under a running task lists what runs now, and nothing when nothing does (2026-11-20)
+The owner asked why the line under a running task mostly said "working", with a tool's name flashing by. A session
+spends most of its time thinking between tools, and the line named only the newest tool running. Now it lists every
+tool running now, one line each, by Claude's description (else the command's first line), and is empty when nothing
+runs: the task's state already says it is running. Considered and set aside after the owner's note: holding the last
+finished thing on the line, which would have hidden that nothing is running.

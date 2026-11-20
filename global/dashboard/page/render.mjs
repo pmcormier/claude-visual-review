@@ -508,17 +508,21 @@ export function watchedNote(tool, now) {
 
 export const watchedHover = (tool) => `The session is watching this job and will check on it after ${tool?.watch?.quietMin ?? 15} minutes of silence.`;
 
-/** The "now" line under a task a session is on: what that session is doing this minute. */
-export function nowLine(s) {
-  if (!s) return '';
-  if (s.state === 'stuck' || s.state === 'gone') return s.evidence || STATE_LABEL[s.state];
-  if (s.state === 'waiting') return s.evidence || 'waiting on you';
-  if (s.state !== 'working') return '';
-  const tool = s.pendingTool;
-  if (tool?.description) return tool.description;
-  if (tool?.command) return tool.command.split('\n')[0];
-  if (tool) return tool.name === 'Agent' || tool.name === 'Task' ? 'waiting on a helper' : tool.name;
-  return 'working';
+/**
+ * The live lines under a task a session is on: one per tool running now, by Claude's description, else the command's
+ * first line. Nothing running, no line: the task's state already says it is running (owner's ruling, decision 39).
+ * Stuck and waiting give one line saying why.
+ */
+export function nowLines(s) {
+  if (!s) return [];
+  if (s.state === 'stuck' || s.state === 'gone') return [s.evidence || STATE_LABEL[s.state]];
+  if (s.state === 'waiting') return [s.evidence || 'waiting on you'];
+  if (s.state !== 'working') return [];
+  return arr(s.pendingTools).map((tool) => {
+    if (tool?.description) return tool.description;
+    if (tool?.command) return tool.command.split('\n')[0];
+    return tool?.name === 'Agent' || tool?.name === 'Task' ? 'waiting on a helper' : tool?.name ?? '';
+  }).filter(Boolean);
 }
 
 // ---- triage ---------------------------------------------------------------------------------------------------

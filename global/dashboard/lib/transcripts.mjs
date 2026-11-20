@@ -200,6 +200,7 @@ export function scanTranscript(path, now = Date.now(), thresholds = loadConfig()
     lastWriteMs,
     minutes,
     pendingTool: pendings.length ? { ...pendings[pendings.length - 1] } : null,
+    pendingTools: pendings.map((p) => ({ ...p })), // every tool still running, oldest first
     lastEntryIsApiError: view.lastEntryIsApiError,
     lastEntryMs: view.lastEntryMs,
     tokens: { ...view.tokens },

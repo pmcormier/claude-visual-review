@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
   sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, formatSpend, spendLine, projectSpend, formatTokens,
-  taskLiveness, leftOpenText, sessionLabel, projectOpen, STALE_AFTER_MS, sessionWhat, nowLine, themeLabel,
+  taskLiveness, leftOpenText, sessionLabel, projectOpen, STALE_AFTER_MS, sessionWhat, nowLines, themeLabel,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -479,10 +479,24 @@ test('sessionWhat says what a tool is doing in Claude\'s own words', () => {
   assert.equal(sessionWhat(s({ name: 'Read', command: 'docs/x.md', description: null })).what, 'Running Read');
 });
 
-test('nowLine prefers the description', () => {
-  const s = { state: 'working', pendingTool: { name: 'Bash', command: 'npm test', description: 'Run the tests' } };
-  assert.equal(nowLine(s), 'Run the tests');
-  assert.equal(nowLine({ ...s, pendingTool: { ...s.pendingTool, description: null } }), 'npm test');
+test('nowLines: one line per running tool, its description first', () => {
+  const bash = { name: 'Bash', command: 'npm test\nmore', description: 'Run the tests' };
+  const s = { state: 'working', pendingTools: [bash, { name: 'Read', command: 'docs/x.md', description: null }] };
+  assert.deepEqual(nowLines(s), ['Run the tests', 'docs/x.md']);
+  assert.deepEqual(nowLines({ state: 'working', pendingTools: [{ ...bash, description: null }] }), ['npm test']);
+  assert.deepEqual(nowLines({ state: 'working', pendingTools: [{ name: 'Agent', description: null }] }), ['waiting on a helper']);
+});
+
+test('nowLines: nothing running means no line, never a "working" placeholder', () => {
+  assert.deepEqual(nowLines({ state: 'working', pendingTools: [] }), []);
+  assert.deepEqual(nowLines({ state: 'working' }), []);
+  assert.deepEqual(nowLines({ state: 'idle', pendingTools: [] }), []);
+  assert.deepEqual(nowLines(null), []);
+});
+
+test('nowLines: stuck and waiting say why, in one line', () => {
+  assert.deepEqual(nowLines({ state: 'stuck', evidence: 'No output for 25 min' }), ['No output for 25 min']);
+  assert.deepEqual(nowLines({ state: 'waiting', evidence: null }), ['waiting on you']);
 });
 
 test('the session hover carries the full command', () => {
