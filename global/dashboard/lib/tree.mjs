@@ -16,6 +16,7 @@ import {
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const titleKey = (s) => String(s ?? '').trim().toLowerCase();
 const STATUSES = new Set(['done', 'doing', 'next', 'waiting']);
+const line = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
 function cleanEpics(list, source) {
   const out = [];
@@ -27,11 +28,15 @@ function cleanEpics(list, source) {
       ...(Number.isFinite(e.mtimeMs) ? { mtimeMs: e.mtimeMs } : {}),
       ...(Number.isFinite(e.birthtimeMs) ? { birthtimeMs: e.birthtimeMs } : {}),
       ...(['done', 'dropped', 'open'].includes(e.planStatus) ? { planStatus: e.planStatus } : {}),
+      ...(line(e.subject) ? { subject: line(e.subject) } : {}),
       tasks: arr(e.tasks).filter(isObj).map((t, i) => ({
         id: String(t.id ?? `${e.id}#${i + 1}`), n: Number.isInteger(t.n) ? t.n : null, title: String(t.title ?? ''),
         status: STATUSES.has(t.status) ? t.status : 'next', size: t.size ?? null,
         sessionId: typeof t.sessionId === 'string' && t.sessionId ? t.sessionId : null,
         startedMs: toMs(t.startedMs), doneMs: toMs(t.doneMs), ticked: isObj(t.ticked) ? { ...t.ticked } : null,
+        // about: one plain-English line about the task; changedMs: its last change (the plan file's when it has none).
+        about: line(t.about), changedMs: toMs(t.changedMs) ?? (Number.isFinite(e.mtimeMs) ? e.mtimeMs : null),
+        leftOpen: false,
       })),
     });
   }
@@ -56,6 +61,24 @@ function mergeWorklog(worklog, index) {
   return { listed, override, target };
 }
 
+// An Inbox step's about line: the same session's work-log task with the same name (trimmed, case-insensitive), first
+// in log order; else the thread's subject.
+function mirrorAbout(inbox, worklog) {
+  const byKey = new Map();
+  for (const e of worklog) {
+    for (const w of e.tasks) {
+      const k = `${w.sessionId}\u0000${titleKey(w.title)}`;
+      if (w.sessionId && w.about && !byKey.has(k)) byKey.set(k, w.about);
+    }
+  }
+  for (const e of inbox) {
+    for (const t of e.tasks) {
+      if (t.about) continue;
+      t.about = (t.sessionId && byKey.get(`${t.sessionId}\u0000${titleKey(t.title)}`)) || e.subject || null;
+    }
+  }
+}
+
 function applyPlanStatus(plans, override, commitDone) {
   for (const p of plans) {
     for (const t of p.tasks) {
@@ -64,6 +87,9 @@ function applyPlanStatus(plans, override, commitDone) {
       if (w) {
         if (w.sessionId) t.sessionId = w.sessionId;
         if (w.startedMs !== null) t.startedMs = w.startedMs;
+        if (w.about) t.about = w.about; // the agent's line wins over the plan's first sentence
+        if (w.changedMs !== null) t.changedMs = w.changedMs;
+        t.leftOpen = w.leftOpen;
       }
       if (cms !== undefined || t.status === 'done' || w?.status === 'done') {
         t.status = 'done';
@@ -159,11 +185,15 @@ export function buildTree(root, inputs, thresholds) {
     if (inp.liveSessionIds instanceof Set || Array.isArray(inp.liveSessionIds)) {
       const liveIds = new Set(inp.liveSessionIds);
       for (const e of worklog) {
-        for (const t of e.tasks) if (t.status === 'doing' && t.sessionId && !liveIds.has(t.sessionId)) t.status = 'next';
+        for (const t of e.tasks) {
+          // leftOpen keeps what it was, so the page can say "started, not current" while counts read it as next.
+          if (t.status === 'doing' && t.sessionId && !liveIds.has(t.sessionId)) { t.status = 'next'; t.leftOpen = true; }
+        }
       }
     }
     const bmad = cleanEpics(inp.bmad, 'bmad');
     let inbox = cleanEpics(inp.inbox, 'inbox');
+    mirrorAbout(inbox, worklog);
     const index = planIndex(root, plans);
     const live = cleanSessions(inp.sessions);
     const activity = activityBySession(cleanEvents(inp.events), live, index, now);

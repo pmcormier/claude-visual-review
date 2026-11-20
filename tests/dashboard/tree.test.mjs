@@ -654,3 +654,67 @@ test('a plan marked Status open is current work, never before', async () => {
   assert.equal(epicOf(tree).before, false);
   assert.equal(tree.left.count, 2);
 });
+
+// ---- about lines, change times, left-open tasks (dashboard-clarity Task 3)
+
+test('a work-log task left doing by a closed session is flagged leftOpen', async () => {
+  const { buildTree } = await mod('tree.mjs');
+  const worklog = [{
+    id: 'wl:1', source: 'worklog', title: 'Fix login', file: null, tasks: [
+      { id: 'wl:1#1', n: 1, title: 'gone one', status: 'doing', sessionId: 'dead', startedMs: T0 },
+      { id: 'wl:1#2', n: 2, title: 'live one', status: 'doing', sessionId: 'alive', startedMs: T0 },
+      { id: 'wl:1#3', n: 3, title: 'no session', status: 'doing', sessionId: null, startedMs: T0 },
+    ],
+  }];
+  const t = buildTree('/proj', { ...empty(), worklog, liveSessionIds: new Set(['alive']) }, TH);
+  assert.deepEqual(t.epics[0].tasks.map((x) => x.leftOpen), [true, false, false]);
+});
+
+function aboutPlan(root) {
+  const file = writePlan(root, 'p.md', [{ n: 1, title: 'One' }, { n: 2, title: 'Two' }]);
+  return {
+    id: 'plan:p', source: 'plan', title: 'P plan', file, mtimeMs: T0 - 1000, tasks: [
+      { id: 'plan:p#1', n: 1, title: 'One', status: 'next', about: 'plan line' },
+      { id: 'plan:p#2', n: 2, title: 'Two', status: 'next', about: 'plan two' },
+    ],
+  };
+}
+
+test('a plan task takes the work log about over the plan own, with its change time and left-open flag', async () => {
+  const { root } = setup();
+  const { buildTree } = await mod('tree.mjs');
+  const worklog = [{
+    id: 'wl:1', source: 'worklog', title: 'One', file: 'docs/superpowers/plans/p.md', tasks: [
+      { id: 'wl:1#1', n: 1, title: 'One', status: 'doing', sessionId: 'dead', startedMs: T0, about: 'log line', changedMs: T0 + 5 },
+    ],
+  }];
+  const t = buildTree(root, { ...empty(), plans: [aboutPlan(root)], worklog, liveSessionIds: new Set() }, TH);
+  const [one, two] = t.epics[0].tasks;
+  assert.equal(one.about, 'log line');
+  assert.equal(one.changedMs, T0 + 5);
+  assert.equal(one.leftOpen, true);
+  assert.equal(two.about, 'plan two');
+  assert.equal(two.changedMs, T0 - 1000); // a plan task without its own time takes the plan's mtime
+  assert.equal(two.leftOpen, false);
+});
+
+test('an Inbox step takes its about from the same session work-log mirror', async () => {
+  const { buildTree } = await mod('tree.mjs');
+  const inbox = [
+    { id: 'inbox:t1:s1', source: 'inbox', title: 'Thread', subject: 'Ship the cart', tasks: [
+      { id: 'i#1', title: ' Build It ', status: 'doing', sessionId: 's1' },
+      { id: 'i#2', title: 'Other', status: 'next', sessionId: 's1' },
+    ] },
+    { id: 'inbox:t2:s3', source: 'inbox', title: 'Bare', tasks: [{ id: 'j#1', title: 'Build it', status: 'next', sessionId: 's3' }] },
+  ];
+  const worklog = [
+    { id: 'wl:0', source: 'worklog', title: 'Elsewhere', tasks: [{ id: 'w0', title: 'build it', status: 'next', sessionId: 's2', about: 'wrong session' }] },
+    { id: 'wl:1', source: 'worklog', title: 'Cart', tasks: [{ id: 'w1', title: 'build it', status: 'next', sessionId: 's1', about: 'why' }] },
+    { id: 'wl:2', source: 'worklog', title: 'Cart again', tasks: [{ id: 'w2', title: 'BUILD IT', status: 'next', sessionId: 's1', about: 'later' }] },
+  ];
+  const t = buildTree('/proj', { ...empty(), inbox, worklog }, TH);
+  const a = t.epics.find((e) => e.id === 'inbox:t1:s1').tasks;
+  assert.equal(a[0].about, 'why');
+  assert.equal(a[1].about, 'Ship the cart');
+  assert.equal(t.epics.find((e) => e.id === 'inbox:t2:s3').tasks[0].about, null);
+});
