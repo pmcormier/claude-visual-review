@@ -259,8 +259,9 @@ main > section { display: grid; gap: 32px; min-width: 0; }
 body.compact .counts, body.compact .usage, body.compact .bar .right > label, body.compact .stop, body.compact .modebtn,
 body.compact .keybtn, body.compact .helpbtn, body.compact .tabs { display: none; }
 body.compact .bar { padding-block: 8px; }
-.cgrid { display: grid; grid-template-columns: repeat(auto-fill, 320px); gap: 16px; justify-content: start; }
-.square { width: 320px; height: 300px; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--rule);
+/* Centred columns of 320 px with equal margins at any width; a square never stretches, and only shrinks below 320 px. */
+.cgrid { display: grid; grid-template-columns: repeat(auto-fit, min(320px, 100%)); gap: 16px; justify-content: center; }
+.square { width: auto; height: 300px; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--rule);
   border-radius: 14px; overflow: hidden; cursor: pointer; min-width: 0; }
 .square:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .square.s-stuck { border-color: color-mix(in srgb, var(--stuck) 55%, var(--rule)); }
@@ -278,8 +279,9 @@ body.compact .bar { padding-block: 8px; }
 .sqbody .now { margin: 0; }
 .sqnext { flex: none; padding: 6px 12px 9px; border-top: 1px solid var(--rule); font-size: .84rem; color: var(--muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cquiet { margin-top: 14px; }
+.cquiet, .cempty { margin-top: 14px; text-align: center; }
 .cquiet a { color: var(--fg); }
 .conebar { display: flex; gap: 14px; align-items: center; margin-bottom: 12px; }
 .conebar .back { font: inherit; cursor: pointer; }
-@media (max-width: 480px) { .cgrid { grid-template-columns: minmax(0, 1fr); } .square { width: auto; } }
+/* An opened project's card gets nearly the full width: half the usual side margin. */
+body.compact main:has(> #v-compact > .cone:not([hidden])) { padding-inline: max(8px, 1.25vw); }
