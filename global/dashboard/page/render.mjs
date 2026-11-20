@@ -134,7 +134,8 @@ export function foldEpics(epics, now, liveSessionIds) {
     if (e?.dropped === true) { dropped.push(e); continue; }
     if (e?.before === true) { before.push(e); continue; }
     const tasks = arr(e?.tasks);
-    const touched = tasks.some((t) => t?.status === 'doing' || t?.status === 'waiting' || (t?.sessionId && live.has(t.sessionId)));
+    const touched = tasks.some((t) => t?.status === 'doing' || t?.status === 'waiting' || t?.leftOpen === true
+      || (t?.sessionId && live.has(t.sessionId)));
     const last = epicLastActivity(e);
     if (!touched && last !== null && now - last > EARLIER_AFTER_MS) earlier.push(e);
     else shown.push(e);
@@ -149,6 +150,7 @@ export function foldEpics(epics, now, liveSessionIds) {
 export const GROUPS = Object.freeze([
   { id: 'running', label: 'Running', history: false, open: true },
   { id: 'waiting', label: 'Waiting on you', history: false, open: true },
+  { id: 'started', label: 'Started, not current', history: false, open: false },
   { id: 'next', label: 'Next', history: false, open: false },
   { id: 'done', label: 'Done', history: false, open: false },
   { id: 'quiet', label: 'Quiet for a week', history: true, open: false },
@@ -173,23 +175,73 @@ function byActivity(epics) {
  * wait -> waiting; unfinished -> next; else done. Week-old epics split into quiet (unfinished) and doneEarlier.
  * `stateOf(task)` is the page's task state. `shown` (running, waiting, next, done) is what work left counts.
  */
-export function groupEpics(epics, now, liveSessionIds, stateOf) {
+export function groupEpics(epics, now, liveSessionIds, livenessOf) {
   const { shown, earlier, before, dropped } = foldEpics(epics, now, liveSessionIds);
-  const g = { running: [], waiting: [], next: [], done: [] };
+  const g = { running: [], waiting: [], started: [], next: [], done: [] };
   for (const e of shown) {
-    const st = arr(e?.tasks).map((t) => { try { return stateOf(t); } catch { return 'idle'; } });
-    if (st.some((s) => s === 'work' || s === 'stuck' || s === 'gone')) g.running.push(e);
-    else if (st.includes('wait')) g.waiting.push(e);
+    const lv = arr(e?.tasks).map((t) => { try { return livenessOf(t); } catch { return 'other'; } });
+    if (lv.includes('current')) g.running.push(e);
+    else if (lv.includes('waiting')) g.waiting.push(e);
+    else if (lv.includes('started') || lv.includes('stale')) g.started.push(e);
     else if (!epicDone(e)) g.next.push(e);
     else g.done.push(e);
   }
   const out = {
-    running: byActivity(g.running), waiting: byActivity(g.waiting), next: byActivity(g.next), done: byActivity(g.done),
+    running: byActivity(g.running), waiting: byActivity(g.waiting), started: byActivity(g.started),
+    next: byActivity(g.next), done: byActivity(g.done),
     quiet: byActivity(earlier.filter((e) => !epicDone(e))), doneEarlier: byActivity(earlier.filter((e) => epicDone(e))),
     before: byActivity(before), dropped: byActivity(dropped),
   };
-  out.shown = [...out.running, ...out.waiting, ...out.next, ...out.done];
+  out.shown = [...out.running, ...out.waiting, ...out.started, ...out.next, ...out.done];
   return out;
+}
+
+// ---- what is really running (spec 2026-11-19-dashboard-clarity-design.md) -----------------------------------
+
+/** A doing or waiting task with no live session and no change for this long is stale ("left open"). */
+export const STALE_AFTER_MS = DAY;
+
+/**
+ * What a task is doing now. current: a live session's linked task. stale: doing or waiting, no live session, and its
+ * last change (changedMs) more than a day old; an unknown time is never stale. started: doing but not current.
+ * waiting: waiting and not stale (a live session's wait is real). other: anything else. A task the server read as
+ * next because its session closed (leftOpen) counts as doing.
+ * @returns {'current'|'stale'|'started'|'waiting'|'other'}
+ */
+export function taskLiveness(task, sessionsById, now) {
+  const t = task ?? {};
+  const status = t.status === 'next' && t.leftOpen === true ? 'doing' : t.status;
+  if (status !== 'doing' && status !== 'waiting') return 'other';
+  const s = t.sessionId && sessionsById instanceof Map ? sessionsById.get(t.sessionId) : null;
+  const alive = s?.alive === true;
+  if (alive && s.linkedTask?.id === t.id) return 'current';
+  if (!alive && num(t.changedMs) && num(now) && now - t.changedMs > STALE_AFTER_MS) return 'stale';
+  return status === 'doing' ? 'started' : 'waiting';
+}
+
+/** "left open 3 hours ago", "left open 2 days ago"; "left open" when the time is unknown. */
+export function leftOpenText(changedMs, now) {
+  if (!num(changedMs) || !num(now)) return 'left open';
+  const h = Math.max(1, Math.floor((now - changedMs) / HOUR));
+  return h < 24 ? `left open ${plural(h, 'hour')} ago` : `left open ${plural(Math.floor(h / 24), 'day')} ago`;
+}
+
+/** A session's name on the page: Claude Code's title for it, else its short id. */
+export const sessionLabel = (s) => (s?.title ? s.title : `Session ${shortId(s?.sessionId)}`);
+
+const ACTIVE_STATES = new Set(['stuck', 'waiting', 'working']);
+/**
+ * Whether a project shows as a panel. A stored `true` / `{open: true}` opens it. A fold (`{open: false, at}`, or an
+ * old boolean `false`, read as folded long ago) holds unless the project is stuck, waiting or working and became
+ * active after the fold. Nothing stored: the model's default.
+ */
+export function projectOpen(p, stored) {
+  if (stored === true || (stored && typeof stored === 'object' && stored.open === true)) return true;
+  if (stored === false || (stored && typeof stored === 'object' && stored.open === false)) {
+    const at = stored === false ? 0 : num(stored.at) ? stored.at : 0;
+    return ACTIVE_STATES.has(p?.state) && num(p?.activeSinceMs) && p.activeSinceMs > at;
+  }
+  return !!p?.open;
 }
 
 // ---- session spend (decision 34) -----------------------------------------------------------------------------
@@ -315,18 +367,27 @@ function reason(state, evidence) {
   return evidence ? `${STATE_LABEL[state]}: ${evidence}` : STATE_LABEL[state];
 }
 
-function taskText({ task, session }) {
+// A task's hover: its about line first (or "No description yet", never a guess), a blank line, then what is happening.
+function taskText({ task, session, liveness, now }) {
   const t = task ?? {};
   const spent = num(t.spentMin) && t.spentMin > 0 ? formatDuration(t.spentMin * MIN) : '';
+  const sid = t.sessionId ? shortId(t.sessionId) : null;
   let who;
+  let why = '';
   if (t.status === 'done') who = spent ? `Done in ${spent}` : 'Done';
+  else if (liveness === 'started') who = sid ? `Started by session ${sid}, which ${session?.alive ? 'has moved on' : 'has closed'}` : 'Started';
+  else if (liveness === 'stale') {
+    const left = leftOpenText(t.changedMs, now);
+    who = `${left[0].toUpperCase()}${left.slice(1)}${sid ? ` by session ${sid}` : ''}`;
+  } else if (liveness === 'waiting') who = 'Waiting on you';
   else if (t.status === 'next') who = 'Not started';
   else {
-    const base = session ? `Session ${shortId(session.sessionId)} is on it`
+    const base = session ? `Session ${shortId(session.sessionId)} is on it${liveness === 'current' ? ' now' : ''}`
       : t.status === 'waiting' ? 'Waiting on you' : 'In progress';
     who = spent ? `${base}, ${spent} so far` : base;
+    why = session ? reason(session.state, session.evidence) : '';
   }
-  return join(t.title || 'Untitled task', who, session ? reason(session.state, session.evidence) : '');
+  return `${t.about ? sentence(t.about) : 'No description yet.'}\n\n${join(who, why)}`;
 }
 
 function sessionText({ session, project }) {

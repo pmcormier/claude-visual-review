@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
   sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, formatSpend, spendLine, projectSpend, formatTokens,
+  taskLiveness, leftOpenText, sessionLabel, projectOpen, STALE_AFTER_MS,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -68,17 +69,17 @@ const stuckSession = {
 test('detailText for a stuck task includes its evidence', () => {
   const task = { id: 't3', title: 'Fixture migration', status: 'doing', sessionId: stuckSession.sessionId, spentMin: 112, size: 'L' };
   const text = detailText({ kind: 'task', task, epic: { title: 'Invoice export', tasks: [task] }, session: stuckSession });
-  assert.match(text, /^Fixture migration\. /);
+  assert.match(text, /^No description yet\.\n\n/);
   assert.match(text, /Session 34d4 is on it, 1h 52m so far\./);
   assert.match(text, /Looks stuck: pytest running 52 min · 0% CPU · no output for 31 min\./);
 });
 
 test('detailText templates for the other kinds', () => {
   const next = { id: 'a', title: 'PDF layout', status: 'next', spentMin: 0 };
-  assert.equal(detailText({ kind: 'task', task: next }), 'PDF layout. Not started.');
+  assert.equal(detailText({ kind: 'task', task: next }), 'No description yet.\n\nNot started.');
   const done = { id: 'b', title: 'CSV writer', status: 'done', spentMin: 50 };
-  assert.equal(detailText({ kind: 'task', task: done }), 'CSV writer. Done in 50m.');
-  assert.equal(detailText({ kind: 'task', task: { ...done, spentMin: 0 } }), 'CSV writer. Done.');
+  assert.equal(detailText({ kind: 'task', task: { ...done, about: 'Writes the invoices out as CSV.' } }), 'Writes the invoices out as CSV.\n\nDone in 50m.');
+  assert.equal(detailText({ kind: 'task', task: { ...done, spentMin: 0 } }), 'No description yet.\n\nDone.');
   assert.equal(detailText({ kind: 'epic', epic: { title: 'X', spentMin: 210, tasks: [done, next, { ...done, id: 'c' }] } }),
     '2 of 3 tasks done, 3h 30m spent.');
 
@@ -262,16 +263,79 @@ test('Up next and triage leave out before-dashboard and dropped epics', () => {
 });
 
 // Wayfinding (spec 2026-11-19-dashboard-wayfinding-design.md): state groups, newest first, fold defaults.
-test('groupEpics: exclusive groups, running wins over waiting', () => {
-  const st = { a: 'work', b: 'wait', c: 'idle', d: 'done', s: 'stuck', g: 'gone' };
-  const stateOf = (t) => st[t.id];
-  const ep = (id, ids) => ({ id, title: id, tasks: ids.map((i) => ({ id: i, status: i === 'd' ? 'done' : i === 'a' ? 'doing' : 'next', startedMs: NOW - HOUR })) });
-  const r = groupEpics([ep('mix', ['a', 'b']), ep('w', ['b', 'c']), ep('n', ['c']), ep('fin', ['d']), ep('stk', ['s']), ep('gon', ['g'])], NOW, new Set(), stateOf);
-  assert.deepEqual(r.running.map((e) => e.id).sort(), ['gon', 'mix', 'stk']);
-  assert.deepEqual(r.waiting.map((e) => e.id), ['w']);
+test('groupEpics: exclusive groups by liveness, first that applies', () => {
+  const lv = { c: 'current', w: 'waiting', s: 'started', x: 'stale', o: 'other', d: 'other' };
+  const livenessOf = (t) => lv[t.id];
+  const ep = (id, ids) => ({ id, title: id, tasks: ids.map((i) => ({ id: i, status: i === 'd' ? 'done' : 'doing', startedMs: NOW - HOUR })) });
+  const r = groupEpics([ep('run', ['c', 'w', 's']), ep('wait', ['w', 's']), ep('st', ['s', 'o']), ep('stale', ['x']),
+    { id: 'n', title: 'n', tasks: [{ id: 'o', status: 'next', startedMs: NOW - HOUR }] }, ep('fin', ['d'])], NOW, new Set(), livenessOf);
+  assert.deepEqual(r.running.map((e) => e.id), ['run']);
+  assert.deepEqual(r.waiting.map((e) => e.id), ['wait']);
+  assert.deepEqual(r.started.map((e) => e.id).sort(), ['st', 'stale']);
   assert.deepEqual(r.next.map((e) => e.id), ['n']);
   assert.deepEqual(r.done.map((e) => e.id), ['fin']);
-  assert.deepEqual(r.shown.map((e) => e.id).slice(-3), ['w', 'n', 'fin']);
+  assert.equal(r.shown.length, 6);
+  assert.deepEqual(GROUPS.map((g) => g.id), ['running', 'waiting', 'started', 'next', 'done', 'quiet', 'doneEarlier', 'before', 'dropped']);
+  assert.deepEqual(GROUPS[2], { id: 'started', label: 'Started, not current', history: false, open: false });
+});
+
+// Clarity (spec 2026-11-19-dashboard-clarity-design.md): what is really running, and what each task is.
+test('taskLiveness: current, started, stale, waiting, other', () => {
+  const live = { sessionId: 'L', alive: true, linkedTask: { id: 'cur' } };
+  const dead = { sessionId: 'D', alive: false, linkedTask: { id: 'x' } };
+  const byId = new Map([['L', live], ['D', dead]]);
+  const lv = (t) => taskLiveness({ id: 'x', changedMs: null, ...t }, byId, NOW);
+  assert.equal(STALE_AFTER_MS, DAY);
+  assert.equal(lv({ id: 'cur', status: 'doing', sessionId: 'L' }), 'current');
+  assert.equal(lv({ status: 'doing', sessionId: 'L', changedMs: NOW - 3 * DAY }), 'started'); // live session moved on: not stale
+  assert.equal(lv({ status: 'doing', sessionId: 'D', changedMs: NOW - 25 * HOUR }), 'stale');
+  assert.equal(lv({ status: 'doing', sessionId: 'D', changedMs: NOW - 23 * HOUR }), 'started');
+  assert.equal(lv({ status: 'waiting', sessionId: 'D', changedMs: NOW - 2 * DAY }), 'stale');
+  assert.equal(lv({ status: 'waiting', sessionId: 'L', changedMs: NOW - 2 * DAY }), 'waiting');
+  assert.equal(lv({ status: 'waiting', sessionId: null, changedMs: NOW - HOUR }), 'waiting');
+  assert.equal(lv({ status: 'doing', sessionId: null, changedMs: null }), 'started'); // unknown time is never stale
+  assert.equal(lv({ status: 'next', leftOpen: true, sessionId: 'D', changedMs: NOW - 2 * DAY }), 'stale');
+  assert.equal(lv({ status: 'next', leftOpen: true, sessionId: 'D', changedMs: NOW - HOUR }), 'started');
+  assert.equal(lv({ status: 'next', sessionId: null }), 'other');
+  assert.equal(lv({ id: 'cur', status: 'done', sessionId: 'L' }), 'other');
+  assert.equal(taskLiveness(null, null, NOW), 'other');
+});
+
+test('detailText for a task by liveness: about first, then what is happening', () => {
+  const live = { ...stuckSession, state: 'working', evidence: null, alive: true };
+  const t = { id: 't', title: 'Cloud sitting', status: 'doing', sessionId: live.sessionId, about: 'Keeps the cloud copy in step.', changedMs: NOW - 2 * DAY, spentMin: 0 };
+  assert.equal(detailText({ kind: 'task', task: t, session: live, liveness: 'current', now: NOW }), 'Keeps the cloud copy in step.\n\nSession 34d4 is on it now.');
+  assert.equal(detailText({ kind: 'task', task: t, session: live, liveness: 'started', now: NOW }), 'Keeps the cloud copy in step.\n\nStarted by session 34d4, which has moved on.');
+  assert.equal(detailText({ kind: 'task', task: t, liveness: 'started', now: NOW }), 'Keeps the cloud copy in step.\n\nStarted by session 34d4, which has closed.');
+  assert.equal(detailText({ kind: 'task', task: t, liveness: 'stale', now: NOW }), 'Keeps the cloud copy in step.\n\nLeft open 2 days ago by session 34d4.');
+  assert.equal(detailText({ kind: 'task', task: { ...t, sessionId: null, about: null }, liveness: 'stale', now: NOW }), 'No description yet.\n\nLeft open 2 days ago.');
+  assert.equal(detailText({ kind: 'task', task: { ...t, status: 'waiting' }, liveness: 'waiting', now: NOW }), 'Keeps the cloud copy in step.\n\nWaiting on you.');
+});
+
+test('leftOpenText counts hours under a day, else days', () => {
+  assert.equal(leftOpenText(NOW - 3 * HOUR, NOW), 'left open 3 hours ago');
+  assert.equal(leftOpenText(NOW - 50 * HOUR, NOW), 'left open 2 days ago');
+  assert.equal(leftOpenText(NOW - 25 * HOUR, NOW), 'left open 1 day ago');
+  assert.equal(leftOpenText(null, NOW), 'left open');
+});
+
+test('sessionLabel: the title, else the short id', () => {
+  assert.equal(sessionLabel({ sessionId: 'c189a669-x', title: 'Dwm restart' }), 'Dwm restart');
+  assert.equal(sessionLabel({ sessionId: 'c189a669-x', title: null }), 'Session c189');
+});
+
+test('projectOpen: a fold holds, unless the project became active after it', () => {
+  const busy = { state: 'working', open: true, activeSinceMs: 500 };
+  const quiet = { state: 'quiet', open: false, activeSinceMs: null };
+  assert.equal(projectOpen(busy, true), true);
+  assert.equal(projectOpen(quiet, { open: true, at: 1 }), true);
+  assert.equal(projectOpen(busy, false), true); // an old boolean fold reads as set long ago
+  assert.equal(projectOpen(busy, { open: false, at: 400 }), true);
+  assert.equal(projectOpen(busy, { open: false, at: 600 }), false); // folded while active: the fold wins
+  assert.equal(projectOpen({ ...busy, state: 'idle' }, { open: false, at: 400 }), false); // quiet again: folds back
+  assert.equal(projectOpen({ ...busy, activeSinceMs: null }, { open: false, at: 400 }), false);
+  assert.equal(projectOpen(busy, undefined), true);
+  assert.equal(projectOpen(quiet, undefined), false);
 });
 
 test('groupEpics splits the week-old fold into quiet and done earlier', () => {
