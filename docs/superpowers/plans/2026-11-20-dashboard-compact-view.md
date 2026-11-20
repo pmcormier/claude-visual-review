@@ -240,17 +240,17 @@ git commit -m "dashboard-compact-view Task 3: the compact view on the page"
 - Modify: `README.md` (Dashboard row), `docs/setup-guide.html` (where the dashboard page is described),
   `docs/decisions.md` (decision 40)
 
-- [ ] **Step 1: Write the docs.** README and the setup guide: one sentence each, "a compact view at
+- [x] **Step 1: Write the docs.** README and the setup guide: one sentence each, "a compact view at
   `127.0.0.1:<port>/compact` shows one square per active project, for a side pane or a second screen; switch
   between the views from the bar". Decision 40: the owner's goal in his words, approach A over B and C and why,
   the picks (active projects plus a quiet line, its own address with a switch, A-Z), and the builder's calls.
 
-- [ ] **Step 2: Full suite and personal check**
+- [x] **Step 2: Full suite and personal check**
 
 Run: `pwsh -NoProfile -File tests/run.ps1; pwsh -NoProfile -File tools/check-personal.ps1`
 Expected: "0 failed"; the personal check exits 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add README.md docs/setup-guide.html docs/decisions.md

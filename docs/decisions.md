@@ -573,3 +573,20 @@ spends most of its time thinking between tools, and the line named only the newe
 tool running now, one line each, by Claude's description (else the command's first line), and is empty when nothing
 runs: the task's state already says it is running. Considered and set aside after the owner's note: holding the last
 finished thing on the line, which would have hidden that nothing is running.
+
+## 40. A compact view: one same-size square per active project (2026-11-20)
+The owner wanted a view "with just the essentials", always open in an Edge split pane or a corner of another monitor,
+"verbose enough to get the full picture. Similar to running", with more on a click. Spec
+`docs/superpowers/specs/2026-11-20-dashboard-compact-view-design.md`.
+
+Chosen (approach A of three): same-size squares (320 × 300 px), as many columns and rows as fit, the view scrolling past
+them; each square's head (name, state, heartbeat) stays fixed and its body scrolls inside. Rejected: B, the same width
+with height fitting the content (never cuts, but the squares differ in height); C, the window shared out evenly (no
+scroll, but squares shrink as projects grow).
+
+The owner's picks: squares for active projects only, with one line naming the quiet ones; its own address
+(`/compact`) with a switch and a new-window button in each view's bar; A-Z order (decision 38). Builder's calls: Gone
+and unreadable projects also get a square (the full page counts both as needing a look); a slim bar keeps "updated" and
+"Server not responding"; plan work shows its done tasks as a count, the current task and the next three; a click
+opens the project's full card in the same space; the compact view never marks alerts as seen, so a pane left open
+does not clear the full page's "New" badges. It is the same page as the full view, so both read one live model.
