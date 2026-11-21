@@ -659,3 +659,13 @@ sets every value with textContent, so a session or task name can never inject ma
 on the approved design: the question box is blue, not purple, and the pop-up is frosted glass, light on the dark page
 but not bright (dark frosted on the light page). `detailText` stays as the flat text, and a guard test checks the parts
 for technical text as it does the text.
+
+## 47. A watched background job never looks stuck (2026-11-20)
+
+The owner saw a session marked "Looks stuck" while it was waiting on a CI run it had asked to be woken about. Two
+gaps, both measured from that session's transcript and its watcher's marker: the job redirected its output to a log
+(`gh run watch … > log`), so the job's own output file stayed empty and the stall check saw 20+ silent minutes, while
+its watcher watched the log, which kept growing; and the page linked a watcher to a job only by the job's own output
+file, so it never knew the job was watched. Now a watcher also belongs to a job whose command names the watcher's file,
+and a background job with a live watcher counts as working (owner's pick): the watcher wakes the session itself after
+its quiet limit, so "stuck" would only ask the owner to act when nothing is wrong. Unwatched jobs keep the old rule.

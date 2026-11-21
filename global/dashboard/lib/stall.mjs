@@ -118,6 +118,9 @@ export function classify(input, thresholds) {
     // An idle session's leftover tool is not a stall: fall through to its status.
     if (status !== 'idle') {
       const background = !!tool.outputFile;
+      // A background job its session is watching never looks stuck while the watcher is alive (owner, 2026-11-20):
+      // the watcher wakes the session itself after its quiet limit.
+      if (background && input.watch) return result('working', null, null, hint);
       const ageMs = now - tool.startedMs;
       // Output idle time: observed (outputIdleMs) when there is an output file; otherwise the
       // best proxy is the transcript's last write. Never measured -> never judged.

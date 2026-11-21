@@ -252,3 +252,13 @@ test('askedOwner: an idle session with an answer sent since its last write reads
   assert.equal(askedOwner(idle, sig({ lastWriteMs: ago(30) }), null, { sentMs: ago(11) }, now), idle, 'more than 10 min: back to idle');
   assert.equal(askedOwner(idle, sig({ lastWriteMs: ago(5) }), { prompt: 'Q?', askedMs: ago(2) }, { sentMs: ago(1) }, now).state, 'waiting', 'another question still open wins');
 });
+
+// Owner, 2026-11-20: a background job its session is watching never looks stuck while the watcher is alive.
+test('classify: a quiet background job with a live watcher is working, not stuck', () => {
+  const t = tool(300, { command: 'gh run watch 1 > log.txt', outputFile: 'bg-out.txt', description: 'Watch CI' });
+  const base = inp({ cpuPct: null, outputIdleMs: 40 * MIN, signals: sig({ lastWriteMs: ago(100), pendingTool: t }) });
+  assert.equal(classify(base, T).state, 'stuck', 'unwatched: today\'s rule');
+  const watched = classify({ ...base, watch: { lastGrowthAt: ago(1), quietMin: 15 } }, T);
+  assert.equal(watched.state, 'working');
+  assert.equal(watched.evidence, null);
+});

@@ -179,9 +179,12 @@ export function pruneMarkers(now = Date.now()) {
 
 
 /** The live watcher on a job's output file: {lastGrowthAt, quietMin}, or null. Paths compare without case or slash style. */
-export function watchFor(outputFile, markers, now) {
+export function watchFor(outputFile, markers, now, command = null) {
   if (!outputFile) return null;
-  const m = markers.find((x) => isLive(x, now) && norm(x.file) === norm(outputFile));
+  // The job's own output file, or the file its command writes to: a job that redirects (`> log.txt`) leaves its own
+  // output empty, and its watcher watches the log (owner, 2026-11-20).
+  const cmd = typeof command === 'string' ? norm(command) : '';
+  const m = markers.find((x) => isLive(x, now) && (norm(x.file) === norm(outputFile) || (cmd && cmd.includes(norm(x.file)))));
   return m ? { lastGrowthAt: m.lastGrowthAt, quietMin: m.quietMin } : null;
 }
 

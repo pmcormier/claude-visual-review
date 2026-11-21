@@ -259,7 +259,7 @@ let buildMarkers = [];
 // watch: the live heartbeat watcher on this job, if any (decision 37).
 const toolView = (t, markers = [], now = Date.now()) => (t ? {
   name: t.name, command: clip(t.command), description: clip(t.description ?? null), startedMs: t.startedMs ?? null,
-  background: !!t.outputFile, watch: watchFor(t.outputFile, markers, now),
+  background: !!t.outputFile, watch: watchFor(t.outputFile, markers, now, t.command),
 } : null);
 const idleOf = (t, now) => (t?.outputFile ? outputGrowth(t.outputFile, now).idleMs : null);
 const RANK = { stuck: 0, waiting: 1, working: 2 };
@@ -305,6 +305,7 @@ function sessionView(s, now, th, sampler, openQuestions) {
   // Waiting on you whenever Claude asks: in the terminal or in the Inbox (askedOwner).
   const v = askedOwner(classify({
     kind: 'session', status: s.status, alive, signals, cpuPct, outputIdleMs: idleOf(tool, now), finished: null, now,
+    watch: tool ? watchFor(tool.outputFile, buildMarkers, now, tool.command) : null,
     statusUpdatedAt: s.statusUpdatedAt,
   }, th), signals, openQuestions?.value?.get(s.sessionId) ?? null, openQuestions?.sent?.get(s.sessionId) ?? null, now);
   const waitsOnAgent = !!tool && (tool.name === 'Agent' || tool.name === 'Task');

@@ -184,3 +184,13 @@ test('repeating the same line as at the last check says there is no new output',
   assert.equal(r.exit, `Repeating for 15 min: "CI watch". Line: ${line}. No new output since the last check, only this line repeating.`);
   assert.doesNotMatch(run(start({ prevRepeatLine: 'something else' }), polls).exit, /No new output/);
 });
+
+test('watchFor: a watcher on the file the job writes to (named in its command) watches that job too', async () => {
+  const { watchFor } = await import('../../global/dashboard/lib/watch.mjs');
+  const now = Date.now();
+  const m = { session: 's', file: 'work/X/Scratch/shard3.log', what: 'w', startedAt: now, beatAt: now, lastGrowthAt: now - 1 * MIN, size: 1, quietMin: 15, exited: null };
+  const cmd = 'cd "w" && gh run watch 1 --interval 60 > "Work/x/scratch/shard3.log" 2>&1';
+  assert.deepEqual(watchFor('work/x/tasks/b1.output', [m], now, cmd), { lastGrowthAt: now - 1 * MIN, quietMin: 15 });
+  assert.equal(watchFor('work/x/tasks/b1.output', [m], now, 'gh run watch 1'), null, 'a command that does not name the file');
+  assert.equal(watchFor('work/x/tasks/b1.output', [m], now), null);
+});
