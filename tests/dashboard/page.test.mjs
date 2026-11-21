@@ -841,3 +841,10 @@ test('detailParts: no technical text in any part (plain-English guard)', async (
     assert.doesNotMatch(all, BAD, `${it.kind}: ${all}`);
   }
 });
+
+test('themeTitle: the icon-only theme button says what it is on and what a click does', async () => {
+  const { themeTitle } = await import('../../global/dashboard/page/render.mjs');
+  assert.equal(themeTitle('System', true), 'Theme: Auto (dark). Click for Light');
+  assert.equal(themeTitle('Light', true), 'Theme: Light. Click for Dark');
+  assert.equal(themeTitle('Dark', false), 'Theme: Dark. Click for Auto');
+});

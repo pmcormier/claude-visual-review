@@ -701,3 +701,14 @@ fuller activity lines with a soft glow, larger and bolder project names with mon
 opened, and the compact squares as glass tiles with a bevel and visible thickness. The page is a tool to scan, so none
 of it pulses or moves on its own; folding animates only when the owner opens a list, never on live rebuilds, and the
 lift and slide stop with reduced motion. Checked in both themes on the live page.
+
+## 51. Look and feel, round two (2026-11-20)
+
+Owner's list after living with the new look: dark mode sells the glass, light mode didn't. Light theme now has frosted
+white cards with crisp white rims, cooler and deeper shadows, a stronger coloured background behind them, and a frosted
+white top bar. The theme switch is an icon only (sun, moon, or a half-lit circle for Auto, its words in the tooltip)
+and also sits in compact view's top-right corner; Key became a key icon; theme, key and help are round glass buttons
+with the pop-up's bevel. "Back to all" is a glass pill whose arrow slides left on hover. Looks stuck and Waiting on you
+now get the same glass as the other counts (their solid colour had overridden it). Waiting changed from purple to
+amber everywhere (dark #f2c14e; light #6e4a00, about 5:1 on the page background, so its text stays readable).
+Shown first as a preview of the branch on the live data, then approved.

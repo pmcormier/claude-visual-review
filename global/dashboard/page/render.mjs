@@ -232,6 +232,10 @@ export function leftOpenText(changedMs, now) {
 /** The light/dark button's words: Auto names the scheme the browser reports, so it can be checked at a glance. */
 export const themeLabel = (mode, prefersDark) => (mode === 'Light' || mode === 'Dark' ? mode : `Auto (${prefersDark ? 'dark' : 'light'})`);
 
+/** The icon-only theme button's tooltip: what it is on, and what a click does (System -> Light -> Dark -> System). */
+export const themeTitle = (mode, prefersDark) =>
+  `Theme: ${themeLabel(mode, prefersDark)}. Click for ${mode === 'System' ? 'Light' : mode === 'Light' ? 'Dark' : 'Auto'}`;
+
 /** A session's name on the page: Claude Code's title for it, else its short id. */
 export const sessionLabel = (s) => (s?.title ? s.title : `Session ${shortId(s?.sessionId)}`);
 
