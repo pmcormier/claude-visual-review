@@ -44,7 +44,15 @@ function Raise([IntPtr]$h) {
 
 if ($hostName -eq 'Code') {
   # VS Code shares one process for all its windows: open the folder, which brings up the window that has it.
-  if ($Folder) { Start-Process -FilePath 'code' -ArgumentList @('--reuse-window', $Folder) -WindowStyle Hidden }
+  # The folder must be an existing absolute directory, and goes to Code.exe itself as one argument (no shell, no
+  # code.cmd shim), so cmd.exe never reads it.
+  if ($Folder -and -not $Folder.StartsWith('-') -and [IO.Path]::IsPathRooted($Folder) -and (Test-Path -LiteralPath $Folder -PathType Container) -and $win.Path) {
+    $psi = [System.Diagnostics.ProcessStartInfo]::new($win.Path)
+    $psi.UseShellExecute = $false
+    $psi.ArgumentList.Add('--reuse-window')
+    $psi.ArgumentList.Add([IO.Path]::GetFullPath($Folder))
+    [System.Diagnostics.Process]::Start($psi) | Out-Null
+  }
   Out-Result 'window' 'Code'
 }
 
