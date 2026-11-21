@@ -715,3 +715,34 @@ export function triage(model, now) {
   longWait.sort((a, b) => b.waited - a.waited);
   return { needs: [...stuck, ...gone, ...longWait], moving: [...shortWait, ...working], next };
 }
+
+// ---- update glow (decision 44) ---------------------------------------------------------------------------------
+
+/**
+ * What counts as progress on a project (owner, 2026-11-20): its state, which sessions are open, and every task's
+ * status. Tool activity is left out: it changes every few seconds while a session works.
+ * @returns {{state: string, sessions: string, tasks: Record<string, string>}}
+ */
+export function progressOf(p) {
+  const tasks = {};
+  for (const e of arr(p?.tree?.epics)) for (const t of arr(e?.tasks)) tasks[`${e?.id}/${t?.id}`] = String(t?.status ?? '');
+  const sessions = arr(p?.sessions).filter((s) => s?.alive === true).map((s) => String(s.sessionId)).sort().join(',');
+  return { state: typeof p?.state === 'string' ? p.state : 'quiet', sessions, tasks };
+}
+
+/**
+ * Whether a project glows, and in which colour: null when nothing real moved (or on first sight); 'done' when a step
+ * or task finished and the state held; otherwise the project's new state.
+ */
+export function glowKind(prev, next) {
+  if (!prev || !next) return null;
+  if (prev.state !== next.state) return next.state;
+  const keys = new Set([...Object.keys(prev.tasks), ...Object.keys(next.tasks)]);
+  let moved = prev.sessions !== next.sessions;
+  for (const k of keys) {
+    if (prev.tasks[k] === next.tasks[k]) continue;
+    if (next.tasks[k] === 'done') return 'done';
+    moved = true;
+  }
+  return moved ? next.state : null;
+}

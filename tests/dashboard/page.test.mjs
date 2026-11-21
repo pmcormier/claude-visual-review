@@ -751,3 +751,26 @@ test('review fix: trailForTask looks across every entry of the project, so a too
   assert.deepEqual(trailForTask(a1, tree, s).map((x) => x.text), ['Edit a']);
   assert.deepEqual(trailForTask(b1, tree, s).map((x) => x.text), ['Read b']);
 });
+
+// ---- update glow (decision 44) ----
+test('progressOf + glowKind: real progress glows, tool activity does not', async () => {
+  const { progressOf, glowKind } = await import('../../global/dashboard/page/render.mjs');
+  const base = () => ({ state: 'working',
+    sessions: [{ sessionId: 'S', alive: true, state: 'working', pendingTools: [{ name: 'Bash', description: 'Run tests' }], recentTools: [] }],
+    tree: { epics: [{ id: 'e1', tasks: [{ id: 't1', status: 'doing' }, { id: 't2', status: 'next' }] }] } });
+  const a = progressOf(base());
+  assert.equal(glowKind(null, a), null, 'first sight: no glow');
+  const tools = base(); tools.sessions[0].pendingTools = [{ name: 'Edit', command: 'x.js' }]; tools.sessions[0].recentTools = [{ name: 'Bash' }];
+  assert.equal(glowKind(a, progressOf(tools)), null, 'tool lines alone: no glow');
+  const waiting = base(); waiting.state = 'waiting';
+  assert.equal(glowKind(a, progressOf(waiting)), 'waiting', 'state change: its colour');
+  const done = base(); done.tree.epics[0].tasks[0].status = 'done'; done.tree.epics[0].tasks[1].status = 'doing';
+  assert.equal(glowKind(a, progressOf(done)), 'done', 'a step finished');
+  const started = base(); started.tree.epics[0].tasks[1].status = 'doing';
+  assert.equal(glowKind(a, progressOf(started)), 'working', 'a step started: the state colour');
+  const newTask = base(); newTask.tree.epics.push({ id: 'e2', tasks: [{ id: 'u1', status: 'doing' }] });
+  assert.equal(glowKind(a, progressOf(newTask)), 'working', 'a task started');
+  const closed = base(); closed.sessions[0].alive = false; closed.state = 'quiet';
+  assert.equal(glowKind(a, progressOf(closed)), 'quiet', 'a session closed');
+  assert.equal(glowKind(a, progressOf({})), 'quiet', 'a project with nothing reads quiet, never throws');
+});

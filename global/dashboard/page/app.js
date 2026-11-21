@@ -9,6 +9,7 @@ import {
   filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, spendLine, projectSpend,
   taskLiveness, leftOpenText, sessionLabel, projectOpen, themeLabel,
   compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip, squareNext, squareLabel, toolTrail, trailForTask, sessionRef, onTaskLabel, timeLeftText,
+  progressOf, glowKind,
 } from '/render.mjs';
 
 const MIN = 60000;
@@ -363,6 +364,29 @@ function foldActs(p) {
     b('focus', 'Focus', 'Back to the default: running and waiting work open, the rest folded'));
 }
 
+// ---- update glow (decision 44) ----
+// A project glows briefly when real progress happens (glowKind); a rebuild in the middle carries on where it was.
+const GLOW_MS = 2600;
+const lastProgress = new Map(); // root -> progressOf at its last build
+const glowing = new Map(); // root -> {kind, until}
+function glowFor(p) {
+  const next = progressOf(p);
+  const kind = glowKind(lastProgress.get(p.root) ?? null, next);
+  lastProgress.set(p.root, next);
+  if (kind) glowing.set(p.root, { kind, until: Date.now() + GLOW_MS });
+  const g = glowing.get(p.root);
+  const left = g ? g.until - Date.now() : 0;
+  if (left <= 0) { glowing.delete(p.root); return null; }
+  return { cls: g.kind === 'done' ? 'done' : STATE_CLASS[g.kind] ?? 'idle', left };
+}
+function withGlow(el, g) {
+  if (!g) return el;
+  el.classList.add('glow', `g-${g.cls}`);
+  el.style.animationDelay = `${g.left - GLOW_MS}ms`;
+  setTimeout(() => el.classList.remove('glow'), g.left);
+  return el;
+}
+
 function panelFor(p, now, opts = {}) {
   const byId = new Map(arr(p.sessions).map((s) => [s.sessionId, s]));
   const groups = groupsOf(p, now, byId);
@@ -371,7 +395,8 @@ function panelFor(p, now, opts = {}) {
   const fresh = unseenOf(keys).length > 0;
   const cls = STATE_CLASS[p.state] ?? 'idle';
   const sessions = arr(p.sessions);
-  return h('article', { class: `panel s-${cls}${fresh ? ' changed' : ''}`, data: { state: stateTokens(p, shown), alerts: keys.join(',') || null, root: p.root } },
+  const glow = glowFor(p);
+  return withGlow(h('article', { class: `panel s-${cls}${fresh ? ' changed' : ''}`, data: { state: stateTokens(p, shown), alerts: keys.join(',') || null, root: p.root } },
     h('div', { class: 'ph', data: { dk: keyOf('p', p.root) } },
       opts.compact ? null : tw(true, keyOf('p', p.root), p.name, 'proj'), // no "Nothing running" list to fold into
       h('h2', { text: p.name }),
@@ -384,7 +409,7 @@ function panelFor(p, now, opts = {}) {
     p.error ? h('div', { class: 'err', text: p.error }) : null,
     sessions.flatMap((s) => [sessionBlock(p, s, now),
       ...arr(s.subagents).filter((a) => a.state === 'stuck').map((a) => stuckSubBlock(p, s, a, now))]),
-    treeOf(p, groups, byId));
+    treeOf(p, groups, byId)), glow);
 }
 
 function quietRow(p, now) {
@@ -467,8 +492,6 @@ function sync(container, cache, list, build, now, kind) {
 // ---- compact view ------------------------------------------------------------------------------------------------
 
 const squares = new Map(); // root -> {sig, el}
-const lastSquareState = new Map(); // root -> state at the last build, for the brief "changed" highlight
-const changedUntil = new Map(); // root -> when its highlight ends, so a rebuild keeps it for the full 4 s
 let oneSig = null;
 let quietSig = null;
 let openedFrom = null; // the root whose square opened the card, to give focus back on "Back to all"
@@ -498,16 +521,11 @@ function squareFor(p, now, key) {
   }
   const nextTask = squareNext(groupsOf(p, now, byId));
   const cls = STATE_CLASS[p.state] ?? 'idle';
-  if (lastSquareState.has(p.root) && lastSquareState.get(p.root) !== p.state) changedUntil.set(p.root, Date.now() + 4000);
-  lastSquareState.set(p.root, p.state);
-  const left = (changedUntil.get(p.root) ?? 0) - Date.now();
-  const changed = left > 0;
-  const el = h('article', { class: `square s-${cls}${changed ? ' changed' : ''}`, tabindex: '0', role: 'button', 'aria-label': squareLabel(p, arr(p.sessions).map((s) => currentTask(s)?.title).find(Boolean) ?? null), data: { key, root: p.root, fk: `sq|${p.root}`, state: filterToken(p.state) } },
+  const el = h('article', { class: `square s-${cls}`, tabindex: '0', role: 'button', 'aria-label': squareLabel(p, arr(p.sessions).map((s) => currentTask(s)?.title).find(Boolean) ?? null), data: { key, root: p.root, fk: `sq|${p.root}`, state: filterToken(p.state) } },
     h('div', { class: 'sqhead' }, h('h2', { text: p.name }), squareChip(p) ? chip(squareChip(p)) : null, busy ? life(busy.life) : null),
     h('div', { class: 'sqbody' }, body.length ? body : h('div', { class: 'muted', text: 'No live session' })),
     nextTask ? h('div', { class: 'sqnext', text: `Next: ${nextTask.title || 'Untitled task'}`, title: nextTask.title || '' }) : null);
-  if (changed) setTimeout(() => el.classList.remove('changed'), left);
-  return el;
+  return withGlow(el, glowFor(p));
 }
 
 function historyBox() {

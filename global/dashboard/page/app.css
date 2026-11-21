@@ -225,8 +225,18 @@ main > section { display: grid; gap: 32px; min-width: 0; }
   .now { margin-left: 30px; }
   .tree .tree { padding-left: 12px; margin-left: 6px; }
 }
+/* Update glow (decision 44): a soft ring in the colour of what happened, in for a third of a second, out over two. */
+.g-work { --glow: var(--accent); } .g-wait { --glow: var(--wait); } .g-stuck, .g-gone { --glow: var(--stuck); }
+.g-done { --glow: var(--approve); } .g-idle { --glow: var(--idle); }
+@keyframes glow {
+  0% { box-shadow: 0 0 0 0 transparent; }
+  12%, 30% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--glow) 55%, transparent), 0 0 22px 4px color-mix(in srgb, var(--glow) 35%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.panel.glow, .square.glow { animation: glow 2.6s ease-out both; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+  .panel.glow, .square.glow { box-shadow: 0 0 0 3px color-mix(in srgb, var(--glow) 55%, transparent); }
 }
 
 /* Wayfinding: state groups and the per-project fold buttons (spec 2026-11-19). */
@@ -265,7 +275,7 @@ body.compact .bar { padding-block: 8px; }
   border-radius: 14px; overflow: hidden; cursor: pointer; min-width: 0; }
 .square:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .square.s-stuck { border-color: color-mix(in srgb, var(--stuck) 55%, var(--rule)); }
-.square.changed { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
+
 .sqhead { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 10px 12px 8px; border-bottom: 1px solid var(--rule); min-width: 0; }
 .sqhead h2 { font-size: 1rem; margin: 0; flex: 1 1 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sqhead .chip { flex: none; }

@@ -625,3 +625,15 @@ twice, its unstarted steps no longer show as next, and `note.mjs steps` changes 
 The work-log rule gained a "Plain words" bullet (owner-approved text): titles, steps and about lines for someone who
 hasn't followed the work, a ticket number only at the end in brackets, and every step with its about line.
 Not taken (owner's choice): plan file lists as descriptions, and one name per thing across the page.
+
+## 44. A short glow when a project makes progress (2026-11-20)
+
+The owner wanted to try a brief glow on a project when it gets an update, knowing it might fire too often. What counts
+as an update is the owner's pick: real progress only, meaning the project's state changes, a step or task starts or
+finishes, a new work-log entry starts, or a session opens or closes. Tool activity does not count: it changes every
+few seconds while a session works and would keep working projects lit. The glow is a soft ring in the colour of what
+happened (blue working, violet waiting, red stuck, teal when a step finished), in for a third of a second and out
+over about two; nothing glows on first load, and with reduced motion it is a plain outline for the same time. It
+replaces the compact squares' 4-second outline on a state change, and works the same on full cards and squares.
+Not taken: glowing on any change (too frequent) or only when a project needs the owner (the "New" marker does that).
+It is a trial; if it proves too much, it comes out in one small change.
