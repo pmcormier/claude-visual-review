@@ -408,7 +408,11 @@ function sigOf(p, now, kind) {
 function replaceKeepingFocus(old, el) {
   const a = document.activeElement;
   const fk = a && old.contains(a) ? a.dataset?.fk : null;
+  // A square's body scrolls on its own; the rebuilt one keeps the old one's place (the browser clamps it when the
+  // content got shorter), so a live update never jumps it back to the top (owner, 2026-11-20).
+  const scrolled = [...old.querySelectorAll('.sqbody')].map((b) => b.scrollTop);
   old.replaceWith(el);
+  el.querySelectorAll('.sqbody').forEach((b, i) => { if (scrolled[i]) b.scrollTop = scrolled[i]; });
   if (!fk) return;
   const sel = `[data-fk="${CSS.escape(fk)}"]`;
   (el.matches(sel) ? el : el.querySelector(sel))?.focus({ preventScroll: true }); // a square is its own focus target
