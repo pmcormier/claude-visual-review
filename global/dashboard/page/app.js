@@ -902,6 +902,11 @@ document.addEventListener('click', (e) => {
       t.setAttribute('aria-expanded', String(open));
       const list = t.closest('li')?.querySelector(':scope > ul.tree');
       if (list) list.hidden = !open;
+      // Smooth folding (decision 50): a list the owner opens slides and fades in; live rebuilds never replay it.
+      if (list && open && !reduceMotion()) {
+        list.classList.add('opening');
+        list.addEventListener('animationend', () => list.classList.remove('opening'), { once: true });
+      }
       openState[key] = open;
       store.set('dash-open', openState);
     } else if (t.dataset.tw === 'proj') {

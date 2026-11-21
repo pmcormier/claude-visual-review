@@ -689,3 +689,15 @@ lists, behind the same token and Origin guard as Stop. VS Code shares one proces
 button opens the project's folder, which brings up its window; it can't pick the terminal tab without an extension.
 Two tabs with the same title: the window comes up and the note says so. If Windows only flashes the taskbar, the note
 says that too.
+
+## 50. The new look: a bevelled pop-up and nine page refinements (2026-11-20)
+
+The owner asked for the pop-up to read as a physical object and for the rest of the page to be "a little more visually
+stunning". Three edges were mocked; the owner picked the bevelled one (light on the top and left edges, shade on the
+bottom and right). Nine page ideas were mocked together on a proxy of the live page with a before/after switch, and the
+owner kept all nine: a state-coloured light along each card's top edge, cards with a top light, layered shadows and a
+small lift on hover, a soft spotlight and grain behind everything, a frosted top bar, glass chips with glowing dots,
+fuller activity lines with a soft glow, larger and bolder project names with monospace numbers, lists that slide in when
+opened, and the compact squares as glass tiles with a bevel and visible thickness. The page is a tool to scan, so none
+of it pulses or moves on its own; folding animates only when the owner opens a list, never on live rebuilds, and the
+lift and slide stop with reduced motion. Checked in both themes on the live page.
