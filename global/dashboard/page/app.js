@@ -542,7 +542,12 @@ function squareFor(p, now, key) {
   const nextTask = squareNext(groupsOf(p, now, byId));
   const cls = STATE_CLASS[p.state] ?? 'idle';
   const el = h('article', { class: `square s-${cls}`, tabindex: '0', role: 'button', 'aria-label': squareLabel(p, arr(p.sessions).map((s) => currentTask(s)?.title).find(Boolean) ?? null), data: { key, root: p.root, fk: `sq|${p.root}`, state: filterToken(p.state) } },
-    h('div', { class: 'sqhead' }, h('h2', { text: p.name }), squareChip(p) ? chip(squareChip(p)) : null, busy ? life(busy.life) : null),
+    h('div', { class: 'sqhead' }, h('h2', { text: p.name }), squareChip(p) ? chip(squareChip(p)) : null, busy ? life(busy.life) : null,
+      // Show (decision 52): brings the square's busiest live session to the front, as on the full page.
+      CAN_FOCUS && busy ? h('span', { class: 'showwrap' }, h('span', { class: 'shownote', role: 'status' }),
+        h('button', { type: 'button', class: 'iconbtn showsq', title: "Bring this project's terminal to the front", 'aria-label': "Bring this project's terminal to the front", data: { focus: busy.sessionId, fk: `showsq|${p.root}` } },
+          svg('ico', '0 0 24 24', { fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+            [['path', { d: 'M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5' }]]))) : null),
     h('div', { class: 'sqbody' }, body.length ? body : h('div', { class: 'muted', text: 'No live session' })),
     nextTask ? h('div', { class: 'sqnext', text: `Next: ${nextTask.title || 'Untitled task'}`, title: nextTask.title || '' }) : null);
   return withGlow(el, glowFor(p));

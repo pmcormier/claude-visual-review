@@ -712,3 +712,14 @@ with the pop-up's bevel. "Back to all" is a glass pill whose arrow slides left o
 now get the same glass as the other counts (their solid colour had overridden it). Waiting changed from purple to
 amber everywhere (dark #f2c14e; light #6e4a00, about 5:1 on the page background, so its text stays readable).
 Shown first as a preview of the branch on the live data, then approved.
+
+## 52. Show on compact squares; the light-page pop-up is white glass (2026-11-20)
+
+Each compact square gets a small glass Show button in its header that brings the square's busiest live session to the
+front, through the same guarded request as the full page's Show. On the light page the pop-up was dark glass, which
+didn't match round two's white glass cards; it is now white frosted glass a step brighter than the cards, with dark
+text and the same bevel. The six small items the first review deferred are fixed in the same branch: a re-started
+entry's old copy stays when it has finished steps; title cleanup leaves file names and paths alone and never makes a
+day 0; the help tour says "Needs me"; idle and ended sessions read "Paused on" and "Was on"; a session without an id
+reads "a session"; and the usual Windows temp folder under the home folder counts as scratch, with "home" taken as
+the folder holding Claude Code's own settings.

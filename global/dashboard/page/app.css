@@ -192,9 +192,10 @@ main > section { display: grid; gap: 32px; min-width: 0; }
 .tnext .epic { color: var(--muted); font-size: .82rem; }
 
 /* Hover explanation (decision 46): frosted glass, light on the dark page and dark on the light one, laid out from parts. */
-:root { --tip-rim: rgba(255,255,255,.22); --tip-sheen: rgba(255,255,255,.16); --tip-glow: rgba(255,255,255,.22);
-  --tip-bg: rgba(22,28,38,.78); --tip-fg: #eef2f8; --tip-muted: #a9b2c2; --tip-edge: rgba(255,255,255,.12); --tip-code: rgba(255,255,255,.10);
-  --tip-ask: #8fb8ff; --tip-ask-bg: rgba(110,168,255,.14); --tip-stuck: #ff9a91; --tip-stuck-bg: rgba(255,106,95,.14); }
+/* Light page (round two): the pop-up is white frosted glass like the cards, a step brighter so it stands above them. */
+:root { --tip-rim: #ffffff; --tip-sheen: rgba(255,255,255,.7); --tip-glow: rgba(255,255,255,.5);
+  --tip-bg: rgba(252,253,255,.74); --tip-fg: #18202d; --tip-muted: #4f596b; --tip-edge: rgba(255,255,255,.95); --tip-code: rgba(24,32,45,.07);
+  --tip-ask: #1d4fd8; --tip-ask-bg: rgba(29,79,216,.09); --tip-stuck: #ab241d; --tip-stuck-bg: rgba(171,36,29,.09); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --tip-rim: rgba(255,255,255,.9); --tip-sheen: rgba(255,255,255,.55); --tip-glow: rgba(255,255,255,.42);
   --tip-bg: rgba(220,228,240,.68); --tip-fg: #18202d; --tip-muted: #4f596b;
   --tip-edge: rgba(255,255,255,.40); --tip-code: rgba(24,32,45,.08); --tip-ask: #1d4fd8; --tip-ask-bg: rgba(29,79,216,.10);
@@ -430,6 +431,11 @@ body::before { content: ""; position: fixed; inset: 0; pointer-events: none; z-i
 .iconbtn:hover { color: var(--accent); transform: translateY(-1px); box-shadow: inset 1.5px 1.5px 0 color-mix(in srgb, white 34%, transparent), inset -1.5px -1.5px 0 rgba(0,0,0,.22), 0 6px 14px -4px rgba(0,0,0,.5), 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
 .iconbtn:active { transform: translateY(0); }
 .iconbtn .ico { width: 17px; height: 17px; }
+/* Show on a compact square (decision 52): a small glass button in the square's header. */
+.sqhead .showwrap { margin-left: auto; gap: 6px; }
+.sqhead .showsq { width: 26px; height: 26px; }
+.sqhead .showsq .ico { width: 14px; height: 14px; }
+.sqhead .shownote { font-size: .72rem; max-width: 9em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .helpbtn.iconbtn { font: 700 .95rem var(--display); }
 
 /* Every count button is glass, the stuck and waiting ones too, each tinted its own colour. */
