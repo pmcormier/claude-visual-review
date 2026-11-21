@@ -723,3 +723,15 @@ entry's old copy stays when it has finished steps; title cleanup leaves file nam
 day 0; the help tour says "Needs me"; idle and ended sessions read "Paused on" and "Was on"; a session without an id
 reads "a session"; and the usual Windows temp folder under the home folder counts as scratch, with "home" taken as
 the folder holding Claude Code's own settings.
+
+## 53. Second review: fixes (2026-11-20)
+
+A fresh reviewer read everything merged since the plain-English review. No critical findings: /focus can't be reached
+from another site (Host allowlist, page token, exact Origin) and no value reaches a shell. Fixed: a watcher now
+counts only for its own session's jobs and only when the command names its whole path ("log.txt" no longer matches
+"catalog.txt"), so another session's watcher can't hide a hung job; Show raises one window at a time, its buttons stay
+disabled across live rebuilds, and its result is written to the button on the page now; a UI Automation error no
+longer loses a window that was found; values go to focus.ps1 joined to their names, so a title like "-Folder" binds as
+text; a tab whose session title starts with a symbol is matched; a missing PowerShell 7 says so; both Inbox readers
+treat an empty reply id the same. Left as is: the parent-process walk could in theory raise an unrelated window if a
+parent died and its id was reused (rare; the window found is a terminal's or VS Code's in practice).

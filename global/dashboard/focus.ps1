@@ -57,17 +57,17 @@ if ($hostName -eq 'Code') {
 }
 
 $result = 'window'
-if ($hostName -eq 'WindowsTerminal' -and $Title) {
+if ($hostName -eq 'WindowsTerminal' -and $Title) { try {
   Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
   $root = [System.Windows.Automation.AutomationElement]::FromHandle($win.MainWindowHandle)
   $cond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::TabItem)
   # A tab is named after its session, after a spinner or status mark ("◐ Fix the cart").
-  $want = $Title.Trim()
+  $want = ($Title -replace '^[^\p{L}\p{N}]+', '').Trim()
   $tabs = @($root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond) | Where-Object { ($_.Current.Name -replace '^[^\p{L}\p{N}]+', '').Trim() -eq $want })
   if ($tabs.Count -eq 1) {
     $tabs[0].GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
     $result = 'front'
   } elseif ($tabs.Count -gt 1) { $result = 'dup' }
-}
+} catch { $result = 'window' } } # UI Automation can fail; the window was found, so still raise it
 if (-not (Raise $win.MainWindowHandle)) { Out-Result 'flash' $hostName }
 Out-Result $result $hostName

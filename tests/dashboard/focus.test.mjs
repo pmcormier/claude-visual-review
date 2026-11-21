@@ -29,3 +29,16 @@ test('focusSession: each helper result in plain words; a failing helper never th
   assert.equal((await focusSession(model, 'aaaa-1', async () => { throw new Error('boom'); })).text, "Couldn't find its window");
   assert.equal(await say({ result: 'front' }), 'Brought to the front');
 });
+
+test('focusSession (review fix): one at a time; a missing PowerShell says so', async () => {
+  let release;
+  const slow = () => new Promise((r) => { release = () => r({ result: 'front' }); });
+  const first = focusSession(model, 'aaaa-1', slow);
+  const second = await focusSession(model, 'aaaa-1', slow);
+  assert.deepEqual(second, { ok: false, text: FOCUS_TEXT.busy });
+  release();
+  assert.equal((await first).text, FOCUS_TEXT.front);
+  assert.equal((await focusSession(model, 'aaaa-1', async () => 'x')).text, FOCUS_TEXT.nowindow, 'the guard is released');
+  const noPwsh = await focusSession(model, 'aaaa-1', async () => { throw Object.assign(new Error('spawn pwsh ENOENT'), { code: 'ENOENT' }); });
+  assert.equal(noPwsh.text, "PowerShell 7 (pwsh) isn't installed, so Show can't work");
+});

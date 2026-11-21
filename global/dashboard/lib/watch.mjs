@@ -179,12 +179,18 @@ export function pruneMarkers(now = Date.now()) {
 
 
 /** The live watcher on a job's output file: {lastGrowthAt, quietMin}, or null. Paths compare without case or slash style. */
-export function watchFor(outputFile, markers, now, command = null) {
+export function watchFor(outputFile, markers, now, command = null, session = null) {
   if (!outputFile) return null;
   // The job's own output file, or the file its command writes to: a job that redirects (`> log.txt`) leaves its own
-  // output empty, and its watcher watches the log (owner, 2026-11-20).
+  // output empty, and its watcher watches the log (owner, 2026-11-20). Only the job's own session's watchers, and only
+  // the whole path in the command ("log.txt" is not in "catalog.txt") (review, 2026-11-20).
   const cmd = typeof command === 'string' ? norm(command) : '';
-  const m = markers.find((x) => isLive(x, now) && (norm(x.file) === norm(outputFile) || (cmd && cmd.includes(norm(x.file)))));
+  const named = (file) => {
+    const esc = norm(file).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[\\s"'<>|=])${esc}($|[\\s"';&|)])`).test(cmd);
+  };
+  const m = markers.find((x) => isLive(x, now) && (!session || !x.session || x.session === session)
+    && (norm(x.file) === norm(outputFile) || (cmd && named(x.file))));
   return m ? { lastGrowthAt: m.lastGrowthAt, quietMin: m.quietMin } : null;
 }
 

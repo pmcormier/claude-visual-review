@@ -194,3 +194,13 @@ test('watchFor: a watcher on the file the job writes to (named in its command) w
   assert.equal(watchFor('work/x/tasks/b1.output', [m], now, 'gh run watch 1'), null, 'a command that does not name the file');
   assert.equal(watchFor('work/x/tasks/b1.output', [m], now), null);
 });
+
+test('watchFor (review fix): only the job\'s own session\'s watchers, and only a whole path in its command', async () => {
+  const { watchFor } = await import('../../global/dashboard/lib/watch.mjs');
+  const now = Date.now();
+  const m = { session: 'A', file: 'log.txt', what: 'w', startedAt: now, beatAt: now, lastGrowthAt: now - MIN, size: 1, quietMin: 15, exited: null };
+  assert.equal(watchFor('t/b.output', [m], now, 'cat catalog.txt | head', 'A'), null, 'a substring of another name is not the file');
+  assert.ok(watchFor('t/b.output', [m], now, 'make > log.txt 2>&1', 'A'));
+  assert.ok(watchFor('t/b.output', [m], now, 'make > "log.txt"', 'A'));
+  assert.equal(watchFor('t/b.output', [m], now, 'make > log.txt', 'B'), null, 'another session\'s watcher');
+});

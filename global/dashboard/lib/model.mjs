@@ -261,9 +261,9 @@ function pruneSubagentCache(now) {
 
 let buildMarkers = [];
 // watch: the live heartbeat watcher on this job, if any (decision 37).
-const toolView = (t, markers = [], now = Date.now()) => (t ? {
+const toolView = (t, markers = [], now = Date.now(), session = null) => (t ? {
   name: t.name, command: clip(t.command), description: clip(t.description ?? null), startedMs: t.startedMs ?? null,
-  background: !!t.outputFile, watch: watchFor(t.outputFile, markers, now, t.command),
+  background: !!t.outputFile, watch: watchFor(t.outputFile, markers, now, t.command, session),
 } : null);
 const idleOf = (t, now) => (t?.outputFile ? outputGrowth(t.outputFile, now).idleMs : null);
 const RANK = { stuck: 0, waiting: 1, working: 2 };
@@ -309,7 +309,7 @@ function sessionView(s, now, th, sampler, openQuestions) {
   // Waiting on you whenever Claude asks: in the terminal or in the Inbox (askedOwner).
   const v = askedOwner(classify({
     kind: 'session', status: s.status, alive, signals, cpuPct, outputIdleMs: idleOf(tool, now), finished: null, now,
-    watch: tool ? watchFor(tool.outputFile, buildMarkers, now, tool.command) : null,
+    watch: tool ? watchFor(tool.outputFile, buildMarkers, now, tool.command, s.sessionId) : null,
     statusUpdatedAt: s.statusUpdatedAt,
   }, th), signals, openQuestions?.value?.get(s.sessionId) ?? null, openQuestions?.sent?.get(s.sessionId) ?? null, now);
   const waitsOnAgent = !!tool && (tool.name === 'Agent' || tool.name === 'Task');
@@ -323,8 +323,8 @@ function sessionView(s, now, th, sampler, openQuestions) {
     sessionId: s.sessionId, pid: s.pid, name: s.name, title: signals.title ?? null, cwd: s.cwd, status: s.status, alive,
     state: v.state, evidence: v.evidence, hint: v.hint, since: v.since,
     cpuPct, lastWriteMs: signals.lastWriteMs, life: signals.minutes, tokens: signals.tokens,
-    pendingTool: toolView(tool, buildMarkers, now), linkedTask: null,
-    pendingTools: (signals.pendingTools ?? []).slice(-MAX_RUNNING_SHOWN).map((t) => toolView(t, buildMarkers, now)),
+    pendingTool: toolView(tool, buildMarkers, now, s.sessionId), linkedTask: null,
+    pendingTools: (signals.pendingTools ?? []).slice(-MAX_RUNNING_SHOWN).map((t) => toolView(t, buildMarkers, now, s.sessionId)),
     recentTools: (signals.recentTools ?? []).map((t) => ({ name: t.name, command: clip(t.command), description: clip(t.description ?? null), endedMs: t.endedMs ?? null })),
     subagents: [...active, ...rest.slice(0, KEEP_DONE_SUBAGENTS)],
     subagentsHidden: Math.max(0, rest.length - KEEP_DONE_SUBAGENTS),

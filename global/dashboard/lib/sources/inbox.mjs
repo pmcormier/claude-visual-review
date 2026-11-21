@@ -115,7 +115,7 @@ export function readOpenQuestions() {
         const r = env.record;
         // An answer counts once it is sent: the Inbox saves a pick (answer set, sent_reply_id null) before the owner
         // presses send, and the owner is still answering then (owner, 2026-11-20). Records without the field are sent.
-        if ((r.answer != null && r.sent_reply_id !== null) || r.superseded_by != null || (r.action && r.action_result)) continue;
+        if ((r.answer != null && r.sent_reply_id !== null && r.sent_reply_id !== '') || r.superseded_by != null || (r.action && r.action_result)) continue;
         if (resolved.has(threadOf.get(r.message_id))) continue;
         const sid = typeof r.asked_by_agent_id === 'string' ? r.asked_by_agent_id : null;
         if (!sid || typeof r.prompt !== 'string' || firstMs === null) continue;

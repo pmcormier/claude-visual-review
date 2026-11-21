@@ -20,19 +20,28 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const arr = (v) => (Array.isArray(v) ? v : []);
 const token = $('meta[name="dash-token"]')?.getAttribute('content') ?? '';
 const CAN_FOCUS = /Windows/.test(navigator.userAgent);
+// Sessions being brought up: their Show buttons stay disabled even when a live update rebuilds the row (review fix).
+const focusing = new Set();
 document.addEventListener('click', async (e) => {
   const b = e.target.closest?.('[data-focus]');
   if (!b) return;
   e.preventDefault();
   e.stopPropagation();
-  const note = b.parentElement?.querySelector('.shownote');
+  const id = b.dataset.focus;
+  const fk = b.dataset.fk;
+  if (focusing.has(id)) return;
+  focusing.add(id);
   b.disabled = true;
   let text;
   try {
     const r = await fetch('/focus', { method: 'POST', headers: { 'X-Dash-Token': token, 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: b.dataset.focus }) });
     text = r.ok ? (await r.json()).text : "Couldn't reach the dashboard server";
   } catch { text = "Couldn't reach the dashboard server"; }
-  b.disabled = false;
+  focusing.delete(id);
+  // The row may have been rebuilt while waiting: write to the button that is on the page now.
+  const now = (fk && $(`[data-fk="${CSS.escape(fk)}"]`)) || b;
+  now.disabled = false;
+  const note = now.parentElement?.querySelector('.shownote');
   if (note) { note.textContent = text; setTimeout(() => { if (note.textContent === text) note.textContent = ''; }, 5000); }
 }, true);
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -232,7 +241,7 @@ function sessionBlock(p, s, now) {
     : null;
   // "Show": bring this session's terminal to the front (decision 49). Windows only, live sessions only.
   const show = CAN_FOCUS && s.alive ? h('span', { class: 'showwrap' },
-    h('button', { type: 'button', class: 'showbtn', title: "Bring this session's terminal to the front", data: { focus: s.sessionId, fk: `show|${s.sessionId}` }, text: 'Show' }),
+    h('button', { type: 'button', class: 'showbtn', title: "Bring this session's terminal to the front", disabled: focusing.has(s.sessionId), data: { focus: s.sessionId, fk: `show|${s.sessionId}` }, text: 'Show' }),
     h('span', { class: 'shownote', role: 'status' })) : null;
   return h('div', { class: `sess s-${cls}`, data: { dk: keyOf('s', p.root, s.sessionId), link, alerts: keys.join(',') || null } },
     h('div', { class: 'what' }, h('b', { text: sessionLabel(s) }), ' · ', what, show, sub, spendRow, onTask),
@@ -545,7 +554,7 @@ function squareFor(p, now, key) {
     h('div', { class: 'sqhead' }, h('h2', { text: p.name }), squareChip(p) ? chip(squareChip(p)) : null, busy ? life(busy.life) : null,
       // Show (decision 52): brings the square's busiest live session to the front, as on the full page.
       CAN_FOCUS && busy ? h('span', { class: 'showwrap' }, h('span', { class: 'shownote', role: 'status' }),
-        h('button', { type: 'button', class: 'iconbtn showsq', title: "Bring this project's terminal to the front", 'aria-label': "Bring this project's terminal to the front", data: { focus: busy.sessionId, fk: `showsq|${p.root}` } },
+        h('button', { type: 'button', class: 'iconbtn showsq', title: "Bring this project's terminal to the front", 'aria-label': "Bring this project's terminal to the front", disabled: focusing.has(busy.sessionId), data: { focus: busy.sessionId, fk: `showsq|${p.root}` } },
           svg('ico', '0 0 24 24', { fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
             [['path', { d: 'M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5' }]]))) : null),
     h('div', { class: 'sqbody' }, body.length ? body : h('div', { class: 'muted', text: 'No live session' })),
