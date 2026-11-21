@@ -669,3 +669,23 @@ its watcher watched the log, which kept growing; and the page linked a watcher t
 file, so it never knew the job was watched. Now a watcher also belongs to a job whose command names the watcher's file,
 and a background job with a live watcher counts as working (owner's pick): the watcher wakes the session itself after
 its quiet limit, so "stuck" would only ask the owner to act when nothing is wrong. Unwatched jobs keep the old rule.
+
+## 48. Glass pop-ups (2026-11-20)
+
+The owner asked how graphical the pop-ups could get and picked the fullest of three mocked levels ("C"): a sheen across
+the top corner, a bright top rim, fine grain, a light that follows the mouse a little (still with reduced motion), and
+the page behind bent slightly through an SVG displacement filter used as a backdrop filter, with a faint colour fringe
+at the rim. Recommended was the level without the bend, since the bend makes what is behind busier; the owner's call
+stands. One adjustment after seeing it on the live page: the tint is a little thicker than in the mock (68% instead of
+56%), so the pop-up's text stays readable over real cards. Light page: the same glass, dark.
+
+## 49. A "Show" button that brings a session's terminal to the front (2026-11-20)
+
+Researched before building: each session's process leads up to its terminal's window, and Windows Terminal exposes its
+tabs to accessibility tools, named after each session's title, and lets them be selected. A live try selected the
+right tab and raised the window, and the same from the dashboard's background server reported the window in front.
+The server runs `focus.ps1` with the pid, title and folder as separate arguments, only for a live session the model
+lists, behind the same token and Origin guard as Stop. VS Code shares one process for all its windows, so there the
+button opens the project's folder, which brings up its window; it can't pick the terminal tab without an extension.
+Two tabs with the same title: the window comes up and the note says so. If Windows only flashes the taskbar, the note
+says that too.

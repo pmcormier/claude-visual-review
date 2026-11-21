@@ -9,6 +9,7 @@
 //   GET /events       SSE: the full model on connect, then on change (at most once a second); a named `hb` event
 //                     (data: server time in ms) on connect and every 5 s, so the page knows the server is alive
 //   POST /stop        needs X-Dash-Token (per-start random token) and Origin http://<that Host>; else 403
+//   POST /focus       {sessionId}: brings that session's window to the front; same guard as /stop
 // Rebuilds: fs.watch (recursive) on <claudeHome>/sessions, <claudeHome>/projects, <dashHome> and
 // <plannotatorHome>/inbox (when present), throttled: a rebuild starts 500 ms after the first event and at least
 // 2 s after the previous rebuild started; plus a 5 s tick. SSE clients more than 4 MB behind are dropped. Auto-stops after `autoStop` minutes with no live session.
@@ -28,6 +29,7 @@ import { loadConfig } from './lib/config.mjs';
 import { buildModel } from './lib/model.mjs';
 import { pruneSpend } from './lib/spend.mjs';
 import { pruneMarkers } from './lib/watch.mjs';
+import { focusSession } from './lib/focus.mjs';
 import { startCpuSampler } from './lib/procs.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -219,6 +221,23 @@ function onStop(req, res, host) {
   res.on('finish', () => setImmediate(() => shutdown('stop requested from the page')));
 }
 
+// Bring a session's window to the front (decision 49): same guard as /stop; the body names a session the model lists.
+function onFocus(req, res, host) {
+  if (!tokenOk(req.headers['x-dash-token']) || req.headers.origin !== `http://${host}`) {
+    reply(res, 403, 'Forbidden');
+    return;
+  }
+  let body = '';
+  req.setEncoding('utf8');
+  req.on('data', (d) => { body += d; if (body.length > 2048) req.destroy(); });
+  req.on('end', async () => {
+    let id = null;
+    try { id = JSON.parse(body || '{}')?.sessionId ?? null; } catch { id = null; }
+    const r = await focusSession(model, id);
+    reply(res, 200, JSON.stringify(r), 'application/json');
+  });
+}
+
 function onEvents(req, res) {
   if (clients.size >= MAX_CLIENTS) { reply(res, 503, 'Too many clients'); return; }
   res.writeHead(200, { ...BASE_HEADERS, 'Content-Type': 'text/event-stream; charset=utf-8', Connection: 'keep-alive' });
@@ -239,6 +258,7 @@ function handle(req, res) {
     if (origin !== undefined && origin !== `http://${host}`) { reply(res, 403, 'Forbidden'); return; }
     const path = String(req.url || '').split('?')[0]; // raw path: no decoding, no dot-segment folding
     if (req.method === 'POST' && path === '/stop') { onStop(req, res, host); return; }
+    if (req.method === 'POST' && path === '/focus') { onFocus(req, res, host); return; }
     if (req.method !== 'GET' && req.method !== 'HEAD') { reply(res, 405, 'Method not allowed', undefined, { Allow: 'GET, HEAD' }); return; }
     if (path === '/events') {
       if (req.method !== 'GET') { reply(res, 405, 'Method not allowed', undefined, { Allow: 'GET' }); return; }

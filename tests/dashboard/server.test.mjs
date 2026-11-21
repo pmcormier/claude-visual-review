@@ -243,3 +243,15 @@ test('/compact serves the page with its token, like /', async () => {
     assert.equal((await http(home.port, { path: '/compact/x' })).status, 404);
   });
 });
+
+test('focus needs the page token and its own Origin, like stop', async () => {
+  await withServer(async (home) => {
+    const origin = `http://127.0.0.1:${home.port}`;
+    assert.equal((await http(home.port, { method: 'POST', path: '/focus', headers: { Origin: origin } })).status, 403);
+    const token = tokenOf((await http(home.port)).body);
+    assert.equal((await http(home.port, { method: 'POST', path: '/focus', headers: { 'X-Dash-Token': token, Origin: 'http://evil.example' } })).status, 403);
+    const r = await http(home.port, { method: 'POST', path: '/focus', headers: { 'X-Dash-Token': token, Origin: origin, 'Content-Type': 'application/json' } });
+    assert.equal(r.status, 200, 'no body: answered, nothing found');
+    assert.equal(JSON.parse(r.body).ok, false);
+  });
+});

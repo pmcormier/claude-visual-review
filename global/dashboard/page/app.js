@@ -19,6 +19,22 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const arr = (v) => (Array.isArray(v) ? v : []);
 const token = $('meta[name="dash-token"]')?.getAttribute('content') ?? '';
+const CAN_FOCUS = /Windows/.test(navigator.userAgent);
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest?.('[data-focus]');
+  if (!b) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const note = b.parentElement?.querySelector('.shownote');
+  b.disabled = true;
+  let text;
+  try {
+    const r = await fetch('/focus', { method: 'POST', headers: { 'X-Dash-Token': token, 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: b.dataset.focus }) });
+    text = r.ok ? (await r.json()).text : "Couldn't reach the dashboard server";
+  } catch { text = "Couldn't reach the dashboard server"; }
+  b.disabled = false;
+  if (note) { note.textContent = text; setTimeout(() => { if (note.textContent === text) note.textContent = ''; }, 5000); }
+}, true);
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 // The compact view (decision 40): the same page at /compact, one square per active project.
 const COMPACT = location.pathname === '/compact';
@@ -214,8 +230,12 @@ function sessionBlock(p, s, now) {
         h('span', { class: 'meta' }, Number.isFinite(a.lastWriteMs) ? [since(a.lastWriteMs, now), ' ago'] : null))),
       finished ? h('div', { class: 'subs', text: `${finished} ${finished === 1 ? 'subagent' : 'subagents'} finished` }) : null)
     : null;
+  // "Show": bring this session's terminal to the front (decision 49). Windows only, live sessions only.
+  const show = CAN_FOCUS && s.alive ? h('span', { class: 'showwrap' },
+    h('button', { type: 'button', class: 'showbtn', title: "Bring this session's terminal to the front", data: { focus: s.sessionId, fk: `show|${s.sessionId}` }, text: 'Show' }),
+    h('span', { class: 'shownote', role: 'status' })) : null;
   return h('div', { class: `sess s-${cls}`, data: { dk: keyOf('s', p.root, s.sessionId), link, alerts: keys.join(',') || null } },
-    h('div', { class: 'what' }, h('b', { text: sessionLabel(s) }), ' · ', what, sub, spendRow, onTask),
+    h('div', { class: 'what' }, h('b', { text: sessionLabel(s) }), ' · ', what, show, sub, spendRow, onTask),
     life(s.life),
     s.evidence ? h('div', { class: 'evidence', text: s.evidence }) : null,
     s.hint ? h('div', { class: 'hint', text: s.hint }) : null,
@@ -1068,7 +1088,7 @@ function hideTip() { clearTimeout(tipTimer); tip.classList.remove('show'); tipAn
 function placeTip(el) {
   const box = (el.closest('.panel, .tcol, .stable, .quiet') ?? el).getBoundingClientRect();
   const r = el.getBoundingClientRect();
-  const w = Math.min(320, innerWidth - 16);
+  const w = Math.min(380, innerWidth - 16);
   tip.style.maxWidth = `${w}px`;
   let left;
   let top = Math.min(Math.max(8, r.top), innerHeight - tip.offsetHeight - 8);
@@ -1081,7 +1101,16 @@ function placeTip(el) {
   tip.style.left = `${left}px`;
   tip.style.top = `${top}px`;
 }
+// The glass's light follows the mouse a little (decision 48); still when Windows asks for reduced motion.
+function tipLight(e) {
+  if (!tip.classList.contains('show') || reduceMotion()) return;
+  const r = tip.getBoundingClientRect();
+  if (!r.width) return;
+  tip.style.setProperty('--mx', `${Math.max(-20, Math.min(120, ((e.clientX - r.left) / r.width) * 100))}%`);
+  tip.style.setProperty('--my', `${Math.max(-30, Math.min(130, ((e.clientY - r.top) / r.height) * 100))}%`);
+}
 document.addEventListener('mousemove', (e) => {
+  tipLight(e);
   if (document.querySelector('.tour')) { hideTip(); return; }
   const el = e.target.closest?.('[data-dk]') ?? null;
   if (tip.classList.contains('show') && (Math.hypot(e.clientX - x0, e.clientY - y0) > 8 || el !== tipAnchor)) hideTip();
