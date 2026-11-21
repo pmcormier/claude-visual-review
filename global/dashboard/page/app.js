@@ -1198,7 +1198,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !keyPop.
 const STEPS = [
   [['.counts'], 'The big picture', 'How many sessions look stuck, are waiting on you, or are working, and what is up next. Click one to focus on it.'],
   [['.usage'], 'Your Claude usage', 'Plan limits at a glance: the five-hour window, the week, and when the window resets.'],
-  [['.tabs'], 'Three views', 'Projects shows each project and its plan. Sessions lists every open window and helper. Triage sorts what needs a look, what is moving and what is up next.'],
+  [['.tabs'], 'Three views', 'Projects shows each project and its plan. Sessions lists every open window and helper. Needs me sorts what needs a look, what is moving and what is up next.'],
   [['.panel.s-stuck', '.panel.s-wait'], 'A project that needs a look', 'Projects with something wrong get a coloured edge, and a New badge until you have seen them.'],
   [['.panel.s-stuck .sess', '.panel .sess'], 'A session and its life line', 'Each Claude Code window, what it is doing, and its last hour as a line. Flat means it went quiet.'],
   [['.panel.s-stuck .evidence', '.panel .evidence'], 'Why we think it is stuck', 'Always the facts, never just a timer: CPU, output, and how long it has been silent.'],

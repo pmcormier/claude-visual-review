@@ -36,7 +36,7 @@
 //    plans from before the dashboard and dropped plans.
 import { homedir } from 'node:os';
 import { readdirSync, statSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
-import { join, basename, resolve, sep } from 'node:path';
+import { join, basename, resolve, sep, dirname } from 'node:path';
 import { claudeHome, dashHome, plannotatorHome } from './paths.mjs';
 import { loadConfig, readInstalledAt } from './config.mjs';
 import { readJsonl } from './jsonl.mjs';
@@ -97,10 +97,14 @@ function headCwd(path) {
  * The home folder itself and a top-level Temp or tmp folder on any drive (a "Temp\testing" folder, /tmp/x) are
  * scratch places, not projects (decision 43). They are left off the page unless a session is live there.
  */
-export function scratchRoot(root, { home = homedir() } = {}) {
+// The person's home: the folder that holds Claude Code's own (~/.claude), which tests point at a fake home.
+const defaultHome = () => { try { return dirname(claudeHome()); } catch { return homedir(); } };
+export function scratchRoot(root, { home = defaultHome() } = {}) {
   const n = (p) => String(p ?? '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
   const r = n(root);
-  return r === n(home) || /^(?:[a-z]:)?\/(?:temp|tmp)(?:\/|$)/.test(r);
+  const h = n(home);
+  // The home folder, its usual Windows temp folder (AppData/Local/Temp), or a top-level Temp or tmp folder.
+  return r === h || r === `${h}/appdata/local/temp` || r.startsWith(`${h}/appdata/local/temp/`) || /^(?:[a-z]:)?\/(?:temp|tmp)(?:\/|$)/.test(r);
 }
 
 /** The projects the page shows: scratch places only while a session is live there. */

@@ -848,3 +848,13 @@ test('themeTitle: the icon-only theme button says what it is on and what a click
   assert.equal(themeTitle('Light', true), 'Theme: Light. Click for Dark');
   assert.equal(themeTitle('Dark', false), 'Theme: Dark. Click for Auto');
 });
+
+// ---- deferred small fixes from the first review ----
+test('small fixes: a session without an id is "a session"; idle and ended sessions are not "Working on"', () => {
+  assert.equal(sessionRef({}), 'a session');
+  assert.equal(sessionRef({ title: 'Fix cart' }), 'Fix cart');
+  assert.equal(sessionRef({ title: 'Fix cart', sessionId: 'abcd1234' }), 'Fix cart (abcd)');
+  assert.equal(onTaskLabel('idle'), 'Paused on ');
+  assert.equal(onTaskLabel('gone'), 'Was on ');
+  assert.equal(onTaskLabel('working'), 'Working on ');
+});

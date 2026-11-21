@@ -28,8 +28,9 @@ export function plainTitle(s) {
   const raw = String(s ?? '');
   const out = raw
     .replace(/`([^`]*)`/g, '$1')
-    .replace(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g, (w) => w.replace(/_/g, ' '))
-    .replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (m, y, mo, d) => (Number(mo) >= 1 && Number(mo) <= 12 ? `${Number(d)} ${MONTHS[Number(mo) - 1]}` : m))
+    // snake_case words become words, but not inside a file name or a path ("run_all.ps1", "tests/run_all").
+    .replace(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g, (w, at, str) => (/[./\\]/.test(str[at - 1] ?? '') || /[./\\]/.test(str[at + w.length] ?? '') ? w : w.replace(/_/g, ' ')))
+    .replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (m, y, mo, d) => (Number(mo) >= 1 && Number(mo) <= 12 && Number(d) >= 1 && Number(d) <= 31 ? `${Number(d)} ${MONTHS[Number(mo) - 1]}` : m))
     .replace(/\s*[—–-]?\s*Implementation Plan\s*(?=\(|$)/i, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim();

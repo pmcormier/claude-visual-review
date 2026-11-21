@@ -453,10 +453,14 @@ function helperCounts(session) {
 
 /** A session by its title with its short id for reference ("Panels build (d519)"); "session d519" without a title. */
 const cap = (x) => (x ? `${x[0].toUpperCase()}${x.slice(1)}` : x);
-export const sessionRef = (s) => (s?.title ? `${s.title} (${shortId(s.sessionId)})` : `session ${shortId(s?.sessionId)}`);
+export const sessionRef = (s) => {
+  const id = typeof s?.sessionId === 'string' && s.sessionId ? shortId(s.sessionId) : null;
+  if (s?.title) return id ? `${s.title} (${id})` : s.title;
+  return id ? `session ${id}` : 'a session';
+};
 
 /** The words before the task a session is on, following its state (never "Working on" while it waits on you). */
-export const onTaskLabel = (state) => (state === 'waiting' ? 'Waiting on you about ' : state === 'stuck' ? 'Stuck on ' : 'Working on ');
+export const onTaskLabel = (state) => ({ waiting: 'Waiting on you about ', stuck: 'Stuck on ', idle: 'Paused on ', gone: 'Was on ' }[state] ?? 'Working on ');
 
 /** Work left as a time, like every other time on the page ("≈ 2h 42m"); empty for none. */
 export const timeLeftText = (hours) => (num(hours) && hours > 0 ? `≈ ${formatDuration(hours * HOUR)}` : '');

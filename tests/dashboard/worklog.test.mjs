@@ -361,3 +361,13 @@ test('steps with the same count renames by position: a renamed step keeps its st
   assert.deepEqual(f.tasks.map((t) => [t.title, t.status]), [['b', 'next'], ['x', 'next'], ['a2', 'done'], ['c', 'next']]);
   assert.equal(f.tasks.find((t) => t.title === 'a2').n, 5);
 });
+
+test('a same-title restart keeps the old copy when it had finished or begun steps', async () => {
+  const env = setup();
+  note(env, ['start', 'Rounds', '--steps', 'a|b']);
+  note(env, ['step', '1', 'done']);
+  note(env, ['start', 'Rounds', '--steps', 'c|d']);
+  const epics = await read(env);
+  assert.equal(epics.length, 2, 'the old copy has finished work, so it stays');
+  assert.equal(epics[0].tasks.find((t) => t.title === 'a').status, 'done');
+});

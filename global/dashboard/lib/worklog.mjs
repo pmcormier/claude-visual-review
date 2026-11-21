@@ -63,7 +63,8 @@ export function readWorklog(root) {
         const prev = open.get(session);
         // The same session starting the same title again replaced its entry (older agents did this to rename a
         // step): the old copy is not listed (owner, 2026-11-20).
-        if (prev && prev.title === title) prev._dropped = true;
+        // ...unless the old copy has finished steps: those stay visible (review, 2026-11-20).
+        if (prev && prev.title === title && !prev.tasks.some((t) => t.status === 'done')) prev._dropped = true;
         if (prev) {
           // leftOpen: begun or waiting, then left when the session moved on; the page shows it as started, not active.
           // A closed entry waits on no one, so its waiting steps are left open too.

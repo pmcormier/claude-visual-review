@@ -411,3 +411,11 @@ test('review fix: a hidden scratch place adds nothing to the header counts', asy
     assert.equal(m.counts.next, 0);
   } finally { rmSync(w.base, { recursive: true, force: true }); }
 });
+
+test('scratchRoot: the usual Windows temp folder under the home folder is scratch too', async () => {
+  const { scratchRoot } = await import('../../global/dashboard/lib/model.mjs');
+  assert.equal(scratchRoot('/home/me/AppData/Local/Temp/x', { home: '/home/me' }), true);
+  assert.equal(scratchRoot('/home/me/AppData/Local/Temp', { home: '/home/me' }), true);
+  assert.equal(scratchRoot('/home/me/AppData/Local/Tempest', { home: '/home/me' }), false);
+  assert.equal(scratchRoot('/home/me/work/app', { home: '/home/me' }), false);
+});

@@ -739,3 +739,11 @@ test('plainTitle: no code marks, snake_case, "Implementation Plan" tails or ISO 
   assert.equal(plainTitle('Logging Implementation Plan (refreshed 2 Nov)'), 'Logging (refreshed 2 Nov)');
   assert.equal(plainTitle('Implementation Plan'), 'Implementation Plan'); // never empty
 });
+
+test('plainTitle leaves file names and paths alone and never makes a day 0', async () => {
+  const { plainTitle } = await import('../../global/dashboard/lib/tree.mjs');
+  assert.equal(plainTitle('Fix run_all.ps1 in tests/run_all'), 'Fix run_all.ps1 in tests/run_all');
+  assert.equal(plainTitle('Plan 2026-11-00'), 'Plan 2026-11-00');
+  assert.equal(plainTitle('Plan 2026-11-16'), 'Plan 16 Nov');
+  assert.equal(plainTitle('the task_tree view'), 'the task tree view');
+});
