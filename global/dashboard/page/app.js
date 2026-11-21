@@ -9,7 +9,7 @@ import {
   filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, spendLine, projectSpend,
   taskLiveness, leftOpenText, sessionLabel, projectOpen, themeLabel,
   compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip, squareNext, squareLabel, toolTrail, trailForTask, sessionRef, onTaskLabel, timeLeftText,
-  progressOf, glowKind,
+  progressOf, glowKind, detailParts,
 } from '/render.mjs';
 
 const MIN = 60000;
@@ -800,7 +800,8 @@ function render() {
       tipAnchor = again;
       if (tip.classList.contains('show')) {
         const item = details.get(dk);
-        tip.textContent = item ? detailText({ ...item, now }) : tip.textContent;
+        const parts = item ? detailParts({ ...item, now }) : null;
+        if (parts) tip.replaceChildren(...tipBody(parts));
         placeTip(again);
       }
     }
@@ -1040,6 +1041,24 @@ stopBtn.addEventListener('click', async () => {
 // ---- hover details: one plain paragraph about the item under a still mouse ------------------------------------------
 
 const tip = h('div', { class: 'tip', role: 'tooltip' });
+
+// A hover laid out from its parts (decision 46). Every value goes in as text, never as markup.
+const LEAD_NUMBER = /^(\d\S*(?: \d+m)?)( .*)$/; // "8 tasks left" -> "8"; "2h 20m spent" -> "2h 20m"
+function tipBody(p) {
+  const rows = Array.isArray(p.rows) ? p.rows : [];
+  const bullets = Array.isArray(p.bullets) ? p.bullets : [];
+  return [
+    p.title ? h('div', { class: 'tip-hd' }, h('span', { text: p.title }), p.id ? h('span', { class: 'tip-id', text: p.id }) : null) : null,
+    p.state?.text ? h('div', { class: `tip-st s-${p.state.cls}` }, h('span', { class: 'tip-dot' }), h('span', { text: p.state.text })) : null,
+    p.ask ? h('div', { class: `tip-ask${p.ask.tone === 'stuck' ? ' stuck' : ''}` }, h('b', { text: p.ask.label }), h('i', { text: p.ask.text })) : null,
+    p.about ? h('p', { class: 'tip-about', text: p.about }) : null,
+    rows.length ? h('dl', { class: 'tip-rows' }, rows.flatMap((r) => [h('dt', { text: r.k }), h('dd', null, r.mono ? h('code', { text: r.v }) : String(r.v))])) : null,
+    bullets.length ? h('ul', { class: 'tip-list' }, bullets.map((b) => {
+      const m = LEAD_NUMBER.exec(b);
+      return h('li', null, m ? [h('b', { text: m[1] }), m[2]] : b);
+    })) : null,
+  ].filter(Boolean); // replaceChildren would print a null
+}
 document.body.append(tip);
 let tipTimer = null;
 let tipAnchor = null;
@@ -1076,10 +1095,9 @@ document.addEventListener('mousemove', (e) => {
       const at = tipAnchor; // the row under the mouse, or its replacement after an update
       if (!at?.isConnected) return;
       const item = details.get(at.dataset.dk);
-      const text = item ? detailText({ ...item, now: Date.now() }) : '';
-      if (!text) return;
-      const lab = at.querySelector('.label');
-      tip.textContent = tipText(lab?.textContent ?? '', !!lab && lab.scrollWidth > lab.clientWidth, text);
+      const parts = item ? detailParts({ ...item, now: Date.now() }) : null;
+      if (!parts) return;
+      tip.replaceChildren(...tipBody(parts));
       placeTip(at);
       tip.classList.add('show');
     }, 650);

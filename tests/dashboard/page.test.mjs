@@ -774,3 +774,70 @@ test('progressOf + glowKind: real progress glows, tool activity does not', async
   assert.equal(glowKind(a, progressOf(closed)), 'quiet', 'a session closed');
   assert.equal(glowKind(a, progressOf({})), 'quiet', 'a project with nothing reads quiet, never throws');
 });
+
+// ---- richer hovers (decision 46): the same words, in parts the page lays out ----
+test('detailParts: a session has a title, its id, a state line, a box for what it asks, and labelled rows', async () => {
+  const { detailParts } = await import('../../global/dashboard/page/render.mjs');
+  const s = { ...stuckSession, title: 'Invoice work', state: 'waiting', evidence: 'Inbox: Merge the branch?', pendingTool: { name: 'PowerShell', command: 'git push\nmore' },
+    subagents: [{ agentId: 'x', state: 'working', finished: false }], subagentsHidden: 4 };
+  const p = detailParts({ kind: 'session', session: s, project: { name: 'billing-api' }, now: NOW });
+  assert.equal(p.title, 'Invoice work');
+  assert.equal(p.id, '34d4');
+  assert.deepEqual(p.state, { cls: 'wait', text: 'Waiting on you · billing-api' });
+  assert.deepEqual(p.ask, { label: 'Inbox question open', text: 'Merge the branch?' });
+  assert.deepEqual(p.rows, [
+    { k: 'Task', v: 'Fixture migration' },
+    { k: 'Helpers', v: '1 running, 4 finished' },
+    { k: 'Tokens', v: '51.2k read · 3.4k written' },
+    { k: 'Running', v: 'git push', mono: true },
+  ]);
+  const quiet = detailParts({ kind: 'session', session: { sessionId: 'abcd1234', state: 'idle', subagents: [] }, project: null, now: NOW });
+  assert.equal(quiet.title, 'Session');
+  assert.deepEqual(quiet.state, { cls: 'idle', text: 'Your turn' });
+  assert.deepEqual(quiet.rows, [{ k: 'Helpers', v: 'none' }]);
+  const stuck = detailParts({ kind: 'session', session: stuckSession, project: { name: 'b' }, now: NOW });
+  assert.deepEqual(stuck.ask, { label: 'Why it looks stuck', text: 'pytest running 52 min · 0% CPU · no output for 31 min', tone: 'stuck' });
+});
+
+test('detailParts: a task is its title, a state line, then its about line', async () => {
+  const { detailParts } = await import('../../global/dashboard/page/render.mjs');
+  const task = { id: 't3', title: 'Fixture migration', status: 'doing', sessionId: stuckSession.sessionId, spentMin: 112, about: 'Moves the test data.' };
+  const p = detailParts({ kind: 'task', task, session: { ...stuckSession, state: 'working', evidence: null }, liveness: 'current' });
+  assert.equal(p.title, 'Fixture migration');
+  assert.deepEqual(p.state, { cls: 'work', text: 'Session 34d4 is on it now, 1h 52m so far.' });
+  assert.equal(p.about, 'Moves the test data.');
+  const none = detailParts({ kind: 'task', task: { id: 'n', title: 'Later', status: 'next' } });
+  assert.deepEqual(none.state, { cls: 'idle', text: 'Not started.' });
+  assert.equal(none.about, null, 'no about line: nothing, not a placeholder');
+  assert.equal(detailParts({ kind: 'task', task: { id: 'd', title: 'D', status: 'done' } }).state.cls, 'done');
+});
+
+test('detailParts: a project gets short bullets; spend and epics stay one paragraph; never throws', async () => {
+  const { detailParts } = await import('../../global/dashboard/page/render.mjs');
+  const p = detailParts({ kind: 'project', project: { name: 'shop', state: 'working', sessions: [{ alive: true }], tree: { epics: [], spentMin: 140 } }, now: NOW });
+  assert.equal(p.title, 'shop');
+  assert.deepEqual(p.state, { cls: 'work', text: 'Work is moving' });
+  assert.deepEqual(p.bullets, ['1 session open', 'No plan found', '2h 20m spent so far']);
+  assert.equal(detailParts({ kind: 'spend', text: '$3 in all.' }).about, '$3 in all.');
+  assert.equal(detailParts({ kind: 'epic', epic: { title: 'E', tasks: [] } }).about, 'A write-up, no tasks.');
+  assert.equal(detailParts(null), null);
+  assert.equal(detailParts({ kind: 'session', session: null }).title, 'Session');
+});
+
+test('detailParts: no technical text in any part (plain-English guard)', async () => {
+  const { detailParts } = await import('../../global/dashboard/page/render.mjs');
+  const BAD = /mcp__|\bundefined\b|\bnull\b|\bNaN\b|\[object|[A-Za-z]:[\/]|`/;
+  const items = [
+    { kind: 'session', session: { sessionId: 'x', state: 'gone', subagents: [{}], pendingTool: { name: 'mcp__playwright__browser_click' } }, project: {} },
+    { kind: 'session', session: { ...stuckSession, hint: 'Your answer is on its way', state: 'working' }, project: { name: 'p' } },
+    { kind: 'subagent', subagent: { description: 'Check', model: 'sonnet', state: 'stuck', evidence: 'quiet 9 min' }, session: stuckSession, project: { name: 'p' }, now: NOW },
+    { kind: 'task', task: { status: 'waiting' } }, { kind: 'project', project: {} }, { kind: 'epic', epic: {} },
+  ];
+  for (const it of items) {
+    const p = detailParts(it);
+    assert.ok(p, it.kind);
+    const strs = []; JSON.stringify(p, (k, v) => { if (typeof v === 'string') strs.push(v); return v; });
+    const all = strs.join(' | ');
+    assert.doesNotMatch(all, BAD, `${it.kind}: ${all}`);
+  }
+});

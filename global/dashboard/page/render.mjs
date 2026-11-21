@@ -534,7 +534,12 @@ const PROJECT_PHRASE = {
   quiet: 'Nothing running',
 };
 
-function projectText({ project, now }) {
+function projectText(item) {
+  return join(...projectBits(item));
+}
+
+// The project hover's pieces, in order: what is happening, how quiet, sessions, error, work left, time spent.
+function projectBits({ project, now }) {
   const p = project ?? {};
   const sessions = arr(p.sessions).filter((s) => s?.alive);
   const epics = arr(p.tree?.epics);
@@ -542,14 +547,113 @@ function projectText({ project, now }) {
   const left = effortLeft(p.tree, shown);
   const spent = p.tree?.spentMin > 0 ? `${formatDuration(p.tree.spentMin * MIN)} spent so far` : '';
   const quiet = p.state === 'quiet' && num(p.quietSince) && num(now) ? `Quiet for ${agoWords(now - p.quietSince)}` : '';
-  return join(
+  return [
     PROJECT_PHRASE[p.state] ?? '',
     quiet,
     sessions.length ? `${plural(sessions.length, 'session')} open` : '',
     p.error,
     epics.length ? `${plural(left.count, 'task')} left${left.hours ? `, about ${formatDuration(left.hours * HOUR)}` : ''}` : 'No plan found',
     spent,
-  );
+  ];
+}
+
+// ---- richer hovers (decision 46) --------------------------------------------------------------------------------
+
+const SESSION_LINE = { working: 'Working', waiting: 'Waiting on you', idle: 'Your turn', stuck: 'Looks stuck', gone: 'Process ended' };
+const ASK_PREFIX = [['Inbox: ', 'Inbox question open'], ['Asked: ', 'Asked in the terminal']];
+
+/** What a session or helper asks of the owner, or why it looks stuck: a labelled box, or null. */
+function askBox(state, evidence, hint) {
+  if (state === 'waiting' && evidence) {
+    const [pre, label] = ASK_PREFIX.find(([x]) => String(evidence).startsWith(x)) ?? ['', 'Waiting on you'];
+    return { label, text: String(evidence).slice(pre.length) };
+  }
+  if ((state === 'stuck' || state === 'gone') && evidence) {
+    return { label: state === 'stuck' ? 'Why it looks stuck' : 'What was running', text: String(evidence), tone: 'stuck' };
+  }
+  const open = 'Inbox question open: ';
+  if (typeof hint === 'string' && hint.startsWith(open)) return { label: 'Inbox question open', text: hint.slice(open.length) };
+  return null;
+}
+
+function helpersValue(s) {
+  const { running, finished } = helperCounts(s);
+  if (!running && !finished) return 'none';
+  if (!running) return `${finished} finished, none running`;
+  return finished ? `${running} running, ${finished} finished` : `${running} running`;
+}
+
+function sessionParts({ session, project }) {
+  const s = session ?? {};
+  const tk = s.tokens ?? {};
+  const tin = (tk.input ?? 0) + (tk.cacheRead ?? 0) + (tk.cacheCreate ?? 0);
+  const ask = askBox(s.state, s.evidence, s.hint);
+  const tool = s.pendingTool;
+  const rows = [
+    s.hint && !ask?.label?.startsWith('Inbox') ? { k: 'Note', v: s.hint } : null,
+    currentTask(s)?.title ? { k: 'Task', v: currentTask(s).title } : null,
+    { k: 'Helpers', v: helpersValue(s) },
+    tin || tk.output ? { k: 'Tokens', v: `${formatTokens(tin)} read · ${formatTokens(tk.output ?? 0)} written` } : null,
+    tool?.command ? { k: 'Running', v: cutCommand(tool.command), mono: true } : tool?.name ? { k: 'Running', v: toolText(tool) } : null,
+  ].filter(Boolean);
+  const line = SESSION_LINE[s.state] ?? 'State unknown';
+  return {
+    title: s.title || 'Session', id: typeof s.sessionId === 'string' && s.sessionId ? shortId(s.sessionId) : null,
+    state: { cls: STATE_CLASS[s.state] ?? 'idle', text: project?.name ? `${line} · ${project.name}` : line },
+    ask, rows,
+  };
+}
+
+function taskParts(item) {
+  const t = item.task ?? {};
+  const s = item.session;
+  const [, status = ''] = taskText(item).split('\n\n');
+  const waits = item.liveness === 'waiting' || t.status === 'waiting' || s?.state === 'waiting';
+  const cls = t.status === 'done' ? 'done'
+    : t.status === 'next' || item.liveness === 'started' || item.liveness === 'stale' ? 'idle'
+      : waits ? 'wait' : s?.state === 'stuck' || s?.state === 'gone' ? 'stuck' : s ? 'work' : 'idle';
+  return { title: t.title || 'Untitled task', state: { cls, text: status }, about: t.about ? sentence(t.about) : null };
+}
+
+function subagentParts({ subagent, session, project, now }) {
+  const a = subagent ?? {};
+  const text = a.finished === true ? 'Finished' : a.state === 'working' ? 'Still active' : SESSION_LINE[a.state] ?? 'Idle';
+  return {
+    title: a.description || 'Helper',
+    state: { cls: a.finished === true ? 'done' : STATE_CLASS[a.state] ?? 'idle', text },
+    ask: askBox(a.state, a.evidence, null),
+    rows: [
+      { k: 'Started by', v: cap(sessionRef(session)) },
+      project?.name ? { k: 'Project', v: project.name } : null,
+      a.model ? { k: 'Model', v: a.model } : null,
+      num(a.lastWriteMs) && num(now) ? { k: 'Last wrote', v: `${formatDuration(Math.max(0, now - a.lastWriteMs))} ago` } : null,
+    ].filter(Boolean),
+  };
+}
+
+/**
+ * The same hover as detailText, in parts the page lays out (decision 46): a title, an optional short id, a state line
+ * with its colour, an optional box for what is asked of the owner, an about paragraph, labelled rows, or bullets.
+ * Every value is plain text; the page sets each with textContent. Null when there is nothing to show.
+ */
+export function detailParts(item) {
+  try {
+    switch (item?.kind) {
+      case 'task': return taskParts(item);
+      case 'session': return sessionParts(item);
+      case 'subagent': return subagentParts(item);
+      case 'epic': return { title: item.epic?.title || 'Plan', about: epicText(item) };
+      case 'project': {
+        const [phrase, ...rest] = projectBits(item);
+        const p = item.project ?? {};
+        return { title: p.name || 'Project', state: phrase ? { cls: STATE_CLASS[p.state] ?? 'idle', text: phrase } : null, bullets: rest.filter(Boolean) };
+      }
+      case 'spend': return typeof item.text === 'string' && item.text ? { title: 'Spend', about: item.text } : null;
+      default: return null;
+    }
+  } catch {
+    return null;
+  }
 }
 
 /**

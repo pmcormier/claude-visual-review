@@ -647,3 +647,15 @@ on the Quiet line. Measured from the Inbox's own records: picked 02:57:18, sent 
 03:09:46, sent 03:14:23 on another. Now a question stays open until its answer is sent (records without the field, from
 older Inbox versions, still count as answered). After it is sent, an idle session that hasn't written since shows as
 working with "Your answer is on its way" for up to 10 minutes, since the next move is Claude's (owner's pick).
+
+## 46. Hover pop-ups laid out in parts (2026-11-20)
+
+The owner asked for formatted pop-ups (headers, line breaks, bullets, colour, bold and italics) for readability,
+mostly on the long ones. `detailParts` in `page/render.mjs` returns each hover as parts with the same words as before:
+a title (with the session's short id in grey monospace), a state line with the page's coloured dot, a box for what is
+asked of the owner (or why something looks stuck), an about paragraph, labelled rows (task, helpers, tokens, the running
+command in monospace cut to one line), or bullets with their numbers in bold. The page builds them as elements and
+sets every value with textContent, so a session or task name can never inject markup (the standing rule). Owner's notes
+on the approved design: the question box is blue, not purple, and the pop-up is frosted glass, light on the dark page
+but not bright (dark frosted on the light page). `detailText` stays as the flat text, and a guard test checks the parts
+for technical text as it does the text.

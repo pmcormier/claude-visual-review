@@ -191,11 +191,38 @@ main > section { display: grid; gap: 32px; min-width: 0; }
 .tnext li { padding: 2px 0; overflow-wrap: anywhere; }
 .tnext .epic { color: var(--muted); font-size: .82rem; }
 
-/* Hover explanation */
-.tip { position: fixed; z-index: 50; max-width: 320px; background: var(--fg); color: var(--bg); font: 400 .85rem/1.5 var(--body);
-  padding: 10px 12px; border-radius: 10px; box-shadow: 0 10px 30px -10px rgba(0,0,0,.4); pointer-events: none; opacity: 0; transform: translateY(4px);
+/* Hover explanation (decision 46): frosted glass, light on the dark page and dark on the light one, laid out from parts. */
+:root { --tip-bg: rgba(22,28,38,.84); --tip-fg: #eef2f8; --tip-muted: #a9b2c2; --tip-edge: rgba(255,255,255,.12); --tip-code: rgba(255,255,255,.10);
+  --tip-ask: #8fb8ff; --tip-ask-bg: rgba(110,168,255,.14); --tip-stuck: #ff9a91; --tip-stuck-bg: rgba(255,106,95,.14); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --tip-bg: rgba(214,222,234,.80); --tip-fg: #18202d; --tip-muted: #4f596b;
+  --tip-edge: rgba(255,255,255,.40); --tip-code: rgba(24,32,45,.08); --tip-ask: #1d4fd8; --tip-ask-bg: rgba(29,79,216,.10);
+  --tip-stuck: #ab241d; --tip-stuck-bg: rgba(171,36,29,.10); } }
+:root[data-theme="dark"] { --tip-bg: rgba(214,222,234,.80); --tip-fg: #18202d; --tip-muted: #4f596b;
+  --tip-edge: rgba(255,255,255,.40); --tip-code: rgba(24,32,45,.08); --tip-ask: #1d4fd8; --tip-ask-bg: rgba(29,79,216,.10);
+  --tip-stuck: #ab241d; --tip-stuck-bg: rgba(171,36,29,.10); }
+.tip { position: fixed; z-index: 50; max-width: 380px; background: var(--tip-bg); color: var(--tip-fg); font: 400 .85rem/1.5 var(--body);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3); backdrop-filter: blur(14px) saturate(1.3); border: 1px solid var(--tip-edge);
+  padding: 11px 13px; border-radius: 12px; box-shadow: 0 14px 34px -14px rgba(0,0,0,.55); pointer-events: none; opacity: 0; transform: translateY(4px);
   transition: opacity .15s, transform .2s cubic-bezier(.16,1,.3,1), visibility .15s; left: 0; top: 0; visibility: hidden; }
 .tip.show { opacity: 1; transform: none; visibility: visible; }
+.tip-hd { font: 600 .95rem/1.3 var(--display); overflow-wrap: anywhere; }
+.tip-id { font: 400 .76rem var(--mono); color: var(--tip-muted); margin-left: 7px; }
+.tip-st { display: flex; align-items: baseline; gap: 7px; font-size: .82rem; color: var(--tip-muted); margin: 3px 0 0; }
+.tip-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--idle); transform: translateY(-1px); }
+.tip-st.s-work .tip-dot { background: var(--accent); } .tip-st.s-wait .tip-dot { background: var(--wait); }
+.tip-st.s-stuck .tip-dot, .tip-st.s-gone .tip-dot { background: var(--stuck); } .tip-st.s-done .tip-dot { background: var(--approve); }
+.tip-ask { border-left: 3px solid var(--tip-ask); background: var(--tip-ask-bg); padding: 6px 9px; border-radius: 4px; margin-top: 8px; }
+.tip-ask.stuck { border-left-color: var(--tip-stuck); background: var(--tip-stuck-bg); }
+.tip-ask b { display: block; font: 600 .7rem var(--body); letter-spacing: .04em; text-transform: uppercase; color: var(--tip-ask); }
+.tip-ask.stuck b { color: var(--tip-stuck); }
+.tip-ask i { overflow-wrap: anywhere; }
+.tip-about { margin: 8px 0 0; }
+.tip-rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 12px; margin: 8px 0 0; font-size: .82rem; }
+.tip-rows dt { color: var(--tip-muted); } .tip-rows dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.tip-rows code { display: block; font: 400 .76rem var(--mono); background: var(--tip-code); padding: 1px 5px; border-radius: 4px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tip-list { margin: 6px 0 0; padding-left: 18px; } .tip-list li { margin: 1px 0; }
+.tip > :first-child { margin-top: 0; }
 
 /* Help tour */
 .tour { position: fixed; inset: 0; z-index: 40; background: color-mix(in srgb, #000 45%, transparent); }
@@ -249,7 +276,7 @@ main > section { display: grid; gap: 32px; min-width: 0; }
 .ph .fold-acts { flex-basis: 100%; justify-content: flex-end; }
 
 /* Symbol key and full labels in the hover pop-up (spec 2026-11-19 wayfinding). */
-.tip { white-space: pre-line; }
+.tip { white-space: normal; }
 .keybtn { height: 30px; border-radius: 999px; border: 1px solid var(--rule); background: var(--surface); color: var(--fg); cursor: pointer;
   font: 500 .82rem var(--body); padding: 0 12px; }
 .keypop { position: fixed; z-index: 60; width: min(300px, calc(100vw - 16px)); background: var(--surface); color: var(--fg);
