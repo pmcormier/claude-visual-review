@@ -579,7 +579,8 @@ export function detailText(item) {
 export function sessionWhat(s) {
   const tool = s?.pendingTool;
   // Claude's own description of the call first; a shell command without one is just "a command" (its text is in the hover).
-  const toolLabel = !tool ? '' : tool.description ? tool.description : tool.name === 'Bash' ? 'a command' : toolText(tool);
+  const toolLabel = !tool ? '' : tool.description ? tool.description
+    : tool.command && !FILE_TOOLS.has(String(tool.name ?? '')) ? 'a command' : toolText(tool);
   let what;
   if (s?.name && s.name !== s.title) what = s.name; // a name that only repeats the bold title says nothing
   else if (s?.state === 'waiting') what = 'Waiting for your answer';
@@ -645,11 +646,13 @@ export function toolTrail(s) {
  * several; a tool that ended before any of them goes under the current task. Not working: only the current task
  * gets its one "why" line.
  */
-export function trailForTask(task, tasks, s) {
+export function trailForTask(task, tree, s) {
   if (!task || !s) return [];
   const current = s.linkedTask?.id === task.id;
   if (s.state !== 'working') return current ? toolTrail(s) : [];
-  const mine = arr(tasks).filter((t) => t?.sessionId === s.sessionId && num(t.startedMs));
+  // Every entry of the project, not only this task's: a tool that ended in an earlier entry stays there.
+  const tasks = Array.isArray(tree) ? tree : arr(tree?.epics).flatMap((e) => arr(e?.tasks));
+  const mine = tasks.filter((t) => t?.sessionId === s.sessionId && num(t.startedMs));
   const ownerOf = (ended) => {
     if (!num(ended)) return s.linkedTask?.id ?? null;
     let best = null;

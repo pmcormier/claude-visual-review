@@ -732,3 +732,22 @@ test('guard: realistic messy input never reaches the page as technical text (dec
   const hits = out.filter((x) => BAD.test(String(x)));
   assert.deepEqual(hits, []);
 });
+
+test('review fix: a shell command without a description reads "a command" in the session line, whatever the shell', () => {
+  const s = (tool) => ({ state: 'working', pendingTool: tool });
+  assert.equal(sessionWhat(s({ name: 'PowerShell', command: 'Remove-Item ./x -Recurse', description: null })).what, 'Running a command');
+  assert.equal(sessionWhat(s({ name: 'Edit', command: 'src/app.js', description: null })).what, 'Running Edit app.js');
+  assert.equal(sessionWhat(s({ name: 'mcp__playwright__browser_evaluate', command: null })).what, 'Running Playwright: browser evaluate');
+});
+
+test('review fix: trailForTask looks across every entry of the project, so a tool shows once', () => {
+  const tree = { epics: [
+    { tasks: [{ id: 'A1', sessionId: 'S', startedMs: 100, doneMs: 200 }] },
+    { tasks: [{ id: 'B1', sessionId: 'S', startedMs: 300, doneMs: null }] },
+  ] };
+  const s = { sessionId: 'S', state: 'working', linkedTask: { id: 'B1' }, pendingTools: [],
+    recentTools: [{ name: 'Bash', description: 'Read b', endedMs: 350 }, { name: 'Bash', description: 'Edit a', endedMs: 150 }] };
+  const [a1, b1] = tree.epics.map((e) => e.tasks[0]);
+  assert.deepEqual(trailForTask(a1, tree, s).map((x) => x.text), ['Edit a']);
+  assert.deepEqual(trailForTask(b1, tree, s).map((x) => x.text), ['Read b']);
+});

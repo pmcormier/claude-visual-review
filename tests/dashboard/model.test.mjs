@@ -395,3 +395,19 @@ test('visibleProjects: a scratch place shows only while a session is live there'
   ];
   assert.deepEqual(visibleProjects(ps, env).map((p) => [p.root, p.sessions?.length ?? 0]), [['/home/me', 1], ['/work/app', 0]]);
 });
+
+test('review fix: a hidden scratch place adds nothing to the header counts', async () => {
+  const w = makeWorld();
+  try {
+    const now = Date.now();
+    const root = project(w, 'scratchhome');
+    const plans = join(root, 'docs', 'superpowers', 'plans');
+    mkdirSync(plans, { recursive: true });
+    writeFileSync(join(plans, 'a.md'), '# A\n\n### Task 1: one\n- [ ] s\n\n### Task 2: two\n- [ ] s\n');
+    transcript(w, root, 'h1', [userAt(now - 60000)]);
+    const { buildModel } = await import('../../global/dashboard/lib/model.mjs');
+    const m = await buildModel(now, { sampler: sampler(() => false), home: root });
+    assert.deepEqual(m.projects.map((p) => p.name), []);
+    assert.equal(m.counts.next, 0);
+  } finally { rmSync(w.base, { recursive: true, force: true }); }
+});

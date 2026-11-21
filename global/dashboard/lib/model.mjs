@@ -457,8 +457,12 @@ export async function buildModel(now = Date.now(), opts = {}) {
 
     // Session spend (decision 34): the status line's records, kept after a session ends.
     const spend = (() => { try { return readSpendCached(join(dashHome(), 'spend')); } catch { return new Map(); } })();
+    // Scratch places (home folder, temp) show only while a session is live there (decision 43); hidden ones count
+    // for nothing in the header either.
+    const visible = new Set(visibleProjects(projects, typeof opts.home === 'string' ? { home: opts.home } : undefined));
     for (const p of projects) {
       p.spend = spendFor(spend, p.root, now);
+      if (!visible.has(p)) continue;
       p.activeSinceMs = trackActive(ACTIVE, keyOf(p.root), p.state in RANK, now);
       for (const s of p.sessions) {
         s.spend = sessionSpend(spend.get(s.sessionId), s.tokens);
@@ -469,8 +473,7 @@ export async function buildModel(now = Date.now(), opts = {}) {
       for (const e of p.tree?.epics ?? []) if (!e.before && !e.dropped) model.counts.next += e.tasks.filter((t) => t.status === 'next').length;
     }
     pruneActive(ACTIVE, new Set(projects.map((p) => keyOf(p.root))));
-    // Scratch places (home folder, temp) show only while a session is live there (decision 43).
-    model.projects = orderProjects(visibleProjects(projects));
+    model.projects = orderProjects(projects.filter((p) => visible.has(p)));
   } catch (e) {
     model.error = `Could not build the dashboard: ${errText(e)}`;
   }

@@ -339,3 +339,25 @@ test('a replaced entry offers no next steps: its untouched steps are hidden, beg
   const [old] = await read(env);
   assert.deepEqual(old.tasks.map((t) => [t.title, t.status, t.leftOpen === true]), [['begun', 'next', true], ['finished', 'done', false]]);
 });
+
+test('steps on an entry without steps: the first new step takes over its status and plan task (review fix)', async () => {
+  const env = setup();
+  note(env, ['start', 'X', '--plan', 'p.md', '--task', '3']);
+  note(env, ['steps', 'a|b']);
+  const [e] = await read(env);
+  assert.deepEqual(e.tasks.map((t) => [t.title, t.status, t.n]), [['a', 'doing', 3], ['b', 'next', null]]);
+});
+
+test('steps with the same count renames by position: a renamed step keeps its status (review fix)', async () => {
+  const env = setup();
+  note(env, ['start', 'Y', '--plan', 'p.md', '--task', '5', '--steps', 'a|b|c']);
+  note(env, ['step', '1', 'done']);
+  note(env, ['steps', 'a2|b|c']);
+  const [e] = await read(env);
+  assert.deepEqual(e.tasks.map((t) => [t.title, t.status, t.n]), [['a2', 'done', 5], ['b', 'next', null], ['c', 'next', null]]);
+  // A different count is not a rename: names still match by name and a new one is next.
+  note(env, ['steps', 'b|x|a2|c']);
+  const [f] = await read(env);
+  assert.deepEqual(f.tasks.map((t) => [t.title, t.status]), [['b', 'next'], ['x', 'next'], ['a2', 'done'], ['c', 'next']]);
+  assert.equal(f.tasks.find((t) => t.title === 'a2').n, 5);
+});

@@ -266,7 +266,7 @@ function taskLi(p, e, t, byId) {
   const link = s ? keyOf(p.root, t.id) : null;
   // Tools sit under the step they ran in, so a finished step can carry its last tools too.
   const ts = liveSession(byId, t);
-  const trail = ts ? trailForTask(t, e.tasks, ts) : [];
+  const trail = ts ? trailForTask(t, p.tree, ts) : [];
   // Started or left open: one short muted note, so the task's name keeps its room; which session is in the hover.
   return h('li', null,
     h('div', { class: `node s-${st}`, data: { dk: keyOf('t', p.root, t.id), link } },
@@ -486,7 +486,7 @@ function squareFor(p, now, key) {
       st.items.length || st.done ? h('ul', { class: 'sqsteps' },
         st.done ? h('li', { class: 'muted' }, icon('done'), h('span', { text: `${st.done} ${st.done === 1 ? 'step' : 'steps'} done` })) : null,
         // Each step carries the tools that ran while it was in progress (owner, 2026-11-20).
-        st.items.flatMap((t) => [stepLi(t), ...trailForTask(t, epic?.tasks, s).map((x) => h('li', { class: 'trailli' }, trailLine(x, s, now)))]),
+        st.items.flatMap((t) => [stepLi(t), ...trailForTask(t, p.tree, s).map((x) => h('li', { class: 'trailli' }, trailLine(x, s, now)))]),
         st.more ? h('li', { class: 'muted' }, h('span', { text: `+${st.more} more ${st.more === 1 ? 'step' : 'steps'}` })) : null) : null,
       st.items.length ? null : toolTrail(s).map((t) => trailLine(t, s, now)),
       arr(s.pendingTools).map((t) => (watchedNote(t, now) ? h('div', { class: 'muted', title: watchedHover(t), data: { watched: t.watch.lastGrowthAt }, text: watchedNote(t, now) }) : null)),
