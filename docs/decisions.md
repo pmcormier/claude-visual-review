@@ -637,3 +637,13 @@ over about two; nothing glows on first load, and with reduced motion it is a pla
 replaces the compact squares' 4-second outline on a state change, and works the same on full cards and squares.
 Not taken: glowing on any change (too frequent) or only when a project needs the owner (the "New" marker does that).
 It is a trial; if it proves too much, it comes out in one small change.
+
+## 45. An Inbox answer counts once it is sent; then it is "on its way" (2026-11-20)
+
+The owner saw a project drop from "Waiting on you" to quiet while he was still answering its question. The Inbox saves
+a pick (the answer field set, `sent_reply_id` still null) as soon as an option is chosen, before the owner adds a note
+and presses send; the dashboard read the pick as answered, so the session fell back to idle, which compact view lists
+on the Quiet line. Measured from the Inbox's own records: picked 02:57:18, sent 02:58:24 on one question; picked
+03:09:46, sent 03:14:23 on another. Now a question stays open until its answer is sent (records without the field, from
+older Inbox versions, still count as answered). After it is sent, an idle session that hasn't written since shows as
+working with "Your answer is on its way" for up to 10 minutes, since the next move is Claude's (owner's pick).

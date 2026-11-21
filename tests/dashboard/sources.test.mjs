@@ -460,3 +460,24 @@ test('readOpenQuestions: a thread resolved and then reopened counts as open', as
   const { readOpenQuestions } = await mod('inbox.mjs');
   assert.equal(readOpenQuestions().get('s')?.prompt, 'Merge?');
 });
+
+test('readOpenQuestions: a picked answer not yet sent is still open; readSentAnswers gives when each session last got an answer', async () => {
+  const { plan, root } = setup();
+  const dir = inboxProject(plan, root);
+  writeFileSync(join(dir, 'messages.jsonl'), env(1, 1, 'a', 'message', 'm1', { id: 'm1', thread_id: 't1', subject: 'x', resolved_at: null }) + '\n');
+  const q = (key, sid, over) => ({ id: 'm1/' + key, message_id: 'm1', key, prompt: 'P ' + key, asked_by_agent_id: sid, answer: null, superseded_by: null, sent_reply_id: null, ...over });
+  writeFileSync(join(dir, 'questions.jsonl'), [
+    env(1, 1, '2026-11-19T10:00:00Z', 'question', 'm1/a', q('a', 'picker')),
+    env(1, 2, '2026-11-19T10:01:00Z', 'question', 'm1/a', q('a', 'picker', { answer: { v: 1 }, picked_at: '2026-11-19T10:01:00Z' })),
+    env(1, 3, '2026-11-19T10:00:00Z', 'question', 'm1/b', q('b', 'sender')),
+    env(1, 4, '2026-11-19T10:02:00Z', 'question', 'm1/b', q('b', 'sender', { answer: { v: 1 } })),
+    env(1, 5, '2026-11-19T10:03:00Z', 'question', 'm1/b', q('b', 'sender', { answer: { v: 1 }, sent_reply_id: 'r1' })),
+    env(1, 6, '2026-11-19T10:04:00Z', 'question', 'm1/c', { id: 'm1/c', message_id: 'm1', key: 'c', prompt: 'P c', asked_by_agent_id: 'old', answer: { v: 1 } }),
+  ].join('\n') + '\n');
+  const { readOpenQuestions, readSentAnswers } = await mod('inbox.mjs');
+  assert.deepEqual([...readOpenQuestions().keys()], ['picker'], 'picked but not sent: still waiting on the owner');
+  const sent = readSentAnswers();
+  assert.deepEqual(sent.get('sender'), { sentMs: Date.parse('2026-11-19T10:03:00Z') });
+  assert.equal(sent.has('picker'), false);
+  assert.equal(sent.has('old'), false, 'older records without the sent field are answered, with no known send time');
+});

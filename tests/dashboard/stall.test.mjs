@@ -240,3 +240,15 @@ test('a long-pending AskUserQuestion is waiting, not stuck; gone stays gone', ()
   assert.equal(fromStatus.evidence, 'Asked: Which way?');
   assert.equal(askedOwner({ state: 'gone', evidence: 'x', hint: null, since: null }, sig({ pendingTool: auq }), null).state, 'gone');
 });
+
+// Owner, 2026-11-20: after the owner sends an answer, the session shows it is on its way until it wakes.
+test('askedOwner: an idle session with an answer sent since its last write reads "Your answer is on its way" for 10 min', () => {
+  const idle = { state: 'idle', evidence: null, hint: null, since: null };
+  const now = ago(0);
+  const fresh = askedOwner(idle, sig({ lastWriteMs: ago(5) }), null, { sentMs: ago(1) }, now);
+  assert.equal(fresh.state, 'working');
+  assert.equal(fresh.hint, 'Your answer is on its way');
+  assert.equal(askedOwner(idle, sig({ lastWriteMs: ago(0.5) }), null, { sentMs: ago(1) }, now), idle, 'already woke: nothing to add');
+  assert.equal(askedOwner(idle, sig({ lastWriteMs: ago(30) }), null, { sentMs: ago(11) }, now), idle, 'more than 10 min: back to idle');
+  assert.equal(askedOwner(idle, sig({ lastWriteMs: ago(5) }), { prompt: 'Q?', askedMs: ago(2) }, { sentMs: ago(1) }, now).state, 'waiting', 'another question still open wins');
+});

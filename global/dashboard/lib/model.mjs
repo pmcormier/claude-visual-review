@@ -49,7 +49,7 @@ import { classify, askedOwner } from './stall.mjs';
 import { readWorklog } from './worklog.mjs';
 import { readPlans } from './sources/plans.mjs';
 import { readBmad } from './sources/bmad.mjs';
-import { readInbox, readOpenQuestions } from './sources/inbox.mjs';
+import { readInbox, readOpenQuestions, readSentAnswers } from './sources/inbox.mjs';
 import { readCommits } from './git.mjs';
 import { buildTree } from './tree.mjs';
 import { readUsage } from './usage.mjs';
@@ -192,13 +192,14 @@ function inboxSig() {
     .map((f) => statSig(join(base, k, f))).join(',') + `@${k}`).join('|');
 }
 
-let openQCache = { sig: null, value: new Map() };
+let openQCache = { sig: null, value: new Map(), sent: new Map() };
 function cachedOpenQuestions(sig) {
-  if (sig !== '-' && openQCache.sig === sig) return openQCache.value;
-  let value;
+  if (sig !== '-' && openQCache.sig === sig) return openQCache;
+  let value; let sent;
   try { value = readOpenQuestions(); } catch { value = new Map(); }
-  openQCache = { sig, value };
-  return value;
+  try { sent = readSentAnswers(); } catch { sent = new Map(); }
+  openQCache = { sig, value, sent };
+  return openQCache;
 }
 
 const sourceCache = new Map(); // kind + NUL + root key -> {sig, value}
@@ -305,7 +306,7 @@ function sessionView(s, now, th, sampler, openQuestions) {
   const v = askedOwner(classify({
     kind: 'session', status: s.status, alive, signals, cpuPct, outputIdleMs: idleOf(tool, now), finished: null, now,
     statusUpdatedAt: s.statusUpdatedAt,
-  }, th), signals, openQuestions?.get(s.sessionId) ?? null);
+  }, th), signals, openQuestions?.value?.get(s.sessionId) ?? null, openQuestions?.sent?.get(s.sessionId) ?? null, now);
   const waitsOnAgent = !!tool && (tool.name === 'Agent' || tool.name === 'Task');
   const parent = { alive, pid: s.pid, waitsOnAgent, agentSinceMs: waitsOnAgent ? tool.startedMs ?? null : null };
   let subs = [];

@@ -113,7 +113,9 @@ export function readOpenQuestions() {
       }
       for (const { env, firstMs } of latest.values()) {
         const r = env.record;
-        if (r.answer != null || r.superseded_by != null || (r.action && r.action_result)) continue;
+        // An answer counts once it is sent: the Inbox saves a pick (answer set, sent_reply_id null) before the owner
+        // presses send, and the owner is still answering then (owner, 2026-11-20). Records without the field are sent.
+        if ((r.answer != null && r.sent_reply_id !== null) || r.superseded_by != null || (r.action && r.action_result)) continue;
         if (resolved.has(threadOf.get(r.message_id))) continue;
         const sid = typeof r.asked_by_agent_id === 'string' ? r.asked_by_agent_id : null;
         if (!sid || typeof r.prompt !== 'string' || firstMs === null) continue;
@@ -126,6 +128,34 @@ export function readOpenQuestions() {
 }
 
 const isObjRec = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * When each session last had an Inbox answer sent to it: the first version of a question that carries its reply id.
+ * Per session the newest wins. Never throws.
+ * @returns {Map<string, {sentMs: number}>}
+ */
+export function readSentAnswers() {
+  const out = new Map();
+  let keys = [];
+  const base = join(plannotatorHome(), 'inbox', 'projects');
+  try { keys = readdirSync(base); } catch { return out; }
+  for (const key of keys) {
+    try {
+      const seen = new Set();
+      for (const e of readJsonl(join(base, key, 'questions.jsonl')).records) {
+        const r = e?.record;
+        if (!e || e.kind !== 'question' || typeof e.id !== 'string' || !isObjRec(r) || seen.has(e.id)) continue;
+        if (typeof r.sent_reply_id !== 'string' || !r.sent_reply_id) continue;
+        seen.add(e.id);
+        const sid = typeof r.asked_by_agent_id === 'string' ? r.asked_by_agent_id : null;
+        const sentMs = ms(e.at);
+        if (!sid || sentMs === null) continue;
+        if (!out.has(sid) || sentMs > out.get(sid).sentMs) out.set(sid, { sentMs });
+      }
+    } catch { /* skip this project */ }
+  }
+  return out;
+}
 
 /**
  * @param {string} root project root

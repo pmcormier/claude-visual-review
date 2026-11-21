@@ -57,7 +57,9 @@ const clip120 = (s) => { const t = String(s ?? '').trim(); return t.length > 120
  * (signals.lastAsk) or an open Inbox question it asked (inboxQ: {prompt, askedMs}). A working session with an open
  * Inbox question keeps working; its hint names the question.
  */
-export function askedOwner(v, signals, inboxQ) {
+const ON_ITS_WAY_MS = 10 * 60000; // how long "Your answer is on its way" may show before the session is idle again
+
+export function askedOwner(v, signals, inboxQ, sent = null, now = Date.now()) {
   if (!v || v.state === 'gone') return v;
   const tool = signals?.pendingTool;
   // A question dialog waits on the owner however long it stays open: never stuck, and named by its question.
@@ -70,6 +72,11 @@ export function askedOwner(v, signals, inboxQ) {
   }
   if (v.state === 'idle' && inboxQ?.prompt) {
     return { ...v, state: 'waiting', evidence: `Inbox: ${clip120(inboxQ.prompt)}`, since: inboxQ.askedMs ?? null };
+  }
+  // The owner sent an answer since the session last wrote: the next move is Claude's, once the reply reaches it.
+  if (v.state === 'idle' && Number.isFinite(sent?.sentMs) && sent.sentMs > (signals?.lastWriteMs ?? -Infinity)
+    && now - sent.sentMs <= ON_ITS_WAY_MS) {
+    return { ...v, state: 'working', hint: 'Your answer is on its way', since: sent.sentMs };
   }
   if (v.state === 'working' && inboxQ?.prompt && !v.hint) return { ...v, hint: `Inbox question open: ${clip120(inboxQ.prompt)}` };
   return v;
