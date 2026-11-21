@@ -5,7 +5,7 @@ import {
   formatDuration, lifePath, detailText, foldEpics, effortLeft, usageView, triage, agoWords, shortId, STATE_LABEL,
   sizeSummary, filterToken, GROUPS, groupEpics, foldOpen, projectFoldKeys, tipText, currentTask, panelOrder, formatSpend, spendLine, projectSpend, formatTokens,
   taskLiveness, leftOpenText, sessionLabel, projectOpen, STALE_AFTER_MS, sessionWhat, nowLines, themeLabel,
-  compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip, squareNext, squareLabel, toolTrail,
+  compactSplit, busiestSession, squareSteps, viewFromLocation, projectKey, squareChip, squareNext, squareLabel, toolTrail, trailForTask, sessionRef, onTaskLabel, timeLeftText,
 } from '../../global/dashboard/page/render.mjs';
 
 const MIN = 60000;
@@ -90,9 +90,9 @@ test('detailText templates for the other kinds', () => {
     subagentsHidden: 4,
   };
   const st = detailText({ kind: 'session', session: s, project: { name: 'billing-api' }, now: NOW });
-  assert.match(st, /^A Claude Code window in billing-api, working\./);
+  assert.match(st, /^Session 34d4: a Claude Code window in billing-api, working\./);
   assert.match(st, /1 helper running, 5 finished\./);
-  assert.match(st, /51\.2k tokens in and 3\.4k out so far in this session\./);
+  assert.match(st, /51\.2k tokens read and 3\.4k written so far in this session\./);
   assert.match(st, /Linked to Fixture migration\./);
   const sst = detailText({ kind: 'session', session: stuckSession, project: { name: 'billing-api' }, now: NOW });
   assert.match(sst, /looks stuck\. pytest running 52 min/);
@@ -307,8 +307,8 @@ test('detailText for a task by liveness: about first, then what is happening', (
   const t = { id: 't', title: 'Cart sync', status: 'doing', sessionId: live.sessionId, about: 'Keeps the cloud copy in step.', changedMs: NOW - 2 * DAY, spentMin: 0 };
   assert.equal(detailText({ kind: 'task', task: t, session: live, liveness: 'current', now: NOW }), 'Keeps the cloud copy in step.\n\nSession 34d4 is on it now.');
   assert.equal(detailText({ kind: 'task', task: t, session: live, liveness: 'started', now: NOW }), 'Keeps the cloud copy in step.\n\nStarted by session 34d4, which has moved on.');
-  assert.equal(detailText({ kind: 'task', task: t, liveness: 'started', now: NOW }), 'Keeps the cloud copy in step.\n\nStarted by session 34d4, which has closed.');
-  assert.equal(detailText({ kind: 'task', task: t, liveness: 'stale', now: NOW }), 'Keeps the cloud copy in step.\n\nLeft open 2 days ago by session 34d4.');
+  assert.equal(detailText({ kind: 'task', task: t, liveness: 'started', now: NOW }), 'Keeps the cloud copy in step.\n\nStarted by an earlier session (34d4), which has closed.');
+  assert.equal(detailText({ kind: 'task', task: t, liveness: 'stale', now: NOW }), 'Keeps the cloud copy in step.\n\nLeft open 2 days ago by an earlier session (34d4).');
   assert.equal(detailText({ kind: 'task', task: { ...t, sessionId: null, about: null }, liveness: 'stale', now: NOW }), 'No description yet.\n\nLeft open 2 days ago.');
   assert.equal(detailText({ kind: 'task', task: { ...t, status: 'waiting' }, liveness: 'waiting', now: NOW }), 'Keeps the cloud copy in step.\n\nWaiting on you.');
 });
@@ -408,7 +408,7 @@ test('spendLine: cost and tokens, tokens only without a status line', () => {
   const a = spendLine({ costUsd: 1.24, tokensIn: 3_000_000, tokensOut: 100_000, source: 'statusline' });
   assert.equal(a.text, '$1.24 · 3.1M tokens');
   assert.match(a.tip, /API prices/);
-  assert.match(a.tip, /3M in, 100k out/);
+  assert.match(a.tip, /3M tokens read, 100k written/);
   const b = spendLine({ costUsd: null, tokensIn: 500, tokensOut: 20, source: 'transcript' });
   assert.equal(b.text, '520 tokens');
   assert.match(b.tip, /no cost/i);
@@ -477,7 +477,7 @@ test('sessionWhat says what a tool is doing in Claude\'s own words', () => {
   assert.equal(sessionWhat(s({ name: 'Bash', command: 'sleep 20; gh run watch 1', description: "Watch the fix PR's CI run to the end" })).what,
     "Watch the fix PR's CI run to the end");
   assert.equal(sessionWhat(s({ name: 'Bash', command: 'sleep 20; gh run watch 1', description: null })).what, 'Running a command');
-  assert.equal(sessionWhat(s({ name: 'Read', command: 'docs/x.md', description: null })).what, 'Running Read');
+  assert.equal(sessionWhat(s({ name: 'Read', command: 'docs/x.md', description: null })).what, 'Running Read x.md'); // plain name: the tool and its file
 });
 
 test('nowLines: one line per running tool, its description first', () => {
@@ -633,7 +633,121 @@ test('a tool without a description reads plainly: file tools name the file, MCP 
   const w = (tool) => nowLines({ state: 'working', pendingTools: [tool] })[0];
   assert.equal(w({ name: 'Write', command: 'work\\scratch\\tt3.mjs' }), 'Write tt3.mjs');
   assert.equal(w({ name: 'Edit', command: 'global/dashboard/page/app.js' }), 'Edit app.js');
-  assert.equal(w({ name: 'mcp__playwright__browser_evaluate', command: null }), 'browser evaluate (playwright)');
+  assert.equal(w({ name: 'mcp__playwright__browser_evaluate', command: null }), 'Playwright: browser evaluate');
   assert.equal(w({ name: 'Bash', command: 'npm test\nmore' }), 'npm test');
   assert.equal(w({ name: 'Grep', command: null }), 'Grep');
+});
+
+test('trailForTask: each finished tool goes under the step that was in progress when it ended; running ones under the current step', () => {
+  const step = (id, startedMs, doneMs) => ({ id, sessionId: 'S', startedMs, doneMs });
+  const tasks = [step('a', 100, 200), step('b', 200, null), step('c', null, null)];
+  const tool = (d, endedMs) => ({ name: 'Bash', description: d, endedMs });
+  const s = { sessionId: 'S', state: 'working', linkedTask: { id: 'b' },
+    pendingTools: [{ name: 'Bash', description: 'Run tests' }],
+    recentTools: [tool('Edit b', 250), tool('Read a', 150), tool('Before any step', 50)] };
+  const lines = (id) => trailForTask(tasks.find((t) => t.id === id), tasks, s).map((x) => [x.text, x.done]);
+  assert.deepEqual(lines('b'), [['Run tests', false], ['Edit b', true], ['Before any step', true]]);
+  assert.deepEqual(lines('a'), [['Read a', true]]);
+  assert.deepEqual(lines('c'), []);
+  // Not working: only the current step says why (waiting or stuck); the others say nothing.
+  const w = { ...s, state: 'waiting', evidence: 'Asked: merge?' };
+  assert.deepEqual(trailForTask(tasks[1], tasks, w).map((x) => x.text), ['Asked: merge?']);
+  assert.deepEqual(trailForTask(tasks[0], tasks, w), []);
+  assert.deepEqual(trailForTask(tasks[0], tasks, null), []);
+});
+
+// ---- plain-English check (decision 43) ----
+test('fix 1: no raw tool names or whole commands', () => {
+  const s = { state: 'working', pendingTool: { name: 'mcp__playwright__browser_run_code_unsafe', startedMs: 1 } };
+  assert.equal(sessionWhat(s).line.prefix, 'running for');
+  assert.equal(sessionWhat(s).what, 'Running Playwright: browser run code unsafe');
+  assert.equal(sessionWhat({ state: 'working', pendingTool: { name: 'Bash', startedMs: 1 } }).line.prefix, 'running for');
+  const long = 'cd "work/x" && gh run watch 44823056461 --exit-status > out/ci-watch-4.txt 2>&1; echo exit=$? ' + 'x'.repeat(300);
+  const hover = detailText({ kind: 'session', session: { sessionId: 'abcd1234', state: 'working', subagents: [], tokens: {}, pendingTool: { name: 'Bash', command: long + '\nsecond line' } }, project: { name: 'p' }, now: NOW });
+  const cmd = hover.split('Command: ')[1];
+  assert.ok(cmd.length <= 81, cmd);
+  assert.match(cmd, /…/);
+  assert.doesNotMatch(hover, /second line/);
+});
+
+test('fix 2: the label and hover follow the session state, never "on it now" and "waiting" at once', () => {
+  assert.equal(onTaskLabel('waiting'), 'Waiting on you about ');
+  assert.equal(onTaskLabel('stuck'), 'Stuck on ');
+  assert.equal(onTaskLabel('working'), 'Working on ');
+  const task = { id: 't', status: 'waiting', sessionId: 'abcd1234', about: 'Fix it', spentMin: 40 };
+  const session = { sessionId: 'abcd1234', title: 'Notes app', alive: true, state: 'waiting', evidence: 'Inbox: Is it set up?' };
+  const text = detailText({ kind: 'task', task, session, liveness: 'current', now: NOW });
+  assert.match(text, /Notes app \(abcd\) is waiting on you, 40m so far: Inbox: Is it set up\?/);
+  assert.doesNotMatch(text, /on it now/);
+});
+
+test('fix 3: sessions are named by title with their short id; without a title, by id', () => {
+  assert.equal(sessionRef({ sessionId: 'd5197f09-xx', title: 'Panels build' }), 'Panels build (d519)');
+  assert.equal(sessionRef({ sessionId: 'd5197f09-xx' }), 'session d519');
+  const started = detailText({ kind: 'task', task: { id: 't', status: 'doing', sessionId: 'd5197f09-xx' }, session: { sessionId: 'd5197f09-xx', title: 'Panels build', alive: true }, liveness: 'started', now: NOW });
+  assert.match(started, /Started by Panels build \(d519\), which has moved on/);
+});
+
+test('fix 5: plans from before the dashboard and documents without tasks read plainly', () => {
+  assert.equal(detailText({ kind: 'epic', epic: { tasks: [] } }), 'A write-up, no tasks.');
+  assert.equal(detailText({ kind: 'epic', epic: { before: true, tasks: [{ status: 'next' }, { status: 'next' }] } }),
+    'From before the dashboard: its progress wasn\'t tracked. 2 tasks.');
+  assert.equal(detailText({ kind: 'epic', epic: { tasks: [{ status: 'done' }, { status: 'next' }] } }), '1 of 2 tasks done.');
+});
+
+test('fix 8: tokens and times carry their units', () => {
+  assert.match(spendLine({ tokensIn: 608e6, tokensOut: 1.39e6, costUsd: 3 }).tip, /608M tokens read, 1\.39M written/);
+  assert.equal(timeLeftText(2.7), '≈ 2h 42m');
+  assert.equal(timeLeftText(0.2), '≈ 12m');
+  assert.equal(timeLeftText(0), '');
+});
+
+test('guard: realistic messy input never reaches the page as technical text (decision 43)', () => {
+  const BAD = /mcp__|\bundefined\b|\bnull\b|\bNaN\b|\[object|[A-Za-z]:[\\/]|`|Implementation Plan$|\b(?:Bash|Read|Write|Edit|Agent|Task) running\b/;
+  const tools = [
+    { name: 'mcp__playwright__browser_run_code_unsafe', command: null, description: null, startedMs: NOW - 60000, endedMs: NOW - 1000 },
+    { name: 'Bash', command: 'cd "work/x" && gh run watch 1 --exit-status > out.txt 2>&1\nmore', description: null, startedMs: NOW - 60000, endedMs: NOW - 2000 },
+    { name: 'Write', command: 'work\scratch\tt3.mjs', description: null, endedMs: NOW - 3000 },
+    { name: 'Agent', command: null, description: null },
+    { name: 'Read', command: undefined, description: undefined, endedMs: undefined },
+  ];
+  const session = (state, extra = {}) => ({
+    sessionId: 'abcd1234-ef', title: state === 'idle' ? null : 'Notes app', alive: true, state, since: NOW - 60000,
+    evidence: state === 'stuck' ? 'No output for 25 min' : state === 'waiting' ? 'Asked: merge?' : null,
+    pendingTool: tools[0], pendingTools: tools.slice(0, 2), recentTools: tools.slice(1), subagents: [], tokens: { input: 1e6, output: 2e4 },
+    linkedTask: { id: 't1', title: 'Fix it', status: 'doing' }, lastWriteMs: NOW - 1000, spend: { costUsd: null, tokensIn: 5, tokensOut: 1 }, ...extra,
+  });
+  const out = [];
+  for (const st of ['working', 'waiting', 'stuck', 'idle', 'gone']) {
+    const s = session(st);
+    const w = sessionWhat(s);
+    out.push(w.what, w.line?.prefix ?? '', ...nowLines(s), ...toolTrail(s).map((x) => x.text));
+    out.push(detailText({ kind: 'session', session: s, project: { name: 'p' }, now: NOW }));
+    for (const lv of ['current', 'started', 'stale', 'waiting', 'other']) {
+      out.push(detailText({ kind: 'task', task: { id: 't1', status: lv === 'other' ? 'next' : 'doing', sessionId: s.sessionId, changedMs: NOW - 3 * DAY, spentMin: 40 }, session: s, liveness: lv, now: NOW }));
+    }
+  }
+  out.push(detailText({ kind: 'epic', epic: { tasks: [] } }), detailText({ kind: 'epic', epic: { before: true, tasks: [{}] } }));
+  out.push(spendLine({ tokensIn: 6e8, tokensOut: 1.4e6, costUsd: 3 }).tip, timeLeftText(2.7));
+  const hits = out.filter((x) => BAD.test(String(x)));
+  assert.deepEqual(hits, []);
+});
+
+test('review fix: a shell command without a description reads "a command" in the session line, whatever the shell', () => {
+  const s = (tool) => ({ state: 'working', pendingTool: tool });
+  assert.equal(sessionWhat(s({ name: 'PowerShell', command: 'Remove-Item ./x -Recurse', description: null })).what, 'Running a command');
+  assert.equal(sessionWhat(s({ name: 'Edit', command: 'src/app.js', description: null })).what, 'Running Edit app.js');
+  assert.equal(sessionWhat(s({ name: 'mcp__playwright__browser_evaluate', command: null })).what, 'Running Playwright: browser evaluate');
+});
+
+test('review fix: trailForTask looks across every entry of the project, so a tool shows once', () => {
+  const tree = { epics: [
+    { tasks: [{ id: 'A1', sessionId: 'S', startedMs: 100, doneMs: 200 }] },
+    { tasks: [{ id: 'B1', sessionId: 'S', startedMs: 300, doneMs: null }] },
+  ] };
+  const s = { sessionId: 'S', state: 'working', linkedTask: { id: 'B1' }, pendingTools: [],
+    recentTools: [{ name: 'Bash', description: 'Read b', endedMs: 350 }, { name: 'Bash', description: 'Edit a', endedMs: 150 }] };
+  const [a1, b1] = tree.epics.map((e) => e.tasks[0]);
+  assert.deepEqual(trailForTask(a1, tree, s).map((x) => x.text), ['Edit a']);
+  assert.deepEqual(trailForTask(b1, tree, s).map((x) => x.text), ['Read b']);
 });

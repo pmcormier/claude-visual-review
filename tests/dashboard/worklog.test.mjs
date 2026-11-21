@@ -114,8 +114,8 @@ test('drop hides the epic; dropped step hides the task', async () => {
   const env = setup();
   note(env, ['start', 'Keep', '--steps', 'a|b|c']);
   note(env, ['step', '2', 'dropped']);
-  note(env, ['start', 'Gone']);
-  note(env, ['drop', 'not needed']);
+  note(env, ['start', 'Gone'], 's2'); // another session, so "Keep" stays open
+  note(env, ['drop', 'not needed'], 's2');
   const epics = await read(env);
   assert.equal(epics.length, 1);
   assert.deepEqual(epics[0].tasks.map((t) => t.title), ['a', 'c']);
@@ -283,7 +283,7 @@ test('old lines without about still read', async () => {
   assert.equal(e.tasks[0].status, 'doing');
 });
 
-test('a superseded epic marks its unfinished doing steps leftOpen', async () => {
+test('a superseded epic marks its unfinished doing steps leftOpen and hides the untouched ones', async () => {
   const env = setup();
   await writeLog(env, [
     { at: '2026-11-01T10:00:00Z', verb: 'start', title: 'First', steps: ['a', 'b'] },
@@ -291,7 +291,7 @@ test('a superseded epic marks its unfinished doing steps leftOpen', async () => 
     { at: '2026-11-01T10:02:00Z', verb: 'start', title: 'Second' },
   ]);
   const [first, second] = await read(env);
-  assert.deepEqual(first.tasks.map((t) => [t.status, t.leftOpen === true]), [['next', true], ['next', false]]);
+  assert.deepEqual(first.tasks.map((t) => [t.title, t.status, t.leftOpen === true]), [['a', 'next', true]]);
   assert.equal(second.tasks[0].leftOpen, undefined);
 });
 
@@ -299,4 +299,65 @@ test('--steps-about stays paired when --steps has an empty entry', async () => {
   const env = setup();
   note(env, ['start', 'Gaps', '--steps', 'a||b', '--steps-about', 'x|y|z']);
   assert.deepEqual((await read(env))[0].tasks.map((t) => [t.title, t.about]), [['a', 'x'], ['b', 'z']]);
+});
+
+test('steps changes the open entry in place: statuses follow the step names, new steps start as next', async () => {
+  const env = setup();
+  note(env, ['start', 'Review rounds', '--steps', 'Design|Build|Test']);
+  note(env, ['step', '1', 'done']);
+  note(env, ['step', '2', 'doing']);
+  note(env, ['steps', 'Design|Build|Ship|Test', '--steps-about', 'd|b|s|t']);
+  note(env, ['step', '3', 'waiting']);
+  const epics = await read(env);
+  assert.equal(epics.length, 1);
+  assert.deepEqual(epics[0].tasks.map((t) => [t.title, t.status]), [['Design', 'done'], ['Build', 'doing'], ['Ship', 'waiting'], ['Test', 'next']]);
+  assert.equal(epics[0].tasks[2].about, 's');
+  const { openEntryFor } = await lib(env);
+  assert.deepEqual(openEntryFor(env.proj, 's1').doing.map((s) => s.name), ['Build']);
+});
+
+test('an entry replaced by a new start with the same title from the same session is not listed', async () => {
+  const env = setup();
+  note(env, ['start', 'Review rounds', '--steps', 'a|b']);
+  note(env, ['step', '1', 'doing']);
+  note(env, ['start', 'Review rounds', '--steps', 'a|b|c']);
+  note(env, ['step', '1', 'done']); // begun, so the entry stays listed after "Other work" closes it
+  note(env, ['start', 'Other work', '--steps', 'x']);
+  note(env, ['start', 'Something else', '--steps', 'y'], 's2');
+  note(env, ['start', 'Other work', '--steps', 'z'], 's2'); // another session: its own entry, not a replacement
+  const epics = await read(env);
+  assert.deepEqual(epics.map((e) => e.title), ['Review rounds', 'Other work', 'Other work']); // 'Something else' closed with nothing begun
+  assert.deepEqual(epics[0].tasks.map((t) => t.title), ['a']); // the newer copy; its untouched steps closed with it
+});
+
+test('a replaced entry offers no next steps: its untouched steps are hidden, begun ones stay left open', async () => {
+  const env = setup();
+  note(env, ['start', 'Old work', '--steps', 'begun|untouched|finished']);
+  note(env, ['step', '1', 'doing']);
+  note(env, ['step', '3', 'done']);
+  note(env, ['start', 'New work', '--steps', 'x']);
+  const [old] = await read(env);
+  assert.deepEqual(old.tasks.map((t) => [t.title, t.status, t.leftOpen === true]), [['begun', 'next', true], ['finished', 'done', false]]);
+});
+
+test('steps on an entry without steps: the first new step takes over its status and plan task (review fix)', async () => {
+  const env = setup();
+  note(env, ['start', 'X', '--plan', 'p.md', '--task', '3']);
+  note(env, ['steps', 'a|b']);
+  const [e] = await read(env);
+  assert.deepEqual(e.tasks.map((t) => [t.title, t.status, t.n]), [['a', 'doing', 3], ['b', 'next', null]]);
+});
+
+test('steps with the same count renames by position: a renamed step keeps its status (review fix)', async () => {
+  const env = setup();
+  note(env, ['start', 'Y', '--plan', 'p.md', '--task', '5', '--steps', 'a|b|c']);
+  note(env, ['step', '1', 'done']);
+  note(env, ['steps', 'a2|b|c']);
+  const [e] = await read(env);
+  assert.deepEqual(e.tasks.map((t) => [t.title, t.status, t.n]), [['a2', 'done', 5], ['b', 'next', null], ['c', 'next', null]]);
+  // A different count is not a rename: names still match by name and a new one is next.
+  note(env, ['steps', 'b|x|a2|c']);
+  const [f] = await read(env);
+  assert.deepEqual(f.tasks.map((t) => [t.title, t.status]), [['b', 'next'], ['x', 'next'], ['a2', 'done'], ['c', 'next']]);
+  assert.equal(f.tasks.find((t) => t.title === 'a2').n, 5);
 });

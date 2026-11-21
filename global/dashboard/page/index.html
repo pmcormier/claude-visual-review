@@ -8,10 +8,10 @@
 </head><body><header class="bar">
   <div class="brand"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 8.5h3l2-5 3 9 2-4h3"/></svg> Claude Dashboard</div>
   <div class="counts" role="group" aria-label="Filter by state">
-    <button type="button" class="count s-stuck" aria-pressed="false" data-f="stuck"><span class="dot"></span>Looks stuck <b data-count="stuck">0</b></button>
-    <button type="button" class="count s-wait" aria-pressed="false" data-f="wait"><span class="dot"></span>Waiting on you <b data-count="waiting">0</b></button>
-    <button type="button" class="count s-work" aria-pressed="false" data-f="work"><span class="dot"></span>Working <b data-count="working">0</b></button>
-    <button type="button" class="count s-idle" aria-pressed="false" data-f="next"><span class="dot"></span>Up next <b data-count="next">0</b></button>
+    <button type="button" class="count s-stuck" aria-pressed="false" data-f="stuck" title="Sessions or helpers that look stuck. Click to show only these."><span class="dot"></span>Looks stuck <b data-count="stuck">0</b></button>
+    <button type="button" class="count s-wait" aria-pressed="false" data-f="wait" title="Questions and approvals waiting for you. Click to show only these."><span class="dot"></span>Waiting on you <b data-count="waiting">0</b></button>
+    <button type="button" class="count s-work" aria-pressed="false" data-f="work" title="Sessions working right now. Click to show only these."><span class="dot"></span>Working <b data-count="working">0</b></button>
+    <button type="button" class="count s-idle" aria-pressed="false" data-f="next" title="Tasks not started yet, across all projects. Click to show only these."><span class="dot"></span>Up next <b data-count="next">0</b></button>
   </div>
   <div class="right">
     <div class="usage" aria-label="Claude plan usage"><span class="muted">Usage not available</span></div>
@@ -25,9 +25,9 @@
   </div>
 </header><main>
 <div class="tabs" role="tablist" aria-label="Views">
-  <button type="button" role="tab" id="tab-projects" aria-controls="v-projects" aria-selected="true" data-tab="projects">Projects</button>
-  <button type="button" role="tab" id="tab-sessions" aria-controls="v-sessions" aria-selected="false" data-tab="sessions" tabindex="-1">Sessions</button>
-  <button type="button" role="tab" id="tab-triage" aria-controls="v-triage" aria-selected="false" data-tab="triage" tabindex="-1">Triage</button>
+  <button type="button" role="tab" id="tab-projects" aria-controls="v-projects" aria-selected="true" data-tab="projects" title="Every project, with its plan and what is running">Projects</button>
+  <button type="button" role="tab" id="tab-sessions" aria-controls="v-sessions" aria-selected="false" data-tab="sessions" tabindex="-1" title="Every open Claude Code window and its helpers">Sessions</button>
+  <button type="button" role="tab" id="tab-triage" aria-controls="v-triage" aria-selected="false" data-tab="triage" tabindex="-1" title="What needs you: anything stuck, waiting on you, or next">Needs me</button>
 </div>
 <div class="banner" role="status" hidden></div>
 <section id="v-projects" role="tabpanel" aria-labelledby="tab-projects">

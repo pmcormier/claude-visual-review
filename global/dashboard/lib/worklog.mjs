@@ -61,12 +61,19 @@ export function readWorklog(root) {
         // A new start supersedes this session's open epic: it stays listed, unfinished work shows as next,
         // and no later record reaches it.
         const prev = open.get(session);
+        // The same session starting the same title again replaced its entry (older agents did this to rename a
+        // step): the old copy is not listed (owner, 2026-11-20).
+        if (prev && prev.title === title) prev._dropped = true;
         if (prev) {
           // leftOpen: begun or waiting, then left when the session moved on; the page shows it as started, not active.
           // A closed entry waits on no one, so its waiting steps are left open too.
-          for (const t of prev.tasks) {
+          prev.tasks.forEach((t, i) => {
             if (t.status === 'doing' || t.status === 'waiting') { t.status = 'next'; t.startedMs = null; t.leftOpen = true; }
-          }
+            // A step never begun in a closed entry is not next work (it showed as "Next:" from a replaced checklist).
+            else if (t.status === 'next') prev._hidden.add(i);
+          });
+          // Closed with nothing begun or finished: nothing real is left to show.
+          if (prev.tasks.every((t, i) => prev._hidden.has(i))) prev._dropped = true;
         }
         epics.push(epic);
         open.set(session, epic);
@@ -74,7 +81,34 @@ export function readWorklog(root) {
       }
       const epic = open.get(session);
       if (!epic) continue;
-      if (r.verb === 'step') {
+      if (r.verb === 'steps') {
+        // The open entry's steps changed in place: each step keeps its task (status, times) by name; new ones are next.
+        const names = Array.isArray(r.steps) ? r.steps.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim()) : [];
+        if (!names.length) continue;
+        const about = Array.isArray(r.stepsAbout) ? r.stepsAbout : [];
+        const old = epic.tasks.map((t, i) => ({ t, hidden: epic._hidden.has(i), used: false }));
+        const planN = epic.tasks.find((t) => t.n !== null && t.n !== undefined)?.n ?? null;
+        // Which old task each new step continues: the same name first; then, for an entry that had no steps (its
+        // one task is the entry itself) or a list of the same length (a rename), the old task in the same place.
+        const pick = names.map((name) => { const o = old.find((x) => !x.used && x.t.title === name); if (o) o.used = true; return o ?? null; });
+        const noSteps = old.length === 1 && old[0].t.title === epic.title;
+        if (noSteps || old.length === names.length) {
+          pick.forEach((o, i) => { const by = noSteps ? (i === 0 ? old[0] : null) : old[i]; if (!o && by && !by.used) { by.used = true; pick[i] = by; } });
+        }
+        const hidden = new Set();
+        epic.tasks = names.map((name, i) => {
+          const id = `${epic.id}-${i + 1}`;
+          const o = pick[i];
+          if (!o) return mkTask(id, name, null, session, 'next', at, about[i]);
+          if (o.hidden) hidden.add(i);
+          const t = { ...o.t, id, title: name };
+          if (typeof about[i] === 'string' && about[i].trim()) t.about = line(about[i]);
+          return t;
+        });
+        // The entry's plan task stays on it: on its first step when the step that carried it is gone.
+        if (planN !== null && !epic.tasks.some((t) => t.n === planN)) epic.tasks[0].n = planN;
+        epic._hidden = hidden;
+      } else if (r.verb === 'step') {
         const i = Number(r.n) - 1;
         if (!Number.isInteger(i) || i < 0 || i >= epic.tasks.length) continue;
         if (r.status === 'dropped') { epic._hidden.add(i); continue; }
@@ -126,6 +160,13 @@ export function openEntryFor(root, session) {
         cur = { title, startedAt: typeof r.at === 'string' ? r.at : null, steps, status: steps.map(() => 'todo') };
       } else if (!cur) {
         continue;
+      } else if (r.verb === 'steps') {
+        const names = Array.isArray(r.steps) ? r.steps.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim()) : [];
+        if (names.length) {
+          const was = new Map(cur.steps.map((s, i) => [s, cur.status[i]]));
+          cur.steps = names;
+          cur.status = names.map((s) => was.get(s) ?? 'todo');
+        }
       } else if (r.verb === 'step') {
         const i = Number(r.n) - 1;
         if (Number.isInteger(i) && i >= 0 && i < cur.steps.length && typeof r.status === 'string') cur.status[i] = r.status;

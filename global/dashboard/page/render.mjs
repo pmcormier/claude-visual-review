@@ -268,7 +268,7 @@ export function spendLine(spend) {
   const tin = num(spend.tokensIn) ? spend.tokensIn : 0;
   const tout = num(spend.tokensOut) ? spend.tokensOut : 0;
   const tokens = `${formatTokens(tin + tout)} tokens`;
-  const split = `${formatTokens(tin)} in, ${formatTokens(tout)} out.`;
+  const split = `${formatTokens(tin)} tokens read, ${formatTokens(tout)} written.`;
   if (!num(spend.costUsd)) {
     return { text: tokens, tip: `${split} No cost shown: this session's status line has not reported one (for example a headless run).` };
   }
@@ -447,6 +447,16 @@ function helperCounts(session) {
   return { running, finished };
 }
 
+/** A session by its title with its short id for reference ("Panels build (d519)"); "session d519" without a title. */
+const cap = (x) => (x ? `${x[0].toUpperCase()}${x.slice(1)}` : x);
+export const sessionRef = (s) => (s?.title ? `${s.title} (${shortId(s.sessionId)})` : `session ${shortId(s?.sessionId)}`);
+
+/** The words before the task a session is on, following its state (never "Working on" while it waits on you). */
+export const onTaskLabel = (state) => (state === 'waiting' ? 'Waiting on you about ' : state === 'stuck' ? 'Stuck on ' : 'Working on ');
+
+/** Work left as a time, like every other time on the page ("≈ 2h 42m"); empty for none. */
+export const timeLeftText = (hours) => (num(hours) && hours > 0 ? `≈ ${formatDuration(hours * HOUR)}` : '');
+
 function reason(state, evidence) {
   if (state !== 'stuck' && state !== 'waiting' && state !== 'gone') return '';
   return evidence ? `${STATE_LABEL[state]}: ${evidence}` : STATE_LABEL[state];
@@ -456,18 +466,22 @@ function reason(state, evidence) {
 function taskText({ task, session, liveness, now }) {
   const t = task ?? {};
   const spent = num(t.spentMin) && t.spentMin > 0 ? formatDuration(t.spentMin * MIN) : '';
-  const sid = t.sessionId ? shortId(t.sessionId) : null;
+  const sid = t.sessionId ? (session?.sessionId === t.sessionId ? sessionRef(session) : `an earlier session (${shortId(t.sessionId)})`) : null;
   let who;
   let why = '';
   if (t.status === 'done') who = spent ? `Done in ${spent}` : 'Done';
-  else if (liveness === 'started') who = sid ? `Started by session ${sid}, which ${session?.alive ? 'has moved on' : 'has closed'}` : 'Started';
+  else if (liveness === 'started') who = sid ? `Started by ${sid}, which ${session?.alive ? 'has moved on' : 'has closed'}` : 'Started';
   else if (liveness === 'stale') {
     const left = leftOpenText(t.changedMs, now);
-    who = `${left[0].toUpperCase()}${left.slice(1)}${sid ? ` by session ${sid}` : ''}`;
+    who = `${left[0].toUpperCase()}${left.slice(1)}${sid ? ` by ${sid}` : ''}`;
   } else if (liveness === 'waiting') who = 'Waiting on you';
   else if (t.status === 'next') who = 'Not started';
-  else {
-    const base = session ? `Session ${shortId(session.sessionId)} is on it${liveness === 'current' ? ' now' : ''}`
+  else if (session?.state === 'waiting') {
+    // One statement: who waits, how long, and on what (never "on it now" beside "waiting").
+    const asked = session.evidence ? `: ${session.evidence}` : '';
+    return `${t.about ? sentence(t.about) : 'No description yet.'}\n\n${sentence(`${cap(sessionRef(session))} is waiting on you${spent ? `, ${spent} so far` : ''}${asked}`)}`;
+  } else {
+    const base = session ? `${cap(sessionRef(session))} is on it${liveness === 'current' ? ' now' : ''}`
       : t.status === 'waiting' ? 'Waiting on you' : 'In progress';
     who = spent ? `${base}, ${spent} so far` : base;
     why = session ? reason(session.state, session.evidence) : '';
@@ -475,18 +489,21 @@ function taskText({ task, session, liveness, now }) {
   return `${t.about ? sentence(t.about) : 'No description yet.'}\n\n${join(who, why)}`;
 }
 
+// A command in a hover: its first line, cut to 80 characters with "…" (the whole of it is never plain English).
+const cutCommand = (c) => { const first = String(c).split('\n')[0].trim(); return first.length > 80 ? `${first.slice(0, 79)}…` : first; };
+
 function sessionText({ session, project }) {
   const s = session ?? {};
   const { running, finished } = helperCounts(s);
   const tk = s.tokens ?? {};
   const tin = (tk.input ?? 0) + (tk.cacheRead ?? 0) + (tk.cacheCreate ?? 0);
   return join(
-    `${s.title ? `Session ${shortId(s.sessionId)}, a` : 'A'} Claude Code window in ${project?.name ?? 'this project'}, ${SESSION_PHRASE[s.state] ?? 'state unknown'}`,
+    `${cap(sessionRef(s))}: a Claude Code window in ${project?.name ?? 'this project'}, ${SESSION_PHRASE[s.state] ?? 'state unknown'}`,
     s.evidence, s.hint,
     `${plural(running, 'helper')} running, ${finished} finished`,
     currentTask(s)?.title ? `Linked to ${currentTask(s).title}` : '',
-    tin || tk.output ? `${formatTokens(tin)} tokens in and ${formatTokens(tk.output ?? 0)} out so far in this session` : '',
-    s.pendingTool?.command ? `Command: ${s.pendingTool.command}` : '',
+    tin || tk.output ? `${formatTokens(tin)} tokens read and ${formatTokens(tk.output ?? 0)} written so far in this session` : '',
+    s.pendingTool?.command ? `Command: ${cutCommand(s.pendingTool.command)}` : '',
   );
 }
 
@@ -495,7 +512,7 @@ function subagentText({ subagent, session, project, now }) {
   const where = project?.name ? ` in ${project.name}` : '';
   const state = a.finished === true ? 'Finished' : a.state === 'working' ? 'Still active' : reason(a.state, a.evidence) || 'Idle';
   return join(
-    `A helper started by session ${shortId(session?.sessionId)}${where}: ${a.description || 'Subagent'}`,
+    `A helper started by ${sessionRef(session)}${where}: ${a.description || 'Subagent'}`,
     a.model ? `Runs on ${a.model}` : '',
     state,
     num(a.lastWriteMs) && num(now) ? `Last wrote ${formatDuration(Math.max(0, now - a.lastWriteMs))} ago` : '',
@@ -504,6 +521,8 @@ function subagentText({ subagent, session, project, now }) {
 
 function epicText({ epic }) {
   const tasks = arr(epic?.tasks);
+  if (!tasks.length) return 'A write-up, no tasks.';
+  if (epic?.before === true) return `From before the dashboard: its progress wasn't tracked. ${plural(tasks.length, 'task')}.`;
   const done = tasks.filter((t) => t?.status === 'done').length;
   const spent = num(epic?.spentMin) && epic.spentMin > 0 ? `, ${formatDuration(epic.spentMin * MIN)} spent` : '';
   return `${done} of ${tasks.length} tasks done${spent}.`;
@@ -528,7 +547,7 @@ function projectText({ project, now }) {
     quiet,
     sessions.length ? `${plural(sessions.length, 'session')} open` : '',
     p.error,
-    epics.length ? `${plural(left.count, 'task')} left${left.hours ? `, about ${left.hours}h` : ''}` : 'No plan found',
+    epics.length ? `${plural(left.count, 'task')} left${left.hours ? `, about ${formatDuration(left.hours * HOUR)}` : ''}` : 'No plan found',
     spent,
   );
 }
@@ -560,7 +579,8 @@ export function detailText(item) {
 export function sessionWhat(s) {
   const tool = s?.pendingTool;
   // Claude's own description of the call first; a shell command without one is just "a command" (its text is in the hover).
-  const toolLabel = !tool ? '' : tool.description ? tool.description : tool.name === 'Bash' ? 'a command' : tool.name;
+  const toolLabel = !tool ? '' : tool.description ? tool.description
+    : tool.command && !FILE_TOOLS.has(String(tool.name ?? '')) ? 'a command' : toolText(tool);
   let what;
   if (s?.name && s.name !== s.title) what = s.name; // a name that only repeats the bold title says nothing
   else if (s?.state === 'waiting') what = 'Waiting for your answer';
@@ -570,7 +590,7 @@ export function sessionWhat(s) {
   else what = { working: 'Working', idle: 'Your turn', stuck: 'Gone quiet', gone: 'Process ended' }[s?.state] ?? 'Unknown';
   let line = null;
   if (s?.state === 'waiting' && num(s.since)) line = { prefix: 'prompt open', from: s.since };
-  else if (tool && num(tool.startedMs)) line = { prefix: `${tool.name} running`, from: tool.startedMs };
+  else if (tool && num(tool.startedMs)) line = { prefix: 'running for', from: tool.startedMs };
   else if (num(s?.lastWriteMs)) line = { prefix: 'last activity', from: s.lastWriteMs, suffix: ' ago' };
   return { what, line };
 }
@@ -602,7 +622,7 @@ const toolText = (tool) => {
   if (tool?.command) return String(tool.command).split('\n')[0];
   if (name === 'Agent' || name === 'Task') return 'waiting on a helper';
   const mcp = /^mcp__(.+?)__(.+)$/.exec(name);
-  if (mcp) return `${mcp[2].replace(/_/g, ' ')} (${mcp[1].replace(/_/g, ' ')})`;
+  if (mcp) { const server = mcp[1].replace(/_/g, ' '); return `${server[0].toUpperCase()}${server.slice(1)}: ${mcp[2].replace(/_/g, ' ')}`; }
   return name;
 };
 
@@ -616,6 +636,32 @@ export function toolTrail(s) {
   const running = nowLines(s).map((text) => ({ text, done: false, endedMs: null }));
   const done = arr(s.recentTools).slice(0, 5).map((t) => ({ text: toolText(t), done: true, endedMs: num(t?.endedMs) ? t.endedMs : null }))
     .filter((t) => t.text);
+  return [...running, ...done];
+}
+
+/**
+ * The trail lines for one task (a step) of a session's work (owner, 2026-11-20: "the tools should go under the step
+ * they apply to"). Running tools go under the session's current task. A finished tool goes under the task of the same
+ * session that was in progress when it ended (started at or before, not done before), the latest-started one if
+ * several; a tool that ended before any of them goes under the current task. Not working: only the current task
+ * gets its one "why" line.
+ */
+export function trailForTask(task, tree, s) {
+  if (!task || !s) return [];
+  const current = s.linkedTask?.id === task.id;
+  if (s.state !== 'working') return current ? toolTrail(s) : [];
+  // Every entry of the project, not only this task's: a tool that ended in an earlier entry stays there.
+  const tasks = Array.isArray(tree) ? tree : arr(tree?.epics).flatMap((e) => arr(e?.tasks));
+  const mine = tasks.filter((t) => t?.sessionId === s.sessionId && num(t.startedMs));
+  const ownerOf = (ended) => {
+    if (!num(ended)) return s.linkedTask?.id ?? null;
+    let best = null;
+    for (const t of mine) if (t.startedMs <= ended && (!num(t.doneMs) || ended <= t.doneMs) && (!best || t.startedMs > best.startedMs)) best = t;
+    return best?.id ?? s.linkedTask?.id ?? null;
+  };
+  const running = current ? nowLines(s).map((text) => ({ text, done: false, endedMs: null })) : [];
+  const done = arr(s.recentTools).slice(0, 5).filter((t) => ownerOf(t?.endedMs) === task.id)
+    .map((t) => ({ text: toolText(t), done: true, endedMs: num(t?.endedMs) ? t.endedMs : null })).filter((t) => t.text);
   return [...running, ...done];
 }
 

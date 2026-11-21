@@ -727,3 +727,15 @@ test('a leftOpen flag from the work log reaches the tree, and the model epic id 
   const t = buildTree('/proj', { ...empty(), worklog }, TH);
   assert.equal(t.epics[0].tasks[0].leftOpen, true);
 });
+
+test('plainTitle: no code marks, snake_case, "Implementation Plan" tails or ISO dates in titles', async () => {
+  const { plainTitle } = await import('../../global/dashboard/lib/tree.mjs');
+  assert.equal(plainTitle('`groupEpics` and `foldOpen` in render.mjs'), 'groupEpics and foldOpen in render.mjs');
+  assert.equal(plainTitle('Rename and reorder: update_hierarchy'), 'Rename and reorder: update hierarchy');
+  assert.equal(plainTitle('Dashboard compact view Implementation Plan'), 'Dashboard compact view');
+  assert.equal(plainTitle('Live dashboard — Implementation Plan'), 'Live dashboard');
+  assert.equal(plainTitle('Overnight 2026-11-16'), 'Overnight 16 Nov');
+  assert.equal(plainTitle('Fix the sign-in timeout (#56)'), 'Fix the sign-in timeout (#56)');
+  assert.equal(plainTitle('Logging Implementation Plan (refreshed 2 Nov)'), 'Logging (refreshed 2 Nov)');
+  assert.equal(plainTitle('Implementation Plan'), 'Implementation Plan'); // never empty
+});

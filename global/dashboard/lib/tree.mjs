@@ -18,6 +18,24 @@ const titleKey = (s) => String(s ?? '').trim().toLowerCase();
 const STATUSES = new Set(['done', 'doing', 'next', 'waiting']);
 const line = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * A title as a person reads it (decision 43): no code backticks, snake_case words split, no trailing
+ * "Implementation Plan", ISO dates as "16 Nov". Never empty: a title that would vanish stays as it was.
+ */
+export function plainTitle(s) {
+  const raw = String(s ?? '');
+  const out = raw
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g, (w) => w.replace(/_/g, ' '))
+    .replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (m, y, mo, d) => (Number(mo) >= 1 && Number(mo) <= 12 ? `${Number(d)} ${MONTHS[Number(mo) - 1]}` : m))
+    .replace(/\s*[—–-]?\s*Implementation Plan\s*(?=\(|$)/i, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return out || raw.trim();
+}
+
 function cleanEpics(list, source) {
   const out = [];
   for (const e of arr(list)) {
@@ -266,6 +284,7 @@ export function buildTree(root, inputs, thresholds) {
       total += e.spentMin;
     }
     const hours = measured.length >= 3 ? Math.round((median(measured) / 60) * count * 10) / 10 : null;
+    for (const e of epics) { e.title = plainTitle(e.title); for (const t of e.tasks) t.title = plainTitle(t.title); }
     return { epics, left: { count, hours }, spentMin: total, links };
   } catch {
     return { epics: [], left: { count: 0, hours: null }, spentMin: 0, links: {} };

@@ -34,6 +34,7 @@
 //  - Counts: stuck = sessions and subagents that look stuck (so the headline agrees with project state);
 //    waiting/working count sessions; next counts unfinished tasks with status 'next' across projects, leaving out
 //    plans from before the dashboard and dropped plans.
+import { homedir } from 'node:os';
 import { readdirSync, statSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, basename, resolve, sep } from 'node:path';
 import { claudeHome, dashHome, plannotatorHome } from './paths.mjs';
@@ -90,6 +91,22 @@ function headCwd(path) {
     }
   } catch { /* unreadable */ } finally { if (fd !== undefined) try { closeSync(fd); } catch { /* closed */ } }
   return null;
+}
+
+/**
+ * The home folder itself and a top-level Temp or tmp folder on any drive (a "Temp\testing" folder, /tmp/x) are
+ * scratch places, not projects (decision 43). They are left off the page unless a session is live there.
+ */
+export function scratchRoot(root, { home = homedir() } = {}) {
+  const n = (p) => String(p ?? '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  const r = n(root);
+  return r === n(home) || /^(?:[a-z]:)?\/(?:temp|tmp)(?:\/|$)/.test(r);
+}
+
+/** The projects the page shows: scratch places only while a session is live there. */
+export function visibleProjects(projects, opts) {
+  return (Array.isArray(projects) ? projects : [])
+    .filter((p) => !scratchRoot(p?.root, opts) || (Array.isArray(p?.sessions) && p.sessions.some((s) => s?.alive)));
 }
 
 const discoverCache = new Map(); // claudeHome -> {at, days, roots: Map key -> {root, lastMs}}
@@ -440,8 +457,12 @@ export async function buildModel(now = Date.now(), opts = {}) {
 
     // Session spend (decision 34): the status line's records, kept after a session ends.
     const spend = (() => { try { return readSpendCached(join(dashHome(), 'spend')); } catch { return new Map(); } })();
+    // Scratch places (home folder, temp) show only while a session is live there (decision 43); hidden ones count
+    // for nothing in the header either.
+    const visible = new Set(visibleProjects(projects, typeof opts.home === 'string' ? { home: opts.home } : undefined));
     for (const p of projects) {
       p.spend = spendFor(spend, p.root, now);
+      if (!visible.has(p)) continue;
       p.activeSinceMs = trackActive(ACTIVE, keyOf(p.root), p.state in RANK, now);
       for (const s of p.sessions) {
         s.spend = sessionSpend(spend.get(s.sessionId), s.tokens);
@@ -452,7 +473,7 @@ export async function buildModel(now = Date.now(), opts = {}) {
       for (const e of p.tree?.epics ?? []) if (!e.before && !e.dropped) model.counts.next += e.tasks.filter((t) => t.status === 'next').length;
     }
     pruneActive(ACTIVE, new Set(projects.map((p) => keyOf(p.root))));
-    model.projects = orderProjects(projects);
+    model.projects = orderProjects(projects.filter((p) => visible.has(p)));
   } catch (e) {
     model.error = `Could not build the dashboard: ${errText(e)}`;
   }

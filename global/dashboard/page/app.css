@@ -292,3 +292,5 @@ body.compact main:has(> #v-compact > .cone:not([hidden])) { padding-inline: max(
 .now.done { color: var(--muted); font-weight: 400; }
 .now .ago { flex: none; overflow: visible; font-size: .8rem; }
 .sqbody .now.trail { margin-left: 18px; font-size: .82rem; }
+.sqsteps .trailli { display: block; min-width: 0; }
+.sqsteps .trailli .now { display: flex; }

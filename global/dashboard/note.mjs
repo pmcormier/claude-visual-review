@@ -52,6 +52,13 @@ async function main() {
       rec.steps = pairs.map(([s]) => s);
       if (about) rec.stepsAbout = pairs.map(([, a]) => a);
     }
+  } else if (verb === 'steps') {
+    // Changes the open entry's steps in place (rename, add, reorder); each keeps its status by name.
+    const about = typeof flags['steps-about'] === 'string' ? flags['steps-about'].split('|').map((s) => s.trim()) : null;
+    const pairs = String(pos[1] ?? '').split('|').map((s, i) => [s.trim(), about?.[i] ?? '']).filter(([s]) => s);
+    if (!pairs.length) return logError('steps: missing step list');
+    rec.steps = pairs.map(([s]) => s);
+    if (about) rec.stepsAbout = pairs.map(([, a]) => a);
   } else if (verb === 'step') {
     const n = Number(pos[1]);
     if (!Number.isInteger(n) || n < 1) return logError(`step: bad number "${pos[1]}"`);
